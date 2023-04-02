@@ -1,0 +1,11 @@
+{
+    "files": [
+        ["src/ui/*.ui", "src/ui/generated"],
+        ["src/ui/*.qrc", "src/ui/generated"]
+    ],
+    "hooks": [],
+    "pyrcc": "pyside6-rcc",
+    "pyrcc_options": "",
+    "pyuic": "pyside6-uic",
+    "pyuic_options": "--from-imports"
+}
