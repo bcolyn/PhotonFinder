@@ -72,7 +72,13 @@
     </property>
     <addaction name="action_About"/>
    </widget>
+   <widget class="QMenu" name="menuFilter">
+    <property name="title">
+     <string>F&amp;ilter</string>
+    </property>
+   </widget>
    <addaction name="menu_File"/>
+   <addaction name="menuFilter"/>
    <addaction name="menu_Help"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>

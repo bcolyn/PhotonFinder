@@ -1,7 +1,5 @@
 import time
-from typing import Optional
 
-import PySide6.QtWidgets
 from PySide6.QtWidgets import QFrame, QPushButton
 
 from ui.generated.SearchPanel_ui import Ui_SearchPanel
