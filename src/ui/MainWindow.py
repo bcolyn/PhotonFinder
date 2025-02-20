@@ -1,13 +1,15 @@
 from PySide6.QtWidgets import *
 
+from .ApplicationContext import ApplicationContext
 from .SearchPanel import SearchPanel
 from .generated.MainWindow_ui import Ui_MainWindow
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
-    def __init__(self, app, parent=None):
+    def __init__(self, app: QApplication, context: ApplicationContext, parent=None):
         super(MainWindow, self).__init__(parent)
         self.setupUi(self)
+        self.context = context
         self.app = app
         self.new_search_tab()
 
