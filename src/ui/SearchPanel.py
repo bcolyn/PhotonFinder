@@ -2,7 +2,7 @@ import time
 
 from PySide6.QtWidgets import QFrame, QPushButton
 
-from ui.generated.SearchPanel_ui import Ui_SearchPanel
+from .generated.SearchPanel_ui import Ui_SearchPanel
 
 
 class SearchPanel(QFrame, Ui_SearchPanel):

@@ -1,3 +1,5 @@
+# AstroFileManager
+
 to build UI:
 
 `python setup.py build_ui`
