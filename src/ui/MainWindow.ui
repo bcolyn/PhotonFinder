@@ -64,6 +64,8 @@
     <addaction name="action_New_Tab"/>
     <addaction name="action_Close_Tab"/>
     <addaction name="separator"/>
+    <addaction name="action_Manage_Libraries"/>
+    <addaction name="separator"/>
     <addaction name="action_Exit"/>
    </widget>
    <widget class="QMenu" name="menu_Help">
@@ -100,6 +102,11 @@
   <action name="action_Close_Tab">
    <property name="text">
     <string>&amp;Close Tab</string>
+   </property>
+  </action>
+  <action name="action_Manage_Libraries">
+   <property name="text">
+    <string>&amp;Manage Libraries</string>
    </property>
   </action>
  </widget>
@@ -169,10 +176,27 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>action_Manage_Libraries</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>manage_library_roots()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
   <slot>new_search_tab()</slot>
   <slot>close_current_search_tab()</slot>
+  <slot>manage_library_roots()</slot>
  </slots>
 </ui>

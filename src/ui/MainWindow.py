@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import *
 
 from .ApplicationContext import ApplicationContext
+from .LibraryRootDialog import LibraryRootDialog
 from .SearchPanel import SearchPanel
 from .generated.MainWindow_ui import Ui_MainWindow
 
@@ -25,3 +26,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         assert isinstance(widget, SearchPanel)
         self.tabWidget.removeTab(index)
         widget.destroy()
+
+    def manage_library_roots(self):
+        """
+        Open the dialog for managing library roots.
+        """
+        if self.context.database:
+            dialog = LibraryRootDialog(self.context.database, parent=self)
+            dialog.exec()
