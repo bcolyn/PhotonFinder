@@ -1,15 +1,17 @@
 import logging
 from pathlib import Path
 
+from PySide6.QtCore import QSettings
 from peewee import Database, SqliteDatabase
 
-from src.models.library_root import LibraryRoot
+from .models import LibraryRoot
 
 
 class ApplicationContext:
     def __init__(self, app_data_path: str) -> None:
         self.database: Database | None = None
         self.app_data_path: str = app_data_path
+        self.settings = Settings()
 
     def __enter__(self):
         self.open_database()
@@ -17,6 +19,9 @@ class ApplicationContext:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close_database()
+        # Ensure settings are saved
+        self.settings.sync()
+        logging.info("Settings synced")
 
     def open_database(self) -> None:
         database_path = Path(self.app_data_path) / "astroFileManager.db"
@@ -40,3 +45,31 @@ class ApplicationContext:
             self.database.close()
             logging.info("Database closed")
             self.database = None
+
+
+class Settings:
+
+    def __init__(self, organization_name="AstroFileManager", application_name="AstroFileManager"):
+        self.settings = QSettings(organization_name, application_name)
+        self._initialize_defaults()
+
+    def _initialize_defaults(self):
+        """Initialize default settings if they don't exist."""
+        if not self.contains("cache_compressed_headers"):
+            self.set_cache_compressed_headers(True)
+
+    def contains(self, key):
+        """Check if a setting exists."""
+        return self.settings.contains(key)
+
+    def get_cache_compressed_headers(self):
+        """Get the 'cache compressed headers' setting."""
+        return self.settings.value("cache_compressed_headers", True, bool)
+
+    def set_cache_compressed_headers(self, value):
+        """Set the 'cache compressed headers' setting."""
+        self.settings.setValue("cache_compressed_headers", value)
+
+    def sync(self):
+        """Ensure settings are saved to disk."""
+        self.settings.sync()

@@ -5,9 +5,9 @@ from PySide6.QtCore import Slot, Qt
 from PySide6.QtWidgets import QDialog, QTableWidgetItem, QMessageBox
 from peewee import Database
 
-from src.models.library_root import LibraryRoot
-from src.ui.LibraryRootEditDialog import LibraryRootEditDialog
-from src.ui.generated.LibraryRootDialog_ui import Ui_LibraryRootDialog
+from astrofilemanager.models import LibraryRoot
+from astrofilemanager.ui.LibraryRootEditDialog import LibraryRootEditDialog
+from astrofilemanager.ui.generated.LibraryRootDialog_ui import Ui_LibraryRootDialog
 
 
 class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):

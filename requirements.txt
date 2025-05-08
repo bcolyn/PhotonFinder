@@ -6,3 +6,4 @@ peewee~=3.17.0
 
 qasync~=0.27.1
 setuptools~=75.8.0
+fs~=2.4.16

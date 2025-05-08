@@ -6,8 +6,9 @@ from PySide6.QtCore import QStandardPaths, Qt
 from PySide6.QtWidgets import QApplication, QStyleFactory
 from qasync import QEventLoop
 
-from src.ui.ApplicationContext import ApplicationContext
-from ui.MainWindow import MainWindow
+from astrofilemanager.core import ApplicationContext
+from astrofilemanager.ui.MainWindow import MainWindow
+
 
 async def main():
     ch = logging.StreamHandler()

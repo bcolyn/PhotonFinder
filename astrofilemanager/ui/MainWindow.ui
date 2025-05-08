@@ -54,7 +54,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>22</height>
+     <height>33</height>
     </rect>
    </property>
    <widget class="QMenu" name="menu_File">
@@ -64,7 +64,10 @@
     <addaction name="action_New_Tab"/>
     <addaction name="action_Close_Tab"/>
     <addaction name="separator"/>
+    <addaction name="actionScan_Libraries"/>
     <addaction name="action_Manage_Libraries"/>
+    <addaction name="separator"/>
+    <addaction name="action_Settings"/>
     <addaction name="separator"/>
     <addaction name="action_Exit"/>
    </widget>
@@ -107,6 +110,16 @@
   <action name="action_Manage_Libraries">
    <property name="text">
     <string>&amp;Manage Libraries</string>
+   </property>
+  </action>
+  <action name="action_Settings">
+   <property name="text">
+    <string>&amp;Settings</string>
+   </property>
+  </action>
+  <action name="actionScan_Libraries">
+   <property name="text">
+    <string>Scan Libraries</string>
    </property>
   </action>
  </widget>
@@ -192,11 +205,28 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>action_Settings</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_settings_dialog()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
   <slot>new_search_tab()</slot>
   <slot>close_current_search_tab()</slot>
   <slot>manage_library_roots()</slot>
+  <slot>open_settings_dialog()</slot>
  </slots>
 </ui>

@@ -1,7 +1,7 @@
 {
     "files": [
-        ["src/ui/*.ui", "src/ui/generated"],
-        ["src/ui/*.qrc", "src/ui/generated"]
+        ["astrofilemanager/ui/*.ui", "astrofilemanager/ui/generated"],
+        ["astrofilemanager/ui/*.qrc", "astrofilemanager/ui/generated"]
     ],
     "hooks": [],
     "pyrcc": "pyside6-rcc",

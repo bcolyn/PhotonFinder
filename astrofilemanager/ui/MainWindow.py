@@ -1,8 +1,9 @@
 from PySide6.QtWidgets import *
 
-from .ApplicationContext import ApplicationContext
+from ..core import ApplicationContext
 from .LibraryRootDialog import LibraryRootDialog
 from .SearchPanel import SearchPanel
+from .SettingsDialog import SettingsDialog
 from .generated.MainWindow_ui import Ui_MainWindow
 
 
@@ -34,3 +35,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.context.database:
             dialog = LibraryRootDialog(self.context.database, parent=self)
             dialog.exec()
+
+    def open_settings_dialog(self):
+        """
+        Open the settings dialog.
+        """
+        dialog = SettingsDialog(self.context, parent=self)
+        dialog.exec()
