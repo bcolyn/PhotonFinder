@@ -8,8 +8,11 @@ import fs.path
 from fs.base import FS
 from fs.info import Info
 
+from astrofilemanager.core import StatusReporter
 from astrofilemanager.models import File, LibraryRoot
 
+
+compressed_exts = [".xz", ".gz", ".bz2"]
 
 def fopen(self):
     file_exts = self.get_file_exts()
@@ -40,6 +43,12 @@ class ChangeList:
 
 
 class Importer:
+    status: StatusReporter
+
+    def __init__(self, context):
+        super().__init__()
+        self.status = context.status_reporter
+
     @staticmethod
     def marked_bad(f: Info) -> bool:
         """" skips over files that are marked bad """
@@ -56,7 +65,8 @@ class Importer:
     @staticmethod
     def is_compressed(f: Info) -> bool:
         filename = f.name
-        return filename.lower().endswith(".xz") or filename.lower().endswith(".gz")
+        last_ext = os.path.splitext(filename)[1]
+        return last_ext in compressed_exts
 
     @staticmethod
     def _file_filter(x: Info):
@@ -66,16 +76,18 @@ class Importer:
     def _dir_filter(x: Info):
         return not Importer.marked_bad(x)
 
-    def import_files(self):
+    def import_files(self) -> typing.Iterable[ChangeList]:
         roots: typing.Sequence[LibraryRoot] = list(LibraryRoot.select().execute())
+        log(INFO, "Scanning for new/changed files in libraries...")
         for root in roots:
-            log(INFO, "import library root: %s", str(root.path))
+            self.status.update_status(f"importing library root: {root.name}")
             try:
                 open_fs = fs.open_fs(root.path, writeable=False)
                 change_list = self.import_files_from(open_fs, root)
                 yield change_list
-            except:
-                continue
+            except IOError as err:
+                self.status.update_status(f"Error importing library: {root.name} - {str(err)}")
+        self.status.update_status("done.")
 
     # TODO: check root exists and is non-empty
     def import_files_from(self, root_fs: FS, root: LibraryRoot) -> ChangeList:

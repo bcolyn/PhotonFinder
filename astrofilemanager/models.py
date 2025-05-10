@@ -70,8 +70,6 @@ class LibraryRoot(Model):
         return self.name == other.name and self.path == other.path
 
 
-compressed_exts = ["xz", "gz", "bz2"]
-
 
 @auto_str
 class File(Model):
@@ -80,28 +78,41 @@ class File(Model):
     path = CharField()
     name = CharField()
     size = IntegerField()
-    # type = CharField(index=True, null=True)  # FITS
-    # compression = CharField(null=True)  # xz, gz, lz4
     mtime_millis = IntegerField()
 
-    # sha1 = BlobField(index=True, null=True)  # or CharField?
-
     class Meta:
+        # This will be set dynamically when the database connection is provided
+        database = None
+
         indexes = (
             (('root', 'path', 'name'), True),  # Note the trailing comma!
         )
 
-    def get_file_exts(self) -> typing.List[str]:
-        parts = str(self.name).lower().rsplit('.', maxsplit=2)
-        if len(parts) and parts[0] == '':  # hidden file that starts with a '.'
-            parts = parts[1:]
-        if len(parts) == 1:  # no ext
-            return []
-        ext = parts[-1]
-        if ext in compressed_exts:  # is compressed?
-            return parts[-2:]
-        else:
-            return parts[-1:]
+    @classmethod
+    def initialize(cls, database: Database):
+        """
+        Initialize the model with a database connection.
+        """
+        cls._meta.database = database
+
+        # Set the database for the model
+        cls.bind(database, bind_refs=False, bind_backrefs=False)
+
+        # Create the table if it doesn't exist
+        if not cls.table_exists():
+            cls.create_table()
+
+    # def get_file_exts(self) -> typing.List[str]:
+    #     parts = str(self.name).lower().rsplit('.', maxsplit=2)
+    #     if len(parts) and parts[0] == '':  # hidden file that starts with a '.'
+    #         parts = parts[1:]
+    #     if len(parts) == 1:  # no ext
+    #         return []
+    #     ext = parts[-1]
+    #     if ext in compressed_exts:  # is compressed?
+    #         return parts[-2:]
+    #     else:
+    #         return parts[-1:]
 
     def full_filename(self) -> str:
         return os.path.join(str(self.root.path), str(self.path), str(self.name))

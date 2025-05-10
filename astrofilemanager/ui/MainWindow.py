@@ -1,19 +1,31 @@
 from PySide6.QtWidgets import *
 
-from ..core import ApplicationContext
+from ..core import ApplicationContext, StatusReporter
 from .LibraryRootDialog import LibraryRootDialog
 from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
 from .generated.MainWindow_ui import Ui_MainWindow
+from ..filesystem import Importer
+
+
+class UIStatusReporter(StatusReporter):
+    def __init__(self, main_window: 'MainWindow'):
+        super().__init__()
+        self.main_window = main_window
+
+    def update_status(self, message: str) -> None:
+        self.main_window.statusBar().showMessage(message)
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
+
     def __init__(self, app: QApplication, context: ApplicationContext, parent=None):
         super(MainWindow, self).__init__(parent)
         self.setupUi(self)
         self.context = context
         self.app = app
         self.new_search_tab()
+        context.set_status_reporter(UIStatusReporter(self))
 
     def new_search_tab(self):
         panel = SearchPanel(self.tabWidget)
@@ -42,3 +54,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """
         dialog = SettingsDialog(self.context, parent=self)
         dialog.exec()
+
+    def scan_libraries(self):
+        for changes in Importer(self.context).import_files():
+            changes.apply_all()

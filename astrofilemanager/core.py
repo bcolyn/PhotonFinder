@@ -1,10 +1,15 @@
 import logging
+from abc import ABC, abstractmethod
 from pathlib import Path
 
 from PySide6.QtCore import QSettings
 from peewee import Database, SqliteDatabase
 
-from .models import LibraryRoot
+
+class StatusReporter(ABC):
+    @abstractmethod
+    def update_status(self, message: str) -> None:
+        pass
 
 
 class ApplicationContext:
@@ -12,6 +17,7 @@ class ApplicationContext:
         self.database: Database | None = None
         self.app_data_path: str = app_data_path
         self.settings = Settings()
+        self.status_reporter: StatusReporter | None = None
 
     def __enter__(self):
         self.open_database()
@@ -36,9 +42,12 @@ class ApplicationContext:
         })
 
         if self.database:
-            # Initialize the LibraryRoot model with the connection
-            LibraryRoot.initialize(self.database)
-            logging.info("LibraryRoot model initialized")
+            from .models import CORE_MODELS
+            for model in CORE_MODELS:
+                model.initialize(self.database)
+
+    def set_status_reporter(self, status_reporter: StatusReporter) -> None:
+        self.status_reporter = status_reporter
 
     def close_database(self) -> None:
         if self.database:
