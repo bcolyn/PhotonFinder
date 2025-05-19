@@ -1,112 +1,82 @@
-import asyncio
 import logging
 import time
 
 from PySide6.QtCore import *
-from PySide6.QtGui import *
-from PySide6.QtMultimedia import *
 from PySide6.QtWidgets import *
 
-from astrofilemanager.models import LibraryRoot
+from core import ApplicationContext
+from models import LibraryRoot
+from .LibraryTreeModel import LibraryTreeModel
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
-
+# Using the new database-backed tree model for filesystemTreeView
 class SearchPanel(QFrame, Ui_SearchPanel):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, context: ApplicationContext, parent=None) -> None:
         super(SearchPanel, self).__init__(parent)
         self.setupUi(self)
 
+        self.context = context
+
+        # Initialize the library tree model
+        self.library_tree_model = LibraryTreeModel(self)
+
+        # Set up the tree view
+        self.filesystemTreeView.setModel(self.library_tree_model)
+        self.filesystemTreeView.setHeaderHidden(True)
+        self.filesystemTreeView.setItemsExpandable(True)
+        self.filesystemTreeView.selectionModel().selectionChanged.connect(self.on_tree_selection_changed)
+
         # Store library roots for later use
         self.library_roots = []
+        QTimer.singleShot(0, self.load_library_roots)
 
-        # Initialize file system model to None
-        self.file_system_model = None
-
-        # Connect combobox signal
-        self.libraryComboBox.currentIndexChanged.connect(self.on_library_changed)
-
-        # Schedule async query for library roots after the event loop is running
-        logging.debug("Scheduling async query for library roots")
-        QTimer.singleShot(0, self.start_load_library_roots)
-
-    def start_load_library_roots(self):
+    def load_library_roots(self):
         """
-        Start loading library roots asynchronously.
-        This method is called after the event loop is running.
+        Load library roots and update the tree model.
         """
-        try:
-            logging.debug("Starting async query for library roots")
-            asyncio.create_task(self.load_library_roots())
-        except Exception as e:
-            logging.error(f"Error starting library roots query: {e}")
+        self.library_roots = list(LibraryRoot.select())
 
-    async def load_library_roots(self):
-        """
-        Asynchronously load library roots and populate the combobox.
-        """
-        try:
-            logging.debug("Querying library roots asynchronously")
-            # Run database query in a separate thread to avoid blocking the UI
-            self.library_roots = await asyncio.to_thread(self._query_library_roots)
+        logging.debug(f"Found {len(self.library_roots)} library roots")
+        # Update the tree model with the results
+        self.library_tree_model.load_library_roots(self.library_roots)
 
-            logging.debug(f"Found {len(self.library_roots)} library roots")
-            # Update the UI with the results
-            self.libraryComboBox.clear()
-            for root in self.library_roots:
-                self.libraryComboBox.addItem(root.name)
-            logging.debug("Library combobox populated")
-        except Exception as e:
-            # Log the error but don't crash the application
-            logging.error(f"Error loading library roots: {e}")
+        # Expand the root item to show library roots
+        self.filesystemTreeView.expandAll()
+        logging.debug("Expanded tree view to show all items")
 
-    def _query_library_roots(self):
-        """
-        Query all library roots from the database.
-        This method runs in a separate thread.
-        """
-        return list(LibraryRoot.select())
+        logging.debug("Library tree model updated")
+        self.filesystemTreeView.setRootIndex(QModelIndex())
+        logging.debug("Tree view root index set")
 
-    def get_selected_library_root(self):
-        """
-        Get the currently selected library root.
 
-        Returns:
-            LibraryRoot or None: The selected library root, or None if no library root is selected.
+    def on_tree_selection_changed(self, selected, deselected):
         """
-        index = self.libraryComboBox.currentIndex()
-        if index >= 0 and index < len(self.library_roots):
-            return self.library_roots[index]
-        return None
-
-    def on_library_changed(self, index):
-        """
-        Handle selection changes in the library combobox.
+        Handle selection changes in the tree view.
 
         Args:
-            index (int): The index of the newly selected item.
+            selected: Selected indexes
+            deselected: Deselected indexes
         """
-        library_root = self.get_selected_library_root()
-        if library_root:
-            logging.debug(f"Library root changed to: {library_root.name}")
+        # Get the current selection
+        indexes = self.filesystemTreeView.selectionModel().selectedIndexes()
+        if not indexes:
+            return
 
-            # Create a QFileSystemModel if it doesn't exist
-            if self.file_system_model is None:
-                self.file_system_model = QFileSystemModel()
-                self.file_system_model.setFilter(QDir.Filter.AllDirs | QDir.Filter.NoDotAndDotDot)
-                self.filesystemTreeView.setModel(self.file_system_model)
-                self.filesystemTreeView.hideColumn(1)
-                self.filesystemTreeView.hideColumn(2)
-                self.filesystemTreeView.hideColumn(3)
+        # Get the selected index
+        index = indexes[0]
 
-            # Set the library root's path as the model's rootPath
-            root_path = library_root.path
-            logging.debug(f"Setting root path to: {root_path}")
-
-            # Set the root path and update the tree view
-            root_index = self.file_system_model.setRootPath(root_path)
-            self.filesystemTreeView.setRootIndex(root_index)
+        # Get the file system model for the selected index
+        file_system_model = self.library_tree_model.get_file_system_model_for_index(index)
+        if file_system_model:
+            # If a library root is selected, log it
+            root_path = self.library_tree_model.get_root_path_for_index(index)
+            if root_path:
+                logging.debug(f"Selected library root with path: {root_path}")
         else:
-            logging.debug("No library root selected")
+            # If "All locations" is selected, log it
+            item = self.library_tree_model.getItem(index)
+            if item and item.data(0) == "All locations":
+                logging.debug("Selected All locations")
 
     def add_filter(self):
         self.add_filter_button()

@@ -30,6 +30,7 @@ class ApplicationContext:
         logging.info("Settings synced")
 
     def open_database(self) -> None:
+        logging.info("Database opened")
         database_path = Path(self.app_data_path) / "astroFileManager.db"
         database_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -43,6 +44,7 @@ class ApplicationContext:
 
         if self.database:
             from .models import CORE_MODELS
+            self.database.bind(CORE_MODELS, bind_refs=False, bind_backrefs=False)
             for model in CORE_MODELS:
                 model.initialize(self.database)
 

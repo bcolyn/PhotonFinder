@@ -1,3 +1,4 @@
+import logging
 from PySide6.QtWidgets import *
 
 from ..core import ApplicationContext, StatusReporter
@@ -24,11 +25,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         self.context = context
         self.app = app
+        from models import LibraryRoot
+        LibraryRoot.initialize(context.database)
         self.new_search_tab()
+
         context.set_status_reporter(UIStatusReporter(self))
 
     def new_search_tab(self):
-        panel = SearchPanel(self.tabWidget)
+        panel = SearchPanel(self.context, self.tabWidget)
         self.tabWidget.addTab(panel, "All data")
 
     def close_current_search_tab(self):
@@ -46,7 +50,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """
         if self.context.database:
             dialog = LibraryRootDialog(self.context.database, parent=self)
-            dialog.exec()
+            result = dialog.exec()
+
+            # Reload library roots in all search panels when the dialog is closed
+            # This ensures the tree view is updated when library roots are changed
+            self.reload_library_roots_in_all_panels()
 
     def open_settings_dialog(self):
         """
@@ -58,3 +66,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def scan_libraries(self):
         for changes in Importer(self.context).import_files():
             changes.apply_all()
+
+    def reload_library_roots_in_all_panels(self):
+        """
+        Reload library roots in all search panels.
+        This should be called when library roots are changed.
+        """
+        logging.debug("Reloading library roots in all search panels")
+        for i in range(self.tabWidget.count()):
+            widget = self.tabWidget.widget(i)
+            if isinstance(widget, SearchPanel):
+                widget.load_library_roots()

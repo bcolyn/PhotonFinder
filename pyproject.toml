@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "pyqt-distutils>=0.7.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "astrofilemanager"
+version = "1.0.0"
+description = "Desktop application for managing astronomical files"
+readme = "README.md"
+authors = [
+    { name = "benny", email = "benny.colyn@gmail.com" }
+]
+license = "MIT"
+
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "PySide6~=6.8.2.1",
+    "pyinstaller==6.11.1",
+    "pyinstaller-hooks-contrib==2025.0",
+    "pyqt-distutils==0.7.3",
+    "peewee~=3.17.0",
+    "qasync~=0.27.1",
+    "setuptools~=80.4.0",
+    "fs~=2.4.16",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-qt>=4.2.0",
+    "pytest-mock>=3.10.0",
+    "pytest-cov>=4.1.0",
+]
+
+#[project.urls]
+#"Homepage" = ""
+#"Bug Tracker" = ""
+
+[tool.setuptools]
+packages = ["astrofilemanager"]
+
+[tool.setuptools.cmdclass]
+build_ui = "pyqt_distutils.build_ui.build_ui"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
