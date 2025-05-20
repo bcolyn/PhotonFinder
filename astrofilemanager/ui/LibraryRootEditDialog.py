@@ -15,20 +15,9 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
     Dialog for creating or updating a LibraryRoot entity.
     """
 
-    def __init__(self, connection: Database, library_root: Optional[LibraryRoot] = None, parent=None):
-        """
-        Initialize the dialog.
-
-        Args:
-            connection: Database connection object
-            library_root: LibraryRoot object to edit, or None to create a new one
-            parent: Parent widget
-        """
+    def __init__(self, library_root: Optional[LibraryRoot] = None, parent=None):
         super(LibraryRootEditDialog, self).__init__(parent)
         self.setupUi(self)
-
-        # Initialize the LibraryRoot model with the connection
-        LibraryRoot.initialize(connection)
 
         self.library_root = library_root
         self.is_new = library_root is None
@@ -56,6 +45,8 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
 
         if directory:
             self.pathLineEdit.setText(directory)
+            if not self.nameLineEdit.text():
+                self.nameLineEdit.setText(Path(directory).name)
 
     @Slot()
     def accept(self):

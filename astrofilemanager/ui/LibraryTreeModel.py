@@ -1,20 +1,10 @@
 import logging
-from enum import Enum, auto
-from typing import List, Dict, Optional, Any, Set, Tuple, Callable
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal, QObject, QRunnable, QThreadPool, Slot
-from PySide6.QtWidgets import QApplication, QStyle
 from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication, QStyle
 
 from ..models import LibraryRoot, File
-
-
-class NodeType(Enum):
-    """Enum representing the type of node in the tree."""
-    ROOT = auto()  # Hidden root node
-    ALL_LIBRARIES = auto()  # "All libraries" node
-    LIBRARY_ROOT = auto()  # Library root node
-    PATH = auto()  # Path node
 
 
 class TreeNode:
@@ -41,7 +31,7 @@ class TreeNode:
             return self.parent.children.index(self)
         return 0
 
-    def data(self, column: int) -> str:
+    def data(self) -> str:
         """Return the data for the given column."""
         return ""
 
@@ -58,7 +48,7 @@ class RootNode(TreeNode):
         self.children = [AllLibrariesNode(self)]
         self.loaded = True
 
-    def data(self, column: int) -> str:
+    def data(self) -> str:
         return "Root"
 
 
@@ -68,7 +58,7 @@ class AllLibrariesNode(TreeNode):
     def __init__(self, parent):
         super().__init__(parent)
 
-    def data(self, column: int) -> str:
+    def data(self) -> str:
         return "All libraries"
 
     def get_icon(self, style):
@@ -82,11 +72,12 @@ class LibraryRootNode(TreeNode):
         super().__init__(parent)
         self.library_root = library_root
 
-    def data(self, column: int) -> str:
+    def data(self) -> str:
         return self.library_root.name
 
     def get_icon(self, style):
         return QIcon(style.standardIcon(QStyle.SP_DriveHDIcon))
+
 
 class PathNode(TreeNode):
     """Path node representing a directory in a library root."""
@@ -96,7 +87,7 @@ class PathNode(TreeNode):
         self.path_segment = path_segment
         self.full_path = full_path
 
-    def data(self, column: int) -> str:
+    def data(self) -> str:
         return self.path_segment
 
 
@@ -114,6 +105,7 @@ class BackgroundLoaderBase(QObject):
 
     def _create_runnable(self, fn, *args, **kwargs):
         """Create a QRunnable that will execute the given function."""
+
         class WorkerRunnable(QRunnable):
             @Slot()
             def run(self_runnable):
@@ -131,11 +123,11 @@ class LibraryRootsLoader(BackgroundLoaderBase):
     # Signal emitted when library roots are loaded
     library_roots_loaded = Signal(list)
 
-    def load_library_roots(self):
+    def reload_library_roots(self):
         """Load all library roots from the database."""
-        self.run_in_thread(self._load_library_roots_task)
+        self.run_in_thread(self._reload_library_roots_task)
 
-    def _load_library_roots_task(self):
+    def _reload_library_roots_task(self):
         """Background task to load library roots."""
         try:
             # Fetch library roots from database
@@ -195,6 +187,7 @@ class LibraryTreeModel(QAbstractItemModel):
     Custom tree model for the filesystemTreeView.
     The data for the model comes from the database.
     """
+    ready_for_display = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -207,27 +200,24 @@ class LibraryTreeModel(QAbstractItemModel):
         self.file_paths_loader = FilePathsLoader()
 
         # Connect signals
-        self.library_roots_loader.library_roots_loaded.connect(self._on_library_roots_loaded)
+        self.library_roots_loader.library_roots_loaded.connect(self._on_library_roots_reloaded)
         self.file_paths_loader.paths_loaded.connect(self._on_paths_loaded)
 
-        # Map to keep track of which library roots have been loaded
+        # Map to keep track of which library root's paths have been loaded
         self.loaded_library_roots = set()
 
         # Map to keep track of nodes by their model index
         self.nodes_by_index = {}
 
-    def load_library_roots(self, library_roots=None):
+    def reload_library_roots(self):
         """
         Load library roots into the model.
         If library_roots is provided, use those instead of fetching from the database.
         """
-        if library_roots is not None:
-            self._on_library_roots_loaded(library_roots)
-        else:
-            # Start async loading
-            self.library_roots_loader.load_library_roots()
+        # Start async loading
+        self.library_roots_loader.reload_library_roots()
 
-    def _on_library_roots_loaded(self, library_roots):
+    def _on_library_roots_reloaded(self, library_roots):
         """Handle the library_roots_loaded signal."""
         # Get the "All libraries" node
         all_libraries_node = self.root_node.child(0)
@@ -237,6 +227,7 @@ class LibraryTreeModel(QAbstractItemModel):
 
         # Clear existing children
         all_libraries_node.children = []
+        self.loaded_library_roots.clear()
 
         # Add library roots as children
         for library_root in library_roots:
@@ -247,6 +238,7 @@ class LibraryTreeModel(QAbstractItemModel):
 
         # End model reset
         self.endResetModel()
+        self.ready_for_display.emit()
 
     def _on_paths_loaded(self, library_root, paths):
         """Handle the paths_loaded signal."""
@@ -341,6 +333,13 @@ class LibraryTreeModel(QAbstractItemModel):
 
         return QModelIndex()
 
+    def hasChildren(self, /, parent=...):
+        parentItem = self.getItem(parent)
+        if isinstance(parentItem, LibraryRootNode) and not parentItem.loaded:
+            return True
+        else:
+            return super().hasChildren(parent)
+
     def parent(self, index):
         """Return the parent of the model item with the given index."""
         if not index.isValid():
@@ -385,18 +384,11 @@ class LibraryTreeModel(QAbstractItemModel):
         node = index.internalPointer()
 
         if role == Qt.DisplayRole:
-            return node.data(index.column())
+            return node.data()
         elif role == Qt.DecorationRole:
             style = QApplication.style()
             return node.get_icon(style)
         return None
-
-    def flags(self, index):
-        """Return the item flags for the given index."""
-        if not index.isValid():
-            return Qt.NoItemFlags
-
-        return Qt.ItemIsEnabled | Qt.ItemIsSelectable
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         """Return the header data for the given role."""

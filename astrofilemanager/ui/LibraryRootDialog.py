@@ -15,58 +15,47 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
     Dialog for managing LibraryRoot entities.
     Shows a list of configured libraries with add, edit, and delete buttons.
     """
-    
-    def __init__(self, connection: Database, parent=None):
-        """
-        Initialize the dialog.
-        
-        Args:
-            connection: Database connection object
-            parent: Parent widget
-        """
+
+    def __init__(self, parent=None):
         super(LibraryRootDialog, self).__init__(parent)
         self.setupUi(self)
-        
-        # Initialize the LibraryRoot model with the connection
-        LibraryRoot.initialize(connection)
-        self.connection = connection
-        
+
         # Set up the table
         self.libraryTable.setColumnWidth(0, 200)  # Name column
         self.libraryTable.setColumnWidth(1, 350)  # Path column
-        
+
         # Load the library roots
         self.load_library_roots()
-        
+
         # Enable/disable edit and delete buttons based on selection
         self.libraryTable.itemSelectionChanged.connect(self.update_button_states)
         self.update_button_states()
-    
+
     def load_library_roots(self):
         """
         Load all library roots from the database and display them in the table.
         """
         self.libraryTable.setRowCount(0)  # Clear the table
-        
+
         try:
             library_roots = LibraryRoot.select().order_by(LibraryRoot.name)
-            
+
             for i, library_root in enumerate(library_roots):
                 self.libraryTable.insertRow(i)
-                
+
                 # Create and set the name item
                 name_item = QTableWidgetItem(library_root.name)
                 name_item.setData(Qt.UserRole, library_root.id)  # Store the ID for later use
                 self.libraryTable.setItem(i, 0, name_item)
-                
+
                 # Create and set the path item
                 path_item = QTableWidgetItem(library_root.path)
                 self.libraryTable.setItem(i, 1, path_item)
-                
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred while loading library roots: {str(e)}")
             logging.exception("Error loading library roots")
-    
+
     def update_button_states(self):
         """
         Enable or disable the edit and delete buttons based on whether a row is selected.
@@ -74,7 +63,7 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         has_selection = len(self.libraryTable.selectedItems()) > 0
         self.editButton.setEnabled(has_selection)
         self.deleteButton.setEnabled(has_selection)
-    
+
     def get_selected_library_root(self) -> Optional[LibraryRoot]:
         """
         Get the currently selected library root.
@@ -85,27 +74,27 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         selected_items = self.libraryTable.selectedItems()
         if not selected_items:
             return None
-        
+
         # Get the ID from the first column of the selected row
         row = selected_items[0].row()
         library_id = self.libraryTable.item(row, 0).data(Qt.UserRole)
-        
+
         try:
             return LibraryRoot.get_by_id(library_id)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred while retrieving the library root: {str(e)}")
             logging.exception("Error retrieving library root")
             return None
-    
+
     @Slot()
     def add_library(self):
         """
         Open the dialog to add a new library root.
         """
-        dialog = LibraryRootEditDialog(self.connection, parent=self)
+        dialog = LibraryRootEditDialog(parent=self)
         if dialog.exec() == QDialog.Accepted:
             self.load_library_roots()
-    
+
     @Slot()
     def edit_library(self):
         """
@@ -114,11 +103,11 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         library_root = self.get_selected_library_root()
         if not library_root:
             return
-        
-        dialog = LibraryRootEditDialog(self.connection, library_root, parent=self)
+
+        dialog = LibraryRootEditDialog(parent=self)
         if dialog.exec() == QDialog.Accepted:
             self.load_library_roots()
-    
+
     @Slot()
     def delete_library(self):
         """
@@ -127,7 +116,7 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         library_root = self.get_selected_library_root()
         if not library_root:
             return
-        
+
         # Confirm deletion
         result = QMessageBox.question(
             self,
@@ -136,7 +125,7 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
-        
+
         if result == QMessageBox.Yes:
             try:
                 library_root.delete_instance()

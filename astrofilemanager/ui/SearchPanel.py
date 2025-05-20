@@ -9,6 +9,7 @@ from models import LibraryRoot, SearchCriteria
 from .LibraryTreeModel import LibraryTreeModel
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
+
 # Using the new database-backed tree model for filesystemTreeView
 class SearchPanel(QFrame, Ui_SearchPanel):
     def __init__(self, context: ApplicationContext, parent=None) -> None:
@@ -19,36 +20,21 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_criteria = SearchCriteria()
         # Initialize the library tree model
         self.library_tree_model = LibraryTreeModel(self)
-
+        self.library_tree_model.reload_library_roots()
+        self.library_tree_model.ready_for_display.connect(self.on_library_tree_ready)
         # Set up the tree view
         self.filesystemTreeView.setModel(self.library_tree_model)
         self.filesystemTreeView.setHeaderHidden(True)
         self.filesystemTreeView.setItemsExpandable(True)
         self.filesystemTreeView.selectionModel().selectionChanged.connect(self.on_tree_selection_changed)
 
-        # Store library roots for later use
-        self.library_roots = []
-        QTimer.singleShot(0, self.load_library_roots)
 
-    def load_library_roots(self):
-        """
-        Load library roots and update the tree model.
-        """
-        self.library_roots = list(LibraryRoot.select())
-
-        logging.debug(f"Found {len(self.library_roots)} library roots")
-        # Update the tree model with the results
-        self.library_tree_model.load_library_roots(self.library_roots)
-
+    def on_library_tree_ready(self):
         # Don't expand all at once - just expand the first level
         # to show library roots
         all_libraries_index = self.library_tree_model.index(0, 0, QModelIndex())
         self.filesystemTreeView.expand(all_libraries_index)
-
-        logging.debug("Expanded first level of tree view")
-        logging.debug("Library tree model updated")
-        self.filesystemTreeView.setRootIndex(QModelIndex())
-        logging.debug("Tree view root index set")
+        #self.filesystemTreeView.setRootIndex(QModelIndex())
 
     def on_tree_selection_changed(self, selected, deselected):
         """
@@ -76,7 +62,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         else:
             # If "All locations" is selected, log it
             item = self.library_tree_model.getItem(index)
-            if item and item.data(0) == "All locations":
+            if item and item.data() == "All locations":
                 logging.debug("Selected All locations")
 
     def add_filter(self):

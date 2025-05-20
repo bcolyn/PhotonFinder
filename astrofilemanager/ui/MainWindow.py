@@ -71,7 +71,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         Open the dialog for managing library roots.
         """
         if self.context.database:
-            dialog = LibraryRootDialog(self.context.database, parent=self)
+            dialog = LibraryRootDialog(parent=self)
             result = dialog.exec()
 
             # Reload library roots in all search panels when the dialog is closed
@@ -127,4 +127,4 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for i in range(self.tabWidget.count()):
             widget = self.tabWidget.widget(i)
             if isinstance(widget, SearchPanel):
-                widget.load_library_roots()
+                widget.library_tree_model.reload_library_roots()
