@@ -8,7 +8,7 @@ from peewee import Database, SqliteDatabase
 
 class StatusReporter(ABC):
     @abstractmethod
-    def update_status(self, message: str) -> None:
+    def update_status(self, message: str, bulk = False) -> None:
         pass
 
 

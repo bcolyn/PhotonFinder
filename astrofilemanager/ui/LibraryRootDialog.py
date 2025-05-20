@@ -19,7 +19,7 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
     def __init__(self, parent=None):
         super(LibraryRootDialog, self).__init__(parent)
         self.setupUi(self)
-
+        self.has_changes = False
         # Set up the table
         self.libraryTable.setColumnWidth(0, 200)  # Name column
         self.libraryTable.setColumnWidth(1, 350)  # Path column
@@ -94,6 +94,7 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         dialog = LibraryRootEditDialog(parent=self)
         if dialog.exec() == QDialog.Accepted:
             self.load_library_roots()
+            self.has_changes = True
 
     @Slot()
     def edit_library(self):
@@ -107,6 +108,7 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         dialog = LibraryRootEditDialog(parent=self)
         if dialog.exec() == QDialog.Accepted:
             self.load_library_roots()
+            self.has_changes = True
 
     @Slot()
     def delete_library(self):
@@ -131,6 +133,7 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
                 library_root.delete_instance()
                 logging.info(f"Deleted library root: {library_root.name}")
                 self.load_library_roots()
+                self.has_changes = True
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"An error occurred while deleting: {str(e)}")
                 logging.exception("Error deleting library root")

@@ -12,8 +12,8 @@ from peewee import JOIN
 from astrofilemanager.core import StatusReporter
 from astrofilemanager.models import File, LibraryRoot, FitsHeader
 
-
 compressed_exts = [".xz", ".gz", ".bz2"]
+
 
 def fopen(file):
     """
@@ -36,7 +36,7 @@ def fopen(file):
         return open(file.full_filename(), mode='rb')
 
 
-def read_fits_header(file):
+def read_fits_header(file, status_reporter: StatusReporter = None):
     """
     Read the FITS header from a file.
 
@@ -50,6 +50,8 @@ def read_fits_header(file):
     Returns:
         The FITS header as a string, or None if the file is not a valid FITS file
     """
+    if status_reporter:
+        status_reporter.update_status(f"Reading FITS header for {file.name}...", bulk=True)
     try:
         with fopen(file) as f:
             header = ""
@@ -74,7 +76,7 @@ def read_fits_header(file):
                     header += line + "\n"
 
                     # Check if this line starts with 'END'
-                    if line.startswith('END '):
+                    if line.startswith('END'):
                         return header
 
         return None
@@ -97,44 +99,46 @@ def update_fits_header_cache(change_list, status_reporter=None):
     # Process new files
     for file in change_list.new_files:
         if Importer.is_fits_by_name(file.name):
-            header = read_fits_header(file)
+            header = read_fits_header(file, status_reporter)
             if header:
                 FitsHeader.create(file=file, header=header)
 
     # Process changed files
     for file in change_list.changed_files:
         if Importer.is_fits_by_name(file.name):
-            header = read_fits_header(file)
+            header = read_fits_header(file, status_reporter)
             if header:
                 # Try to update existing header, create if it doesn't exist
                 try:
-                    header_obj = FitsHeader.get(FitsHeader.file == file)
-                    header_obj.header = header
-                    header_obj.save()
+                    FitsHeader.update(header=header).where(FitsHeader.file == file)
                 except FitsHeader.DoesNotExist:
                     FitsHeader.create(file=file, header=header)
 
     # Process removed files
     for file in change_list.removed_files:
         try:
-            header_obj = FitsHeader.get(FitsHeader.file == file)
-            header_obj.delete_instance()
+            FitsHeader.delete_by_id(file.rowid)
         except FitsHeader.DoesNotExist:
             pass
 
+    if status_reporter:
+        status_reporter.update_status("FITS header cache updated.")
+
+
+def check_missing_header_cache(status_reporter=None):
     # Process any FITS files that don't have a corresponding header entry
     if status_reporter:
         status_reporter.update_status("Checking for FITS files without header cache entries...")
 
     # Find all files that don't have a corresponding FitsHeader entry
     # Use a LEFT OUTER JOIN to find files without headers
-    query = (File
-             .select(File)
-             .join(FitsHeader, JOIN.LEFT_OUTER, on=(File.rowid == FitsHeader.file))
-             .where(FitsHeader.rowid.is_null()))
+    missing_header_files = (File
+                            .select(File)
+                            .join(FitsHeader, JOIN.LEFT_OUTER, on=(File.rowid == FitsHeader.file))
+                            .where(FitsHeader.rowid.is_null()))
 
     # Process these files as new files
-    for file in query:
+    for file in missing_header_files:
         if Importer.is_fits_by_name(file.name):
             header = read_fits_header(file)
             if header:
@@ -146,18 +150,22 @@ def update_fits_header_cache(change_list, status_reporter=None):
 
 class ChangeList:
     def __init__(self):
-        self.new_files = list()
-        self.removed_files = list()
-        self.changed_ids = list()
-        self.changed_files = list()
+        self.new_files: typing.List[File] = list()
+        self.removed_files: typing.List[File] = list()
+        self.changed_ids: typing.List[int] = list()
+        self.changed_files: typing.List[File] = list()
 
     def apply_all(self):
-        File.bulk_create(self.new_files, batch_size=100)
-        for file in self.removed_files:
-            File.delete_by_id(file.rowid)
-        for id in self.changed_ids:  # delete and re-create
-            File.delete_by_id(id)
-        File.bulk_create(self.changed_files, batch_size=100)
+        with File._meta.database.atomic():
+            # note that bulk_create does not assign the rowid, and we need this later on, hence the loop.
+            for file in self.new_files:
+                file.save(force_insert=True)
+            for file in self.removed_files:
+                File.delete_by_id(file.rowid)
+            for fileId in self.changed_ids:  # delete and re-create
+                File.delete_by_id(fileId)
+            for file in self.changed_files:
+                file.save(force_insert=True)
 
 
 class Importer:
