@@ -7,23 +7,141 @@ from logging import log, INFO, DEBUG
 import fs.path
 from fs.base import FS
 from fs.info import Info
+from peewee import JOIN
 
 from astrofilemanager.core import StatusReporter
-from astrofilemanager.models import File, LibraryRoot
+from astrofilemanager.models import File, LibraryRoot, FitsHeader
 
 
 compressed_exts = [".xz", ".gz", ".bz2"]
 
-def fopen(self):
-    file_exts = self.get_file_exts()
+def fopen(file):
+    """
+    Open a file handle for reading, handling compressed files automatically.
+
+    Args:
+        file: A File object with a get_file_exts() method and full_filename() method
+
+    Returns:
+        A file-like object opened in binary mode
+    """
+    file_exts = file.get_file_exts()
     if len(file_exts) and file_exts[-1] == "xz":
-        return lzma.open(self.full_filename(), mode='rb')
+        return lzma.open(file.full_filename(), mode='rb')
     elif len(file_exts) and file_exts[-1] == "gz":
-        return gzip.open(self.full_filename(), mode='rb')
+        return gzip.open(file.full_filename(), mode='rb')
     elif len(file_exts) and file_exts[-1] == "bz2":
-        return bz2.open(self.full_filename(), mode='rb')
+        return bz2.open(file.full_filename(), mode='rb')
     else:
-        return open(self.full_filename(), mode='rb')
+        return open(file.full_filename(), mode='rb')
+
+
+def read_fits_header(file):
+    """
+    Read the FITS header from a file.
+
+    A FITS header consists of one or more blocks of 2880 bytes.
+    Each block contains 36 lines of 80 characters.
+    The header ends with a line that starts with 'END'.
+
+    Args:
+        file: A File object with a get_file_exts() method and full_filename() method
+
+    Returns:
+        The FITS header as a string, or None if the file is not a valid FITS file
+    """
+    try:
+        with fopen(file) as f:
+            header = ""
+            block_size = 2880
+            line_size = 80
+            lines_per_block = block_size // line_size
+
+            while True:
+                block = f.read(block_size)
+                if not block:
+                    # End of file without finding END
+                    return None
+
+                # Process each line in the block
+                for i in range(lines_per_block):
+                    start = i * line_size
+                    end = start + line_size
+                    if start >= len(block):
+                        break
+
+                    line = block[start:end].decode('ascii', errors='replace').rstrip()
+                    header += line + "\n"
+
+                    # Check if this line starts with 'END'
+                    if line.startswith('END '):
+                        return header
+
+        return None
+    except Exception as e:
+        log(DEBUG, f"Error reading FITS header: {str(e)}")
+        return None
+
+
+def update_fits_header_cache(change_list, status_reporter=None):
+    """
+    Update the FITS header cache based on the changes in the change_list.
+
+    Args:
+        change_list: A ChangeList object with new_files, changed_files, and removed_files
+        status_reporter: Optional StatusReporter to update status
+    """
+    if status_reporter:
+        status_reporter.update_status("Updating FITS header cache...")
+
+    # Process new files
+    for file in change_list.new_files:
+        if Importer.is_fits_by_name(file.name):
+            header = read_fits_header(file)
+            if header:
+                FitsHeader.create(file=file, header=header)
+
+    # Process changed files
+    for file in change_list.changed_files:
+        if Importer.is_fits_by_name(file.name):
+            header = read_fits_header(file)
+            if header:
+                # Try to update existing header, create if it doesn't exist
+                try:
+                    header_obj = FitsHeader.get(FitsHeader.file == file)
+                    header_obj.header = header
+                    header_obj.save()
+                except FitsHeader.DoesNotExist:
+                    FitsHeader.create(file=file, header=header)
+
+    # Process removed files
+    for file in change_list.removed_files:
+        try:
+            header_obj = FitsHeader.get(FitsHeader.file == file)
+            header_obj.delete_instance()
+        except FitsHeader.DoesNotExist:
+            pass
+
+    # Process any FITS files that don't have a corresponding header entry
+    if status_reporter:
+        status_reporter.update_status("Checking for FITS files without header cache entries...")
+
+    # Find all files that don't have a corresponding FitsHeader entry
+    # Use a LEFT OUTER JOIN to find files without headers
+    query = (File
+             .select(File)
+             .join(FitsHeader, JOIN.LEFT_OUTER, on=(File.rowid == FitsHeader.file))
+             .where(FitsHeader.rowid.is_null()))
+
+    # Process these files as new files
+    for file in query:
+        if Importer.is_fits_by_name(file.name):
+            header = read_fits_header(file)
+            if header:
+                FitsHeader.create(file=file, header=header)
+
+    if status_reporter:
+        status_reporter.update_status("FITS header cache updated.")
 
 
 class ChangeList:
@@ -56,11 +174,17 @@ class Importer:
         return filename.lower().startswith("bad")
 
     @staticmethod
-    def is_fits(f: Info) -> bool:
-        filename = f.name
-        if Importer.is_compressed(f):
+    def is_fits_by_name(filename: str) -> bool:
+        """Check if a filename is a FITS file based on its extension."""
+        # Handle compressed files
+        if filename.lower().endswith(tuple(compressed_exts)):
             filename = os.path.splitext(filename)[0]
         return filename.lower().endswith(".fit") or filename.lower().endswith(".fits")
+
+    @staticmethod
+    def is_fits(f: Info) -> bool:
+        """Check if a file is a FITS file based on its Info object."""
+        return Importer.is_fits_by_name(f.name)
 
     @staticmethod
     def is_compressed(f: Info) -> bool:

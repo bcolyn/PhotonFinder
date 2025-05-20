@@ -1,12 +1,10 @@
-import asyncio
 import logging
 from enum import Enum, auto
-from typing import List, Dict, Optional, Any, Set, Tuple
+from typing import List, Dict, Optional, Any, Set, Tuple, Callable
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal, QObject
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal, QObject, QRunnable, QThreadPool, Slot
 from PySide6.QtWidgets import QApplication, QStyle
 from PySide6.QtGui import QIcon
-import qasync
 
 from ..models import LibraryRoot, File
 
@@ -102,25 +100,44 @@ class PathNode(TreeNode):
         return self.path_segment
 
 
-class AsyncLoader(QObject):
-    """Helper class for asynchronous loading of tree data."""
+class BackgroundLoaderBase(QObject):
+    """Base class for asynchronous loading of data in background threads."""
+
+    def __init__(self):
+        super().__init__()
+        self.thread_pool = QThreadPool.globalInstance()
+
+    def run_in_thread(self, fn, *args, **kwargs):
+        """Run a function in a background thread."""
+        runnable = self._create_runnable(fn, *args, **kwargs)
+        self.thread_pool.start(runnable)
+
+    def _create_runnable(self, fn, *args, **kwargs):
+        """Create a QRunnable that will execute the given function."""
+        class WorkerRunnable(QRunnable):
+            @Slot()
+            def run(self_runnable):
+                try:
+                    fn(*args, **kwargs)
+                except Exception as e:
+                    logging.error(f"Error in worker thread: {e}")
+
+        return WorkerRunnable()
+
+
+class LibraryRootsLoader(BackgroundLoaderBase):
+    """Helper class for asynchronous loading of library roots from the database."""
 
     # Signal emitted when library roots are loaded
     library_roots_loaded = Signal(list)
 
-    # Signal emitted when paths for a library root are loaded
-    paths_loaded = Signal(object, list)  # library_root, paths
-
-    def __init__(self):
-        super().__init__()
-
-    @qasync.asyncSlot()
-    async def load_library_roots(self):
+    def load_library_roots(self):
         """Load all library roots from the database."""
-        try:
-            # Simulate async operation
-            await asyncio.sleep(0)
+        self.run_in_thread(self._load_library_roots_task)
 
+    def _load_library_roots_task(self):
+        """Background task to load library roots."""
+        try:
             # Fetch library roots from database
             library_roots = list(LibraryRoot.select())
 
@@ -129,13 +146,20 @@ class AsyncLoader(QObject):
         except Exception as e:
             logging.error(f"Error loading library roots: {e}")
 
-    @qasync.asyncSlot(object)
-    async def load_paths_for_library(self, library_root: LibraryRoot):
-        """Load all paths for a given library root from the database."""
-        try:
-            # Simulate async operation
-            await asyncio.sleep(0)
 
+class FilePathsLoader(BackgroundLoaderBase):
+    """Helper class for asynchronous loading of file paths for a library root."""
+
+    # Signal emitted when paths for a library root are loaded
+    paths_loaded = Signal(object, list)  # library_root, paths
+
+    def load_paths_for_library(self, library_root: LibraryRoot):
+        """Load all paths for a given library root from the database."""
+        self.run_in_thread(self._load_paths_for_library_task, library_root)
+
+    def _load_paths_for_library_task(self, library_root: LibraryRoot):
+        """Background task to load paths for a library."""
+        try:
             # Fetch distinct paths for this library root
             query = (File
                      .select(File.path)
@@ -178,10 +202,13 @@ class LibraryTreeModel(QAbstractItemModel):
         # Create the root node
         self.root_node = RootNode()
 
-        # Create the async loader
-        self.async_loader = AsyncLoader()
-        self.async_loader.library_roots_loaded.connect(self._on_library_roots_loaded)
-        self.async_loader.paths_loaded.connect(self._on_paths_loaded)
+        # Create the loaders for async loading
+        self.library_roots_loader = LibraryRootsLoader()
+        self.file_paths_loader = FilePathsLoader()
+
+        # Connect signals
+        self.library_roots_loader.library_roots_loaded.connect(self._on_library_roots_loaded)
+        self.file_paths_loader.paths_loaded.connect(self._on_paths_loaded)
 
         # Map to keep track of which library roots have been loaded
         self.loaded_library_roots = set()
@@ -198,7 +225,7 @@ class LibraryTreeModel(QAbstractItemModel):
             self._on_library_roots_loaded(library_roots)
         else:
             # Start async loading
-            self.async_loader.load_library_roots()
+            self.library_roots_loader.load_library_roots()
 
     def _on_library_roots_loaded(self, library_roots):
         """Handle the library_roots_loaded signal."""
@@ -342,7 +369,7 @@ class LibraryTreeModel(QAbstractItemModel):
                 not parent_node.loaded and
                 parent_node.library_root.id not in self.loaded_library_roots):
             parent_node.loaded = True  # Mark as loaded to prevent multiple loads
-            self.async_loader.load_paths_for_library(parent_node.library_root)
+            self.file_paths_loader.load_paths_for_library(parent_node.library_root)
 
         return parent_node.child_count()
 

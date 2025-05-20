@@ -5,7 +5,7 @@ from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 
 from core import ApplicationContext
-from models import LibraryRoot
+from models import LibraryRoot, SearchCriteria
 from .LibraryTreeModel import LibraryTreeModel
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
@@ -16,7 +16,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.setupUi(self)
 
         self.context = context
-
+        self.search_criteria = SearchCriteria()
         # Initialize the library tree model
         self.library_tree_model = LibraryTreeModel(self)
 
@@ -40,14 +40,15 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # Update the tree model with the results
         self.library_tree_model.load_library_roots(self.library_roots)
 
-        # Expand the root item to show library roots
-        self.filesystemTreeView.expandAll()
-        logging.debug("Expanded tree view to show all items")
+        # Don't expand all at once - just expand the first level
+        # to show library roots
+        all_libraries_index = self.library_tree_model.index(0, 0, QModelIndex())
+        self.filesystemTreeView.expand(all_libraries_index)
 
+        logging.debug("Expanded first level of tree view")
         logging.debug("Library tree model updated")
         self.filesystemTreeView.setRootIndex(QModelIndex())
         logging.debug("Tree view root index set")
-
 
     def on_tree_selection_changed(self, selected, deselected):
         """

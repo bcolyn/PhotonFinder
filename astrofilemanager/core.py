@@ -30,8 +30,8 @@ class ApplicationContext:
         logging.info("Settings synced")
 
     def open_database(self) -> None:
-        logging.info("Database opened")
         database_path = Path(self.app_data_path) / "astroFileManager.db"
+        logging.info(f"Database path: {database_path}")
         database_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.database = SqliteDatabase(database_path, pragmas={
@@ -41,12 +41,14 @@ class ApplicationContext:
             'application_id': 0x46495453,  # FITS
             'user_version': 1
         })
+        logging.info("Database opened")
 
         if self.database:
             from .models import CORE_MODELS
             self.database.bind(CORE_MODELS, bind_refs=False, bind_backrefs=False)
             for model in CORE_MODELS:
-                model.initialize(self.database)
+                model.create_table()
+                # model.initialize(self.database)
 
     def set_status_reporter(self, status_reporter: StatusReporter) -> None:
         self.status_reporter = status_reporter

@@ -1,16 +1,14 @@
-import asyncio
 import logging
 import sys
 
-from PySide6.QtCore import QStandardPaths, Qt
+from PySide6.QtCore import QStandardPaths, Qt, QThreadPool
 from PySide6.QtWidgets import QApplication, QStyleFactory
-from qasync import QEventLoop
 
 from astrofilemanager.core import ApplicationContext
 from astrofilemanager.ui.MainWindow import MainWindow
 
 
-async def main():
+def main():
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -26,7 +24,7 @@ async def main():
     if hasattr(Qt, 'HighDpiScaleFactorRoundingPolicy'):
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
-    # Create the Qt application and set up the asyncio event loop with QEventLoop
+    # Create the Qt application
     app = QApplication(sys.argv)
 
     # Log available styles for reference
@@ -43,8 +41,9 @@ async def main():
 
     logging.info(f"Current style: {app.style().objectName()}")
 
-    loop = QEventLoop(app)
-    asyncio.set_event_loop(loop)
+    # Log the maximum thread count
+    thread_pool = QThreadPool.globalInstance()
+    logging.info(f"Maximum thread count: {thread_pool.maxThreadCount()}")
 
     app_data_path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
     context = ApplicationContext(app_data_path)
@@ -53,10 +52,9 @@ async def main():
         main_window = MainWindow(app, context)
         main_window.show()
 
-        # Run the asyncio event loop merged with the PySide6 event loop
-        with loop:
-            loop.run_forever()
+        # Run the Qt event loop
+        app.exec()
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()

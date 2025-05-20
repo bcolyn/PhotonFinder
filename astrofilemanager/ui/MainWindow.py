@@ -1,12 +1,13 @@
 import logging
 from PySide6.QtWidgets import *
+from PySide6.QtCore import QThread, Signal
 
 from ..core import ApplicationContext, StatusReporter
 from .LibraryRootDialog import LibraryRootDialog
 from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
 from .generated.MainWindow_ui import Ui_MainWindow
-from ..filesystem import Importer
+from ..filesystem import Importer, update_fits_header_cache
 
 
 class UIStatusReporter(StatusReporter):
@@ -18,6 +19,26 @@ class UIStatusReporter(StatusReporter):
         self.main_window.statusBar().showMessage(message)
 
 
+class LibraryScanWorker(QThread):
+    """Worker thread for scanning libraries."""
+    finished = Signal()
+    change_list_ready = Signal(object)  # Signal emitted when a change list is ready
+
+    def __init__(self, context):
+        super().__init__()
+        self.context = context
+        self.importer = Importer(context)
+
+    def run(self):
+        """Run the import process in a background thread."""
+        for changes in self.importer.import_files():
+            # Emit the change list so it can be processed in the main thread
+            self.change_list_ready.emit(changes)
+
+        # Signal that we're done
+        self.finished.emit()
+
+
 class MainWindow(QMainWindow, Ui_MainWindow):
 
     def __init__(self, app: QApplication, context: ApplicationContext, parent=None):
@@ -25,6 +46,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         self.context = context
         self.app = app
+        self.scan_worker = None  # Initialize scan_worker attribute
         from models import LibraryRoot
         LibraryRoot.initialize(context.database)
         self.new_search_tab()
@@ -64,8 +86,37 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         dialog.exec()
 
     def scan_libraries(self):
-        for changes in Importer(self.context).import_files():
-            changes.apply_all()
+        """
+        Scan libraries for new, changed, and deleted files.
+        This runs in a background thread to avoid blocking the UI.
+        After the scan is complete, the FITS header cache is updated.
+        """
+        # Create a worker thread
+        self.scan_worker = LibraryScanWorker(self.context)
+
+        # Connect signals
+        self.scan_worker.change_list_ready.connect(self._process_change_list)
+        self.scan_worker.finished.connect(self._scan_finished)
+
+        # Start the worker thread
+        self.scan_worker.start()
+
+    def _process_change_list(self, changes):
+        """Process a change list from the worker thread."""
+        # Apply changes to the databases
+        changes.apply_all()
+
+        # Update the FITS header cache
+        update_fits_header_cache(changes, self.context.status_reporter)
+
+    def _scan_finished(self):
+        """Called when the scan is finished."""
+        self.context.status_reporter.update_status("Library scan complete.")
+
+        # Clean up the worker thread
+        self.scan_worker.deleteLater()
+        self.scan_worker = None
+
 
     def reload_library_roots_in_all_panels(self):
         """
