@@ -4,39 +4,41 @@ import lzma
 import os
 import typing
 from logging import log, INFO, DEBUG
+from pathlib import Path
+
 import fs.path
+from astropy.io.fits import Header
 from fs.base import FS
 from fs.info import Info
 from peewee import JOIN
 
 from astrofilemanager.core import StatusReporter
-from astrofilemanager.models import File, LibraryRoot, FitsHeader
+from astrofilemanager.models import File, LibraryRoot, FitsHeader, Image
+from fits_handlers import normalize_fits_header
 
-compressed_exts = [".xz", ".gz", ".bz2"]
+compressed_exts = {
+    ".xz": lzma.open,
+    ".gz": gzip.open,
+    ".bz2": bz2.open
+}
 
 
-def fopen(file):
+def fopen(filename: Path | str):
     """
-    Open a file handle for reading, handling compressed files automatically.
-
-    Args:
-        file: A File object with a get_file_exts() method and full_filename() method
+    Open a file handle for reading, handling compressed files transparently.
 
     Returns:
         A file-like object opened in binary mode
     """
-    file_exts = file.get_file_exts()
-    if len(file_exts) and file_exts[-1] == "xz":
-        return lzma.open(file.full_filename(), mode='rb')
-    elif len(file_exts) and file_exts[-1] == "gz":
-        return gzip.open(file.full_filename(), mode='rb')
-    elif len(file_exts) and file_exts[-1] == "bz2":
-        return bz2.open(file.full_filename(), mode='rb')
+    file_ext = os.path.splitext(filename)[1]
+    if file_ext in compressed_exts.keys():
+        fn = compressed_exts[file_ext]
+        return fn(filename, mode='rb')
     else:
-        return open(file.full_filename(), mode='rb')
+        return open(filename, mode='rb')
 
 
-def read_fits_header(file, status_reporter: StatusReporter = None):
+def read_fits_header(file, status_reporter: StatusReporter = None) -> bytes | None:
     """
     Read the FITS header from a file.
 
@@ -45,7 +47,7 @@ def read_fits_header(file, status_reporter: StatusReporter = None):
     The header ends with a line that starts with 'END'.
 
     Args:
-        file: A File object with a get_file_exts() method and full_filename() method
+        file: A File object with a full_filename() method
 
     Returns:
         The FITS header as a string, or None if the file is not a valid FITS file
@@ -53,8 +55,8 @@ def read_fits_header(file, status_reporter: StatusReporter = None):
     if status_reporter:
         status_reporter.update_status(f"Reading FITS header for {file.name}...", bulk=True)
     try:
-        with fopen(file) as f:
-            header = ""
+        with fopen(file.full_filename()) as f:
+            header = bytes()
             block_size = 2880
             line_size = 80
             lines_per_block = block_size // line_size
@@ -65,7 +67,9 @@ def read_fits_header(file, status_reporter: StatusReporter = None):
                     # End of file without finding END
                     return None
 
-                # Process each line in the block
+                header += block
+
+                # search for END in the block
                 for i in range(lines_per_block):
                     start = i * line_size
                     end = start + line_size
@@ -73,13 +77,11 @@ def read_fits_header(file, status_reporter: StatusReporter = None):
                         break
 
                     line = block[start:end].decode('ascii', errors='replace').rstrip()
-                    header += line + "\n"
 
                     # Check if this line starts with 'END'
                     if line.startswith('END'):
                         return header
 
-        return None
     except Exception as e:
         log(DEBUG, f"Error reading FITS header: {str(e)}")
         return None
@@ -97,27 +99,23 @@ def update_fits_header_cache(change_list, status_reporter=None):
         status_reporter.update_status("Updating FITS header cache...")
 
     # Process new files
-    for file in change_list.new_files:
+    for file in [*change_list.new_files, *change_list.changed_files]:
         if Importer.is_fits_by_name(file.name):
-            header = read_fits_header(file, status_reporter)
-            if header:
-                FitsHeader.create(file=file, header=header)
-
-    # Process changed files
-    for file in change_list.changed_files:
-        if Importer.is_fits_by_name(file.name):
-            header = read_fits_header(file, status_reporter)
-            if header:
-                # Try to update existing header, create if it doesn't exist
-                try:
-                    FitsHeader.update(header=header).where(FitsHeader.file == file)
-                except FitsHeader.DoesNotExist:
-                    FitsHeader.create(file=file, header=header)
+            header_bytes = read_fits_header(file, status_reporter)
+            if header_bytes:
+                # Normalize the header and create an Image object if possible
+                header = Header.fromstring(header_bytes)
+                image = normalize_fits_header(file, header)
+                FitsHeader(file=file, header=header_bytes).create().on_conflict_replace().execute()
+                image.insert().on_conflict_replace().execute()
 
     # Process removed files
     for file in change_list.removed_files:
         try:
-            FitsHeader.delete_by_id(file.rowid)
+            # Delete any Image objects for this file
+            Image.delete().where(Image.file == file).execute()
+            # Delete the FitsHeader
+            FitsHeader.delete().where(FitsHeader.file == file).execute()
         except FitsHeader.DoesNotExist:
             pass
 
@@ -126,7 +124,10 @@ def update_fits_header_cache(change_list, status_reporter=None):
 
 
 def check_missing_header_cache(status_reporter=None):
-    # Process any FITS files that don't have a corresponding header entry
+    """
+    Process any FITS files that don't have a corresponding header entry.
+    Also creates Image objects from the FITS headers using the appropriate handler.
+    """
     if status_reporter:
         status_reporter.update_status("Checking for FITS files without header cache entries...")
 
@@ -140,9 +141,13 @@ def check_missing_header_cache(status_reporter=None):
     # Process these files as new files
     for file in missing_header_files:
         if Importer.is_fits_by_name(file.name):
-            header = read_fits_header(file)
-            if header:
-                FitsHeader.create(file=file, header=header)
+            header_bytes = read_fits_header(file)
+            if header_bytes:
+                # Normalize the header and create an Image object if possible
+                header = Header.fromstring(header_bytes)
+                FitsHeader(file=file, header=header_bytes).save()
+                image = normalize_fits_header(file, header)
+                Image.insert(image.__data__).on_conflict_replace().execute()
 
     if status_reporter:
         status_reporter.update_status("FITS header cache updated.")
@@ -185,7 +190,7 @@ class Importer:
     def is_fits_by_name(filename: str) -> bool:
         """Check if a filename is a FITS file based on its extension."""
         # Handle compressed files
-        if filename.lower().endswith(tuple(compressed_exts)):
+        if filename.lower().endswith(tuple(compressed_exts.keys())):
             filename = os.path.splitext(filename)[0]
         return filename.lower().endswith(".fit") or filename.lower().endswith(".fits")
 
@@ -198,7 +203,7 @@ class Importer:
     def is_compressed(f: Info) -> bool:
         filename = f.name
         last_ext = os.path.splitext(filename)[1]
-        return last_ext in compressed_exts
+        return last_ext in compressed_exts.keys()
 
     @staticmethod
     def _file_filter(x: Info):

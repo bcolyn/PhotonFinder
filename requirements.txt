@@ -3,6 +3,7 @@ pyinstaller==6.11.1
 pyinstaller-hooks-contrib==2025.0
 pyqt-distutils==0.7.3
 peewee~=3.17.0
+astropy~=7.1.0
 
 setuptools~=80.4.0
 fs~=2.4.16

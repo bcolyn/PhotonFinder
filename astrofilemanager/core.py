@@ -8,14 +8,21 @@ from peewee import Database, SqliteDatabase
 
 class StatusReporter(ABC):
     @abstractmethod
-    def update_status(self, message: str, bulk = False) -> None:
+    def update_status(self, message: str, bulk=False) -> None:
         pass
 
 
 class ApplicationContext:
-    def __init__(self, app_data_path: str) -> None:
+
+    @classmethod
+    def create_in_app_data(self, app_data_path: str) -> 'ApplicationContext':
+        database_path = Path(app_data_path) / "astroFileManager.db"
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+        return ApplicationContext(database_path)
+
+    def __init__(self, database_path: str | Path) -> None:
+        self.database_path = database_path
         self.database: Database | None = None
-        self.app_data_path: str = app_data_path
         self.settings = Settings()
         self.status_reporter: StatusReporter | None = None
 
@@ -30,11 +37,8 @@ class ApplicationContext:
         logging.info("Settings synced")
 
     def open_database(self) -> None:
-        database_path = Path(self.app_data_path) / "astroFileManager.db"
-        logging.info(f"Database path: {database_path}")
-        database_path.parent.mkdir(parents=True, exist_ok=True)
-
-        self.database = SqliteDatabase(database_path, pragmas={
+        logging.info(f"Database path: {self.database_path}")
+        self.database = SqliteDatabase(self.database_path, pragmas={
             'journal_mode': 'wal',
             'cache_size': -1 * 64000,  # 64MB
             'foreign_keys': 1,

@@ -22,13 +22,8 @@ def app_context():
     # Create an application context with an in-memory database
     context = ApplicationContext(":memory:")
 
-    # Initialize the database
-    context.init_db()
-
-    yield context
-
-    # Clean up after tests
-    context.close_db()
+    with context:
+        yield context
 
 
 @pytest.fixture

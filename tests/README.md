@@ -7,7 +7,6 @@ This directory contains tests for the AstroFileManager application. The tests ar
 - `conftest.py`: Contains shared fixtures and test configuration
 - `test_models.py`: Tests for database models
 - `test_filesystem.py`: Tests for filesystem operations
-- `test_ui.py`: Tests for UI components
 
 ## Running Tests
 

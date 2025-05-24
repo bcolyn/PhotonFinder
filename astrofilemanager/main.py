@@ -46,7 +46,7 @@ def main():
     logging.info(f"Maximum thread count: {thread_pool.maxThreadCount()}")
 
     app_data_path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
-    context = ApplicationContext(app_data_path)
+    context = ApplicationContext.create_in_app_data(app_data_path)
 
     with context:
         main_window = MainWindow(app, context)

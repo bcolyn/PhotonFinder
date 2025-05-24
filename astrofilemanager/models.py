@@ -113,39 +113,22 @@ class File(Model):
         if not cls.table_exists():
             cls.create_table()
 
-    def get_file_exts(self) -> typing.List[str]:
-        from astrofilemanager.filesystem import compressed_exts
-        parts = str(self.name).lower().rsplit('.', maxsplit=2)
-        if len(parts) and parts[0] == '':  # hidden file that starts with a '.'
-            parts = parts[1:]
-        if len(parts) == 1:  # no ext
-            return []
-        ext = parts[-1]
-        if ext in compressed_exts:  # is compressed?
-            return parts[-2:]
-        else:
-            return parts[-1:]
-
     def full_filename(self) -> str:
         return os.path.join(str(self.root.path), str(self.path), str(self.name))
 
 
 class Image(Model):
     rowid = RowIDField()
-    file = ForeignKeyField(File)
-    imageType = CharField()
-    filter = CharField()
-    exposure = DoubleField()
-    gain = IntegerField()
-    binning = IntegerField()
-    setTemp = DoubleField()
+    file = ForeignKeyField(File, on_delete='CASCADE', index=True, unique=True)
+    imageType = CharField(null=True, index=True)
+    filter = CharField(null=True, index=True)
+    exposure = DoubleField(null=True, index=True)
+    gain = IntegerField(null=True, index=True)
+    binning = IntegerField(null=True)
+    setTemp = DoubleField(null=True)
 
     class Meta:
         database = None
-        indexes = (
-            (('imageType',), False),
-            (('file',), False),
-        )
 
 
 class FitsHeader(Model):
@@ -155,7 +138,7 @@ class FitsHeader(Model):
     """
     rowid = RowIDField()
     file = ForeignKeyField(File, on_delete='CASCADE', unique=True)
-    header = TextField()  # Stores the raw header as text
+    header = BlobField()  # Caches the raw header as bytes
 
     class Meta:
         database = None
