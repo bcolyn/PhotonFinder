@@ -19,6 +19,11 @@ class SearchCriteria:
     paths_as_prefix: bool = True
     filter: str = ""
     type: str = ""
+    camera: str = ""
+    name: str = ""
+    exposure: str = ""
+    use_coordinates: bool = False
+    use_date: bool = False
 
 
 def auto_str(cls):
@@ -51,20 +56,6 @@ class LibraryRoot(Model):
     class Meta:
         # This will be set dynamically when the database connection is provided
         database = None
-
-    @classmethod
-    def initialize(cls, database: Database):
-        """
-        Initialize the model with a database connection.
-        """
-        cls._meta.database = database
-
-        # Set the database for the model
-        cls.bind(database, bind_refs=False, bind_backrefs=False)
-
-        # Create the table if it doesn't exist
-        if not cls.table_exists():
-            cls.create_table()
 
     @staticmethod
     def is_valid_path(path_str: str) -> bool:
@@ -99,20 +90,6 @@ class File(Model):
             (('root', 'path', 'name'), True),  # Note the trailing comma!
         )
 
-    @classmethod
-    def initialize(cls, database: Database):
-        """
-        Initialize the model with a database connection.
-        """
-        cls._meta.database = database
-
-        # Set the database for the model
-        cls.bind(database, bind_refs=False, bind_backrefs=False)
-
-        # Create the table if it doesn't exist
-        if not cls.table_exists():
-            cls.create_table()
-
     def full_filename(self) -> str:
         return os.path.join(str(self.root.path), str(self.path), str(self.name))
 
@@ -146,19 +123,7 @@ class FitsHeader(Model):
             (('file',), True),
         )
 
-    @classmethod
-    def initialize(cls, database: Database):
-        """
-        Initialize the model with a database connection.
-        """
-        cls._meta.database = database
 
-        # Set the database for the model
-        cls.bind(database, bind_refs=False, bind_backrefs=False)
-
-        # Create the table if it doesn't exist
-        if not cls.table_exists():
-            cls.create_table()
 
 
 CORE_MODELS = [LibraryRoot, File, Image, FitsHeader]

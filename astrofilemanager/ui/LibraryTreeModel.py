@@ -4,6 +4,7 @@ from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal, QObject,
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QStyle
 
+from core import ApplicationContext
 from ..models import LibraryRoot, File
 
 
@@ -94,9 +95,10 @@ class PathNode(TreeNode):
 class BackgroundLoaderBase(QObject):
     """Base class for asynchronous loading of data in background threads."""
 
-    def __init__(self):
+    def __init__(self, context: ApplicationContext):
         super().__init__()
         self.thread_pool = QThreadPool.globalInstance()
+        self.context = context
 
     def run_in_thread(self, fn, *args, **kwargs):
         """Run a function in a background thread."""
@@ -189,15 +191,15 @@ class LibraryTreeModel(QAbstractItemModel):
     """
     ready_for_display = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, context: ApplicationContext, parent=None):
         super().__init__(parent)
 
         # Create the root node
         self.root_node = RootNode()
 
         # Create the loaders for async loading
-        self.library_roots_loader = LibraryRootsLoader()
-        self.file_paths_loader = FilePathsLoader()
+        self.library_roots_loader = LibraryRootsLoader(context)
+        self.file_paths_loader = FilePathsLoader(context)
 
         # Connect signals
         self.library_roots_loader.library_roots_loaded.connect(self._on_library_roots_reloaded)
