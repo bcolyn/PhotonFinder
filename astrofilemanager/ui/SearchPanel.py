@@ -1,74 +1,16 @@
 import logging
 import time
-import os
 from datetime import datetime
 
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
 from PySide6.QtGui import QStandardItemModel, QStandardItem
-from peewee import JOIN
 
 from core import ApplicationContext
-from models import LibraryRoot, SearchCriteria, File, Image, RootAndPath, CORE_MODELS
-from .LibraryTreeModel import LibraryTreeModel, BackgroundLoaderBase
+from models import SearchCriteria
+from .LibraryTreeModel import LibraryTreeModel
 from .generated.SearchPanel_ui import Ui_SearchPanel
-
-
-class SearchResultsLoader(BackgroundLoaderBase):
-    """Helper class for asynchronous loading of search results from the database."""
-
-    # Signal emitted when search results are loaded
-    results_loaded = Signal(list, bool)  # results, has_more
-
-    def __init__(self, context: ApplicationContext):
-        super().__init__(context)
-        self.page_size = 100
-        self.current_page = 0
-        self.total_results = 0
-        self.last_criteria = None
-
-    def search(self, search_criteria, page=0):
-        """Start a search with the given criteria."""
-        self.current_page = page
-        self.last_criteria = search_criteria
-        self.run_in_thread(self._search_task, search_criteria, page)
-
-    def load_more(self):
-        """Load the next page of results using the last search criteria."""
-        if self.last_criteria:
-            self.current_page += 1
-            self.search(self.last_criteria, self.current_page)
-
-    def _search_task(self, search_criteria, page):
-        """Background task to search for files matching the criteria."""
-        with self.context.database.bind_ctx(CORE_MODELS):
-            try:
-                # Start building the query
-                query = (File
-                         .select(File, Image)
-                         .join(Image, JOIN.LEFT_OUTER)
-                         .order_by(File.root, File.path, File.name))
-
-                # Apply search criteria to the query
-                query = Image._apply_search_criteria(query, search_criteria)
-
-                # Get total count for pagination
-                self.total_results = query.count()
-
-                # Apply pagination
-                query = query.paginate(page + 1, self.page_size)
-
-                # Execute the query and get results
-                results = list(query)
-
-                # Check if there are more results
-                has_more = (page + 1) * self.page_size < self.total_results
-
-                # Emit signal with the results
-                self.results_loaded.emit(results, has_more)
-            except Exception as e:
-                logging.error(f"Error searching files: {e}", exc_info=True)
-                self.results_loaded.emit([], False)
+from .loaders import SearchResultsLoader
 
 
 # Using the new database-backed tree model for filesystemTreeView

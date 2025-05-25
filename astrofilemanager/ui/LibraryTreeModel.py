@@ -1,13 +1,13 @@
-import logging
 import typing
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal, QObject, QRunnable, QThreadPool, Slot
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QStyle
 
 from core import ApplicationContext
 from models import RootAndPath
-from ..models import LibraryRoot, File
+from .loaders import LibraryRootsLoader, FilePathsLoader
+from ..models import LibraryRoot
 
 
 class TreeNode:
@@ -99,98 +99,6 @@ class PathNode(TreeNode):
         while not isinstance(node, LibraryRootNode):
             node = node.parent
         return node.library_root
-
-
-class BackgroundLoaderBase(QObject):
-    """Base class for asynchronous loading of data in background threads."""
-
-    def __init__(self, context: ApplicationContext):
-        super().__init__()
-        self.thread_pool = QThreadPool.globalInstance()
-        self.context = context
-
-    def run_in_thread(self, fn, *args, **kwargs):
-        """Run a function in a background thread."""
-        runnable = self._create_runnable(fn, *args, **kwargs)
-        self.thread_pool.start(runnable)
-
-    def _create_runnable(self, fn, *args, **kwargs):
-        """Create a QRunnable that will execute the given function."""
-
-        class WorkerRunnable(QRunnable):
-            @Slot()
-            def run(self_runnable):
-                try:
-                    fn(*args, **kwargs)
-                except Exception as e:
-                    logging.error(f"Error in worker thread: {e}")
-
-        return WorkerRunnable()
-
-
-class LibraryRootsLoader(BackgroundLoaderBase):
-    """Helper class for asynchronous loading of library roots from the database."""
-
-    # Signal emitted when library roots are loaded
-    library_roots_loaded = Signal(list)
-
-    def reload_library_roots(self):
-        """Load all library roots from the database."""
-        self.run_in_thread(self._reload_library_roots_task)
-
-    def _reload_library_roots_task(self):
-        """Background task to load library roots."""
-        try:
-            # Fetch library roots from database
-            library_roots = list(LibraryRoot.select())
-
-            # Emit signal with the results
-            self.library_roots_loaded.emit(library_roots)
-        except Exception as e:
-            logging.error(f"Error loading library roots: {e}")
-
-
-class FilePathsLoader(BackgroundLoaderBase):
-    """Helper class for asynchronous loading of file paths for a library root."""
-
-    # Signal emitted when paths for a library root are loaded
-    paths_loaded = Signal(object, list)  # library_root, paths
-
-    def load_paths_for_library(self, library_root: LibraryRoot):
-        """Load all paths for a given library root from the database."""
-        self.run_in_thread(self._load_paths_for_library_task, library_root)
-
-    def _load_paths_for_library_task(self, library_root: LibraryRoot):
-        """Background task to load paths for a library."""
-        try:
-            # Fetch distinct paths for this library root
-            query = (File
-                     .select(File.path)
-                     .where(File.root == library_root)
-                     .distinct())
-
-            paths = []
-            for file in query:
-                if file.path:  # Skip empty paths
-                    # Split the path into segments
-                    path_segments = file.path.split('/')
-
-                    # Add each segment and its parent path
-                    current_path = ""
-                    for segment in path_segments:
-                        if segment:  # Skip empty segments
-                            if current_path:
-                                current_path += f"/{segment}"
-                            else:
-                                current_path = segment
-
-                            if current_path not in paths:
-                                paths.append(current_path)
-
-            # Emit signal with the results
-            self.paths_loaded.emit(library_root, paths)
-        except Exception as e:
-            logging.error(f"Error loading paths for library {library_root.name}: {e}")
 
 
 class LibraryTreeModel(QAbstractItemModel):
