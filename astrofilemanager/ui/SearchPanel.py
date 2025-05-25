@@ -47,10 +47,10 @@ class SearchResultsLoader(BackgroundLoaderBase):
                 query = (File
                          .select(File, Image)
                          .join(Image, JOIN.LEFT_OUTER)
-                         .order_by(File.name))
+                         .order_by(File.root, File.path, File.name))
 
                 # Apply search criteria to the query
-                query = self._apply_search_criteria(query, search_criteria)
+                query = Image._apply_search_criteria(query, search_criteria)
 
                 # Get total count for pagination
                 self.total_results = query.count()
@@ -67,61 +67,8 @@ class SearchResultsLoader(BackgroundLoaderBase):
                 # Emit signal with the results
                 self.results_loaded.emit(results, has_more)
             except Exception as e:
-                logging.error(f"Error searching files: {e}")
+                logging.error(f"Error searching files: {e}", exc_info=True)
                 self.results_loaded.emit([], False)
-
-    def _apply_search_criteria(self, query, criteria):
-        """Apply search criteria to the query."""
-        conditions = []
-
-        # Filter by paths
-        if criteria.paths:
-            path_conditions = []
-            for root_and_path in criteria.paths:
-                if criteria.paths_as_prefix:
-                    # Match files in this path or any subdirectory
-                    path_conditions.append(
-                        (File.root == root_and_path.root_id) &
-                        (File.path.startswith(root_and_path.path))
-                    )
-                else:
-                    # Match files exactly in this path
-                    path_conditions.append(
-                        (File.root == root_and_path.root_id) &
-                        (File.path == root_and_path.path)
-                    )
-            if path_conditions:
-                conditions.append(path_conditions[0] if len(path_conditions) == 1
-                                  else path_conditions[0].orwhere(*path_conditions[1:]))
-
-        # Filter by file type
-        if criteria.type:
-            conditions.append(Image.imageType == criteria.type)
-
-        # Filter by filter
-        if criteria.filter:
-            conditions.append(Image.filter == criteria.filter)
-
-        # Apply additional criteria if available
-        if hasattr(criteria, 'camera') and criteria.camera:
-            # This would need to be mapped to the appropriate field in the database
-            pass
-
-        if hasattr(criteria, 'name') and criteria.name:
-            conditions.append(File.name.contains(criteria.name))
-
-        if hasattr(criteria, 'exposure') and criteria.exposure:
-            try:
-                exp = float(criteria.exposure)
-                conditions.append(Image.exposure == exp)
-            except (ValueError, TypeError):
-                pass
-
-        # Apply all conditions to the query
-        for condition in conditions:
-            query = query.where(condition)
-
-        return query
 
 
 # Using the new database-backed tree model for filesystemTreeView
@@ -166,59 +113,15 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.checkBox.toggled.connect(self.update_search_criteria)
 
     def on_library_tree_ready(self):
-        # Don't expand all at once - just expand the first level
-        # to show library roots
         all_libraries_index = self.library_tree_model.index(0, 0, QModelIndex())
         self.filesystemTreeView.expand(all_libraries_index)
-        # self.filesystemTreeView.setRootIndex(QModelIndex())
 
     def on_tree_selection_changed(self, selected, deselected):
-        """
-        Handle selection changes in the tree view.
-
-        Args:
-            selected: Selected indexes
-            deselected: Deselected indexes
-        """
         # Get the current selection
         indexes = self.filesystemTreeView.selectionModel().selectedIndexes()
         if not indexes:
             return
-
-        # Get the selected index
-        index = indexes[0]
-
-        # Clear existing paths in search criteria
-        self.search_criteria.paths.clear()
-
-        # Get the file system model for the selected index
-        file_system_model = self.library_tree_model.get_file_system_model_for_index(index)
-        if file_system_model:
-            # If a library root is selected, add it to search criteria
-            root_path = self.library_tree_model.get_root_path_for_index(index)
-            if root_path:
-                logging.debug(f"Selected library root with path: {root_path}")
-                # Find the library root ID
-                for library_root in LibraryRoot.select():
-                    if library_root.path == root_path:
-                        # Add to search criteria
-                        self.search_criteria.paths.append(RootAndPath(
-                            root_id=library_root.id,
-                            path=""  # Empty path means search the entire library root
-                        ))
-                        break
-        else:
-            # If "All locations" is selected, include all library roots
-            item = self.library_tree_model.getItem(index)
-            if item and item.data() == "All locations":
-                logging.debug("Selected All locations")
-                for library_root in LibraryRoot.select():
-                    self.search_criteria.paths.append(RootAndPath(
-                        root_id=library_root.id,
-                        path=""
-                    ))
-
-        # Refresh the data grid with the updated search criteria
+        self.search_criteria.paths = self.library_tree_model.get_roots_and_paths(indexes)
         self.refresh_data_grid()
 
     def add_filter(self):

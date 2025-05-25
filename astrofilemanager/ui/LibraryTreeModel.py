@@ -1,10 +1,12 @@
 import logging
+import typing
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal, QObject, QRunnable, QThreadPool, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QStyle
 
 from core import ApplicationContext
+from models import RootAndPath
 from ..models import LibraryRoot, File
 
 
@@ -90,6 +92,13 @@ class PathNode(TreeNode):
 
     def data(self) -> str:
         return self.path_segment
+
+    def find_library_root(self) -> LibraryRoot:
+        # iteratively walk up the tree until we find a library root
+        node = self.parent
+        while not isinstance(node, LibraryRootNode):
+            node = node.parent
+        return node.library_root
 
 
 class BackgroundLoaderBase(QObject):
@@ -242,7 +251,7 @@ class LibraryTreeModel(QAbstractItemModel):
         self.endResetModel()
         self.ready_for_display.emit()
 
-    def _on_paths_loaded(self, library_root, paths):
+    def _on_paths_loaded(self, library_root: LibraryRoot, paths):
         """Handle the paths_loaded signal."""
         # Find the library root node
         all_libraries_node = self.root_node.child(0)
@@ -250,7 +259,7 @@ class LibraryTreeModel(QAbstractItemModel):
 
         for i in range(all_libraries_node.child_count()):
             node = all_libraries_node.child(i)
-            if isinstance(node, LibraryRootNode) and node.library_root.id == library_root.id:
+            if isinstance(node, LibraryRootNode) and node.library_root.rowid == library_root.rowid:
                 library_root_node = node
                 break
 
@@ -301,7 +310,7 @@ class LibraryTreeModel(QAbstractItemModel):
 
         # Mark as loaded
         library_root_node.loaded = True
-        self.loaded_library_roots.add(library_root.id)
+        self.loaded_library_roots.add(library_root.rowid)
 
         # End inserting rows
         self.endInsertRows()
@@ -366,9 +375,7 @@ class LibraryTreeModel(QAbstractItemModel):
             parent_node = parent.internalPointer()
 
         # If this is a library root node and it's not loaded yet, load its paths
-        if (isinstance(parent_node, LibraryRootNode) and
-                not parent_node.loaded and
-                parent_node.library_root.id not in self.loaded_library_roots):
+        if isinstance(parent_node, LibraryRootNode) and not parent_node.loaded:
             parent_node.loaded = True  # Mark as loaded to prevent multiple loads
             self.file_paths_loader.load_paths_for_library(parent_node.library_root)
 
@@ -405,32 +412,14 @@ class LibraryTreeModel(QAbstractItemModel):
             return index.internalPointer()
         return self.root_node
 
-    def get_file_system_model_for_index(self, index):
-        """
-        Legacy method to maintain compatibility with existing code.
-        Returns None as we don't use file system models anymore.
-        """
-        return None
-
-    def get_root_path_for_index(self, index):
-        """
-        Legacy method to maintain compatibility with existing code.
-        Returns the path of the library root if the index points to a library root node.
-        """
-        if not index.isValid():
-            return None
-
-        node = index.internalPointer()
-
-        if isinstance(node, LibraryRootNode):
-            return node.library_root.path
-
-        # Traverse up the tree to find the library root node
-        current_node = node
-        while current_node and not isinstance(current_node, LibraryRootNode):
-            current_node = current_node.parent
-
-        if current_node and isinstance(current_node, LibraryRootNode):
-            return current_node.library_root.path
-
-        return None
+    def get_roots_and_paths(self, indexes) -> typing.List[RootAndPath]:
+        result = list()
+        for index in indexes:
+            item = self.getItem(index)
+            if isinstance(item, AllLibrariesNode):
+                result.append(RootAndPath(root_id=None, path=None))
+            elif isinstance(item, LibraryRootNode):
+                result.append(RootAndPath(root_id=item.library_root.rowid, path=None))
+            elif isinstance(item, PathNode):
+                result.append(RootAndPath(root_id=item.find_library_root().rowid, path=item.full_path))
+        return result
