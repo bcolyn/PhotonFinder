@@ -76,23 +76,7 @@ class FilePathsLoader(BackgroundLoaderBase):
                      .where(File.root == library_root)
                      .distinct())
 
-            paths = []
-            for file in query:
-                if file.path:  # Skip empty paths
-                    # Split the path into segments
-                    path_segments = file.path.split('/')
-
-                    # Add each segment and its parent path
-                    current_path = ""
-                    for segment in path_segments:
-                        if segment:  # Skip empty segments
-                            if current_path:
-                                current_path += f"/{segment}"
-                            else:
-                                current_path = segment
-
-                            if current_path not in paths:
-                                paths.append(current_path)
+            paths = list(map(lambda file: file.path, query))
 
             # Emit signal with the results
             self.paths_loaded.emit(library_root, paths)
