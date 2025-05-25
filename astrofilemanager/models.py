@@ -174,10 +174,11 @@ class Image(Model):
 
         return query
 
-    def get_filters(self, search_criteria: SearchCriteria):
+    @staticmethod
+    def get_filters(search_criteria: SearchCriteria):
         filters = set()
-        query = Image.select(fn.Distinct(Image.filter)).where(Image.file == self.file)  # should be distinct
-        query = self._apply_search_criteria(query, search_criteria)
+        query = Image.select(fn.Distinct(Image.filter)).join(File, JOIN.INNER, on=(File.rowid == Image.file))
+        query = Image._apply_search_criteria(query, search_criteria)
         for row in query.execute():
             filters.add(row.filter)
         return filters

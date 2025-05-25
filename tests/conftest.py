@@ -5,11 +5,7 @@ import pytest
 from fs.memoryfs import MemoryFS
 from peewee import SqliteDatabase
 
-# Add the project root directory to the Python path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
-# Import project modules
+from astrofilemanager.models import CORE_MODELS
 from astrofilemanager.core import ApplicationContext
 
 
@@ -34,7 +30,6 @@ def database():
         'foreign_keys': 1
     })
 
-    from astrofilemanager.models import CORE_MODELS
     db.bind(CORE_MODELS, bind_refs=False, bind_backrefs=False)
     try:
         db.connect()
@@ -70,3 +65,16 @@ def filesystem():
         yield mem_fs
     finally:
         mem_fs.close()
+
+
+@pytest.fixture(autouse=True)
+def inject_class_fixtures(request):
+    """
+    Automatically inject fixtures as attributes into test class instances.
+    """
+    if request.cls:
+        cls = request.cls
+        fixture_names = getattr(cls, "inject_fixtures", [])
+        for name in fixture_names:
+            value = request.getfixturevalue(name)
+            setattr(request.cls, name, value)

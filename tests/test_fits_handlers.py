@@ -1,7 +1,7 @@
 from astropy.io.fits import Header
 
 from astrofilemanager.models import File
-from fits_handlers import normalize_fits_header
+from astrofilemanager.fits_handlers import normalize_fits_header
 
 
 class TestNormalizeFitsHeader:
