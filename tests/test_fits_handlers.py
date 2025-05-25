@@ -89,7 +89,7 @@ END""".replace('\r\n', '\n')
 
         # Verify the result
         assert image is not None
-        assert image.imageType == 'LIGHT'
+        assert image.image_type == 'LIGHT'
         assert image.filter == 'HaOIII'
         assert image.exposure == 30.0
         assert image.gain == 120
@@ -143,7 +143,7 @@ END"""
 
         # Verify the result
         assert image is not None
-        assert image.imageType == 'LIGHT'
+        assert image.image_type == 'LIGHT'
         assert image.filter == ''  # NINA header doesn't have a FILTER keyword
         assert image.exposure == 30.0
         assert image.gain == 120
@@ -210,7 +210,7 @@ END                                                                             
 
         # Verify the result
         assert image is not None
-        assert image.imageType == 'LIGHT'  # Default value since SharpCap doesn't have IMAGETYP
+        assert image.image_type == 'LIGHT'  # Default value since SharpCap doesn't have IMAGETYP
         assert image.filter == ''  # SharpCap header doesn't have a FILTER keyword
         assert image.exposure == 280.0  # From EXPTIME
         assert image.gain == 300

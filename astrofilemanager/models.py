@@ -98,7 +98,7 @@ class File(Model):
 class Image(Model):
     rowid = RowIDField()
     file = ForeignKeyField(File, on_delete='CASCADE', index=True, unique=True)
-    imageType = CharField(null=True, index=True)
+    image_type = CharField(null=True, index=True)
     filter = CharField(null=True, index=True)
     exposure = DoubleField(null=True, index=True)
     gain = IntegerField(null=True, index=True)
@@ -136,10 +136,6 @@ class Image(Model):
                         # Match files exactly in this path
                         path_conditions.append((File.root == full_path.root_id) & (File.path == full_path.path))
             if path_conditions:
-                # Combine the path conditions with OR (__or__) if there are multiple conditions
-                # if len(path_conditions) == 1:
-                #     conditions.append(path_conditions[0])
-                # elif len(path_conditions) > 1:
                 combined = path_conditions[0]
                 for condition in path_conditions[1:]:
                     combined = combined | condition
@@ -147,7 +143,7 @@ class Image(Model):
 
         # Filter by file type
         if criteria.type:
-            conditions.append(Image.imageType == criteria.type)
+            conditions.append(Image.image_type == criteria.type)
 
         # Filter by filter
         if criteria.filter:
@@ -175,13 +171,10 @@ class Image(Model):
         return query
 
     @staticmethod
-    def get_filters(search_criteria: SearchCriteria):
-        filters = set()
-        query = Image.select(fn.Distinct(Image.filter)).join(File, JOIN.INNER, on=(File.rowid == Image.file))
+    def get_distinct_values_available(search_criteria: SearchCriteria, field_ref):
+        query = Image.select(fn.Distinct(field_ref)).join(File, JOIN.INNER, on=(File.rowid == Image.file))
         query = Image._apply_search_criteria(query, search_criteria)
-        for row in query.execute():
-            filters.add(row.filter)
-        return filters
+        return set(map(lambda x: x[0], query.tuples()))
 
 
 class FitsHeader(Model):

@@ -9,7 +9,7 @@ from astrofilemanager.models import CORE_MODELS
 from astrofilemanager.core import ApplicationContext
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def app_context():
     """
     Fixture that provides an application context for tests.

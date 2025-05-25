@@ -119,8 +119,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
             try:
                 if hasattr(file, 'image') and file.image:
-                    if file.image.imageType:
-                        type_item.setText(file.image.imageType)
+                    if file.image.image_type:
+                        type_item.setText(file.image.image_type)
                     if file.image.filter:
                         filter_item.setText(file.image.filter)
                     if file.image.exposure:

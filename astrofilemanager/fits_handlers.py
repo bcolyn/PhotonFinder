@@ -61,7 +61,7 @@ class SharpCapHandler(FitsHeaderHandler):
             # Create and return an Image object
             return Image(
                 file=file,
-                imageType=image_type,
+                image_type=image_type,
                 filter=filter_name,
                 exposure=exposure,
                 gain=gain,
@@ -94,7 +94,7 @@ class SGPHandler(FitsHeaderHandler):
             # Create and return an Image object
             return Image(
                 file=file,
-                imageType=image_type,
+                image_type=image_type,
                 filter=filter_name,
                 exposure=exposure,
                 gain=gain,
@@ -127,7 +127,7 @@ class NINAHandler(FitsHeaderHandler):
             # Create and return an Image object
             return Image(
                 file=file,
-                imageType=image_type,
+                image_type=image_type,
                 filter=filter_name,
                 exposure=exposure,
                 gain=gain,
@@ -182,7 +182,7 @@ class GenericHandler(FitsHeaderHandler):
             # Create and return an Image object
             return Image(
                 file=file,
-                imageType=image_type,
+                image_type=image_type,
                 filter=filter_name,
                 exposure=exposure,
                 gain=gain,
