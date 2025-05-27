@@ -99,11 +99,12 @@ class Image(Model):
     rowid = RowIDField()
     file = ForeignKeyField(File, on_delete='CASCADE', index=True, unique=True)
     image_type = CharField(null=True, index=True)
+    camera = CharField(null=True, index=True)
     filter = CharField(null=True, index=True)
     exposure = DoubleField(null=True, index=True)
     gain = IntegerField(null=True, index=True)
     binning = IntegerField(null=True)
-    setTemp = DoubleField(null=True)
+    set_temp = DoubleField(null=True)
 
     class Meta:
         database = None

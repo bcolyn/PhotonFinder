@@ -21,7 +21,6 @@ class TestNormalizeFitsHeader:
     def test_sgp_header(self):
         file = self.create_test_file()
 
-        # Use the exact SGP header string from the issue description
         sgp_header = """SIMPLE  =                    T / file does conform to FITS standard             
 BITPIX  =                   16 / number of bits per data pixel                  
 NAXIS   =                    2 / number of data axes                            
@@ -87,21 +86,18 @@ END""".replace('\r\n', '\n')
         header = Header.fromstring(header_bytes)
         image = normalize_fits_header(file, header)
 
-        # Verify the result
         assert image is not None
         assert image.image_type == 'LIGHT'
         assert image.filter == 'HaOIII'
         assert image.exposure == 30.0
         assert image.gain == 120
         assert image.binning == 1
-        assert image.setTemp == -18.0
+        assert image.set_temp == -18.0
 
     def test_nina_header(self):
         """Test processing a NINA FITS header."""
-        # Create a test file
         file = self.create_test_file()
 
-        # Use the exact NINA header string from the issue description
         nina_header = """SIMPLE  =                    T / C# FITS                                        
 BITPIX  =                   16 /                                                
 NAXIS   =                    2 / Dimensionality                                 
@@ -136,26 +132,21 @@ EQUINOX =               2000.0 / Equinox of celestial coordinate system
 SWCREATE= 'N.I.N.A. 1.10.2.90' / Software that created this file                
 END"""
 
-        # Process the header
         header_bytes = fix_embedded_header(nina_header)
         header = Header.fromstring(header_bytes)
         image = normalize_fits_header(file, header)
 
-        # Verify the result
         assert image is not None
         assert image.image_type == 'LIGHT'
-        assert image.filter == ''  # NINA header doesn't have a FILTER keyword
+        assert image.filter is None
         assert image.exposure == 30.0
         assert image.gain == 120
         assert image.binning == 1
-        assert image.setTemp == -10.0
+        assert image.set_temp == -10.0
 
     def test_sharpcap_header(self):
         """Test processing a SharpCap FITS header."""
-        # Create a test file
         file = self.create_test_file()
-
-        # Use the exact SharpCap header string from the issue description
         sharpcap_header = """SIMPLE  =                    T / C# FITS: 03/20/2025 00:04:01                   
 BITPIX  =                   32                                                  
 NAXIS   =                    3 / Dimensionality                                 
@@ -203,26 +194,23 @@ COLORTYP= 'RGB'                /
 INSTRUME= 'ZWO ASI183MC Pro'   /                                                
 END                                                                             """
 
-        # Process the header
         header_bytes = fix_embedded_header(sharpcap_header)
         header = Header.fromstring(header_bytes)
         image = normalize_fits_header(file, header)
 
-        # Verify the result
         assert image is not None
-        assert image.image_type == 'LIGHT'  # Default value since SharpCap doesn't have IMAGETYP
-        assert image.filter == ''  # SharpCap header doesn't have a FILTER keyword
+        assert image.image_type is None  # Default value since SharpCap doesn't have IMAGETYP
+        assert image.filter is None  # SharpCap header doesn't have a FILTER keyword
         assert image.exposure == 280.0  # From EXPTIME
         assert image.gain == 300
         assert image.binning == 1
-        assert image.setTemp == 0.0
+        assert image.set_temp == 0.0
 
 
 def fix_embedded_header(header_str: str) -> bytes:
     result = ""
     for line in header_str.splitlines():
         adj = line.ljust(80, " ")
-        # assert(len(adj)) == 80
         result += adj
 
     blocks = len(result) // 2880

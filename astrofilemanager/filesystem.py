@@ -3,7 +3,7 @@ import gzip
 import lzma
 import os
 import typing
-from logging import log, INFO, DEBUG
+from logging import log, INFO, DEBUG, ERROR
 from pathlib import Path
 
 import fs.path
@@ -38,7 +38,7 @@ def fopen(filename: Path | str):
         return open(filename, mode='rb')
 
 
-def read_fits_header(file, status_reporter: StatusReporter = None) -> bytes | None:
+def read_fits_header(file: str | Path, status_reporter: StatusReporter = None) -> bytes | None:
     """
     Read the FITS header from a file.
 
@@ -53,9 +53,9 @@ def read_fits_header(file, status_reporter: StatusReporter = None) -> bytes | No
         The FITS header as a string, or None if the file is not a valid FITS file
     """
     if status_reporter:
-        status_reporter.update_status(f"Reading FITS header for {file.name}...", bulk=True)
+        status_reporter.update_status(f"Reading FITS header for {file}...", bulk=True)
     try:
-        with fopen(file.full_filename()) as f:
+        with fopen(file) as f:
             header = bytes()
             block_size = 2880
             line_size = 80
@@ -65,7 +65,13 @@ def read_fits_header(file, status_reporter: StatusReporter = None) -> bytes | No
                 block = f.read(block_size)
                 if not block:
                     # End of file without finding END
+                    log(ERROR, f"End block not found in FITS file: {file}")
                     return None
+
+                if len(header) == 0:  # first block
+                    if not block[:80].decode('ascii').startswith('SIMPLE  ='):
+                        log(ERROR, f"Cannot decode as FITS file: {file}")
+                        return None
 
                 header += block
 
@@ -83,7 +89,7 @@ def read_fits_header(file, status_reporter: StatusReporter = None) -> bytes | No
                         return header
 
     except Exception as e:
-        log(DEBUG, f"Error reading FITS header: {str(e)}")
+        log(DEBUG, f"Error reading FITS header from {file}: {str(e)}")
         return None
 
 
@@ -101,11 +107,12 @@ def update_fits_header_cache(change_list, status_reporter=None):
     # Process new files
     for file in [*change_list.new_files, *change_list.changed_files]:
         if Importer.is_fits_by_name(file.name):
-            header_bytes = read_fits_header(file, status_reporter)
+            header_bytes = read_fits_header(file.full_filename(), status_reporter)
             if header_bytes:
                 # Normalize the header and create an Image object if possible
                 header = Header.fromstring(header_bytes)
                 image = normalize_fits_header(file, header)
+                assert file.rowid is not None, "File rowid must be set before creating FitsHeader"
                 FitsHeader(file=file, header=header_bytes).create().on_conflict_replace().execute()
                 image.insert().on_conflict_replace().execute()
 
@@ -141,7 +148,7 @@ def check_missing_header_cache(status_reporter=None):
     # Process these files as new files
     for file in missing_header_files:
         if Importer.is_fits_by_name(file.name):
-            header_bytes = read_fits_header(file)
+            header_bytes = read_fits_header(file.full_filename())
             if header_bytes:
                 # Normalize the header and create an Image object if possible
                 header = Header.fromstring(header_bytes)

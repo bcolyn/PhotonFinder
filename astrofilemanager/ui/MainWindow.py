@@ -12,18 +12,19 @@ from ..filesystem import Importer, update_fits_header_cache, check_missing_heade
 
 
 class UIStatusReporter(StatusReporter):
-    def __init__(self, main_window: 'MainWindow'):
+
+    on_message = Signal(str)
+
+    def __init__(self):
         super().__init__()
-        self.main_window = main_window
         self.last_update_time = 0
 
-    def update_status(self, message: str, bulk = False) -> None:
+    def update_status(self, message: str, bulk=False) -> None:
         current_time = time.time()
         if bulk and (current_time - self.last_update_time) < 1:
             return
         self.last_update_time = current_time
-
-        self.main_window.statusBar().showMessage(message)
+        self.on_message.emit(message)
 
 
 class LibraryScanWorker(QThread):
@@ -57,7 +58,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.app = app
         self.scan_worker = None  # Initialize scan_worker attribute
         self.new_search_tab()
-        context.set_status_reporter(UIStatusReporter(self))
+
+        self.reporter = UIStatusReporter()
+        self.reporter.on_message.connect(self.statusBar().showMessage)
+        context.set_status_reporter(self.reporter)
 
     def new_search_tab(self):
         panel = SearchPanel(self.context, self.tabWidget)
@@ -77,7 +81,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         Open the dialog for managing library roots.
         """
         if self.context.database:
-            dialog = LibraryRootDialog(parent=self)
+            dialog = LibraryRootDialog(self.context, parent=self)
             dialog.exec()
             self.reload_library_roots_in_all_panels()
             if dialog.has_changes:
@@ -113,7 +117,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Start the worker thread
         self.scan_worker.start()
 
-
     def _scan_finished(self):
         """Called when the scan is finished."""
         self.context.status_reporter.update_status("Library scan complete.")
@@ -122,7 +125,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.scan_worker:
             self.scan_worker.deleteLater()
             self.scan_worker = None
-
 
     def reload_library_roots_in_all_panels(self):
         """

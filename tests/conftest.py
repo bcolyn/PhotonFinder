@@ -1,12 +1,11 @@
-import sys
 from pathlib import Path
 
 import pytest
 from fs.memoryfs import MemoryFS
 from peewee import SqliteDatabase
 
-from astrofilemanager.models import CORE_MODELS
 from astrofilemanager.core import ApplicationContext
+from astrofilemanager.models import CORE_MODELS
 
 
 @pytest.fixture(scope="class")
@@ -65,6 +64,14 @@ def filesystem():
         yield mem_fs
     finally:
         mem_fs.close()
+
+
+@pytest.fixture(scope="session")
+def global_test_data_dir() -> Path:
+    """
+    Provides a Path object pointing to the global test data directory.
+    """
+    return Path(__file__).parent / "data"
 
 
 @pytest.fixture(autouse=True)

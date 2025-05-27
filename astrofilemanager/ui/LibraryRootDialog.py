@@ -2,12 +2,13 @@ import logging
 from typing import Optional
 
 from PySide6.QtCore import Slot, Qt
-from PySide6.QtWidgets import QDialog, QTableWidgetItem, QMessageBox
-from peewee import Database
+from PySide6.QtWidgets import QDialog, QTableWidgetItem, QMessageBox, QPushButton
 
 from astrofilemanager.models import LibraryRoot
 from astrofilemanager.ui.LibraryRootEditDialog import LibraryRootEditDialog
 from astrofilemanager.ui.generated.LibraryRootDialog_ui import Ui_LibraryRootDialog
+from core import ApplicationContext
+from ui.loaders import ImageReindexWorker
 
 
 class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
@@ -16,13 +17,17 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
     Shows a list of configured libraries with add, edit, and delete buttons.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, context: ApplicationContext, parent=None):
         super(LibraryRootDialog, self).__init__(parent)
         self.setupUi(self)
+        self.context = context
         self.has_changes = False
         # Set up the table
         self.libraryTable.setColumnWidth(0, 200)  # Name column
         self.libraryTable.setColumnWidth(1, 350)  # Path column
+
+        # Initialize reindex worker
+        self.reindex_worker = None
 
         # Load the library roots
         self.load_library_roots()
@@ -45,7 +50,7 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
 
                 # Create and set the name item
                 name_item = QTableWidgetItem(library_root.name)
-                name_item.setData(Qt.UserRole, library_root.id)  # Store the ID for later use
+                name_item.setData(Qt.UserRole, library_root.rowid)  # Store the ID for later use
                 self.libraryTable.setItem(i, 0, name_item)
 
                 # Create and set the path item
@@ -67,7 +72,7 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
     def get_selected_library_root(self) -> Optional[LibraryRoot]:
         """
         Get the currently selected library root.
-        
+
         Returns:
             The selected LibraryRoot object, or None if no row is selected.
         """
@@ -137,3 +142,39 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"An error occurred while deleting: {str(e)}")
                 logging.exception("Error deleting library root")
+
+    @Slot()
+    def reindex_images(self):
+        """
+        Reindex all image metadata by dropping and recreating the Image table,
+        then processing all FITS headers through normalize_fits_header.
+        """
+        # Check if a reindexing is already in progress
+        if self.reindex_worker is not None:
+            logging.warning("Reindexing already in progress, skipping.")
+            return
+
+        # Create and start the worker
+        self.reindex_worker = ImageReindexWorker(self.context)
+
+        # Connect signals
+        self.reindex_worker.progress.connect(self._update_reindex_status)
+        self.reindex_worker.finished.connect(self._reindex_finished)
+
+        # Disable the reindex button while processing
+        self.reindexButton.setEnabled(False)
+
+        # Start the worker
+        self.reindex_worker.reindex_images()
+
+    def _update_reindex_status(self, message):
+        """Update the status with progress from the reindex worker."""
+        self.context.status_reporter.update_status(message)
+
+    def _reindex_finished(self):
+        """Called when reindexing is finished."""
+        # Re-enable the reindex button
+        self.reindexButton.setEnabled(True)
+
+        # Clean up the worker
+        self.reindex_worker = None
