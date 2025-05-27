@@ -1,7 +1,7 @@
 import logging
 import time
 from PySide6.QtWidgets import *
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal, QObject
 
 from ..core import ApplicationContext, StatusReporter
 from .LibraryRootDialog import LibraryRootDialog
@@ -11,8 +11,7 @@ from .generated.MainWindow_ui import Ui_MainWindow
 from ..filesystem import Importer, update_fits_header_cache, check_missing_header_cache
 
 
-class UIStatusReporter(StatusReporter):
-
+class UIStatusReporter(StatusReporter,QObject):
     on_message = Signal(str)
 
     def __init__(self):
