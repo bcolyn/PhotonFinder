@@ -107,6 +107,7 @@ class Image(Model):
     set_temp = DoubleField(null=True)
     telescope = CharField(null=True, index=True)
     object_name = CharField(null=True, index=True)
+    date_obs = DateTimeField(null=True, index=True)
 
     class Meta:
         database = None

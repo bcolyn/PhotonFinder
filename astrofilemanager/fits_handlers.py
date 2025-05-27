@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Optional
 
 from astropy.io.fits import Header
@@ -16,6 +17,24 @@ def _int(value):
 
 def _float(value):
     return None if value is None else float(value)
+
+
+def _datetime(value):
+    """Convert ISO 8601 formatted date string to datetime object."""
+    if value is None:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except (ValueError, AttributeError):
+        try:
+            # Try a more flexible parsing for non-standard formats
+            return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%f')
+        except ValueError:
+            try:
+                return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S')
+            except ValueError:
+                print(f"Could not parse date string: {value}")
+                return None
 
 
 class FitsHeaderHandler:
@@ -58,6 +77,7 @@ class FitsHeaderHandler:
             set_temp = self._get_set_temp(header)
             telescope = self._get_telescope(header)
             object_name = self._get_object_name(header)
+            date_obs = self._get_date_obs(header)
 
             # Create and return an Image object
             return Image(
@@ -70,7 +90,8 @@ class FitsHeaderHandler:
                 set_temp=set_temp, 
                 camera=camera,
                 telescope=telescope,
-                object_name=object_name
+                object_name=object_name,
+                date_obs=date_obs
             )
         except Exception as e:
             print(f"Error processing header: {str(e)}")
@@ -102,6 +123,9 @@ class FitsHeaderHandler:
 
     def _get_object_name(self, header: Header) -> Optional[str]:
         return header.get('OBJECT')
+
+    def _get_date_obs(self, header: Header) -> Optional[datetime]:
+        return _datetime(header.get('DATE-OBS'))
 
 
 class SharpCapHandler(FitsHeaderHandler):

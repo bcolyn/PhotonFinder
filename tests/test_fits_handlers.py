@@ -1,3 +1,4 @@
+from datetime import datetime
 from astropy.io.fits import Header
 
 from astrofilemanager.models import File
@@ -96,6 +97,9 @@ END""".replace('\r\n', '\n')
         assert image.camera == 'ZWO ASI294MC Pro'
         assert image.telescope == 'EQMOD ASCOM HEQ5/6'
         assert image.object_name == 'M57'
+        expected_date = datetime(2020, 5, 30, 0, 22, 49, 96882)
+        assert isinstance(image.date_obs, datetime)
+        assert image.date_obs == expected_date
 
     def test_nina_header(self):
         """Test processing a NINA FITS header."""
@@ -149,6 +153,9 @@ END"""
         assert image.camera == 'ZWO ASI294MC Pro'
         assert image.telescope is None
         assert image.object_name == 'MarsM45'
+        expected_date = datetime(2021, 3, 2, 20, 19, 0, 455000)
+        assert isinstance(image.date_obs, datetime)
+        assert image.date_obs == expected_date
 
     def test_sharpcap_header(self):
         """Test processing a SharpCap FITS header."""
@@ -214,6 +221,9 @@ END                                                                             
         assert image.camera == 'ZWO ASI183MC Pro'
         assert image.telescope is None
         assert image.object_name == 'Markarian'
+        expected_date = datetime(2025, 3, 19, 22, 51, 59, 384632)
+        assert isinstance(image.date_obs, datetime)
+        assert image.date_obs == expected_date
 
 
 def fix_embedded_header(header_str: str) -> bytes:
