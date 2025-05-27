@@ -52,7 +52,6 @@ class ApplicationContext:
             self.database.bind(CORE_MODELS, bind_refs=False, bind_backrefs=False)
             for model in CORE_MODELS:
                 model.create_table()
-                # model.initialize(self.database)
 
     def set_status_reporter(self, status_reporter: StatusReporter) -> None:
         self.status_reporter = status_reporter

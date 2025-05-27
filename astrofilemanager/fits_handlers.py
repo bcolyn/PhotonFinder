@@ -18,13 +18,12 @@ def _float(value):
     return None if value is None else float(value)
 
 
-class FitsHeaderHandler(ABC):
+class FitsHeaderHandler:
     """
-    Abstract base class for FITS header handlers.
+    Base class for FITS header handlers.
     Each handler is responsible for processing FITS headers from a specific program.
     """
 
-    @abstractmethod
     def can_handle(self, header: Header) -> bool:
         """
         Check if this handler can process the given FITS header.
@@ -35,9 +34,8 @@ class FitsHeaderHandler(ABC):
         Returns:
             bool: True if this handler can process the header, False otherwise
         """
-        pass
+        return False
 
-    @abstractmethod
     def process(self, file: File, header: Header) -> Optional[Image]:
         """
         Process the FITS header and create an Image object.
@@ -49,7 +47,61 @@ class FitsHeaderHandler(ABC):
         Returns:
             Optional[Image]: An Image object if processing was successful, None otherwise
         """
-        pass
+        try:
+            # Extract common fields from the header
+            image_type = self._get_image_type(header)
+            filter_name = self._get_filter(header)
+            camera = self._get_camera(header)
+            exposure = self._get_exposure(header)
+            gain = self._get_gain(header)
+            binning = self._get_binning(header)
+            set_temp = self._get_set_temp(header)
+            telescope = self._get_telescope(header)
+            object_name = self._get_object_name(header)
+
+            # Create and return an Image object
+            return Image(
+                file=file, 
+                image_type=image_type, 
+                filter=filter_name, 
+                exposure=exposure, 
+                gain=gain,
+                binning=binning, 
+                set_temp=set_temp, 
+                camera=camera,
+                telescope=telescope,
+                object_name=object_name
+            )
+        except Exception as e:
+            print(f"Error processing header: {str(e)}")
+            return None
+
+    def _get_image_type(self, header: Header) -> Optional[str]:
+        return header.get('IMAGETYP')
+
+    def _get_filter(self, header: Header) -> Optional[str]:
+        return header.get('FILTER')
+
+    def _get_camera(self, header: Header) -> Optional[str]:
+        return header.get('INSTRUME')
+
+    def _get_exposure(self, header: Header) -> Optional[float]:
+        return _float(header.get('EXPOSURE'))
+
+    def _get_gain(self, header: Header) -> Optional[int]:
+        return _int(header.get('GAIN'))
+
+    def _get_binning(self, header: Header) -> Optional[int]:
+        return _int(header.get('XBINNING', 1))
+
+    def _get_set_temp(self, header: Header) -> Optional[float]:
+        return _float(header.get('SET-TEMP'))
+
+    def _get_telescope(self, header: Header) -> Optional[str]:
+        return header.get('TELESCOP')
+
+    def _get_object_name(self, header: Header) -> Optional[str]:
+        return header.get('OBJECT')
 
 
 class SharpCapHandler(FitsHeaderHandler):
@@ -60,23 +112,11 @@ class SharpCapHandler(FitsHeaderHandler):
         software = header.get('SWCREATE', '')
         return software is not None and 'SharpCap' in software
 
-    def process(self, file: File, header: Header) -> Optional[Image]:
-        try:
-            # Extract relevant information from the header
-            image_type = _upper(header.get('IMAGETYP'))
-            filter_name = header.get('FILTER')
-            camera = header.get('INSTRUME')
-            exposure = _float(header.get('EXPTIME'))
-            gain = _int(header.get('GAIN'))
-            binning = _int(header.get('XBINNING', 1))
-            set_temp = _float(header.get('SET-TEMP'))
+    def _get_image_type(self, header: Header) -> Optional[str]:
+        return _upper(header.get('IMAGETYP'))
 
-            # Create and return an Image object
-            return Image(file=file, image_type=image_type, filter=filter_name, exposure=exposure, gain=gain,
-                         binning=binning, set_temp=set_temp, camera=camera)
-        except Exception as e:
-            print(f"Error processing SharpCap header: {str(e)}")
-            return None
+    def _get_exposure(self, header: Header) -> Optional[float]:
+        return _float(header.get('EXPTIME'))
 
 
 class SGPHandler(FitsHeaderHandler):
@@ -87,24 +127,6 @@ class SGPHandler(FitsHeaderHandler):
         software = header.get('CREATOR', '')
         return software is not None and 'Sequence Generator Pro' in software
 
-    def process(self, file: File, header: Header) -> Optional[Image]:
-        try:
-            # Extract relevant information from the header
-            image_type = header.get('IMAGETYP')
-            filter_name = header.get('FILTER')
-            camera = header.get('INSTRUME')
-            exposure = _float(header.get('EXPOSURE'))
-            gain = _int(header.get('GAIN'))
-            binning = _int(header.get('XBINNING', 1))
-            set_temp = _float(header.get('SET-TEMP'))
-
-            # Create and return an Image object
-            return Image(file=file, image_type=image_type, filter=filter_name, exposure=exposure, gain=gain,
-                         binning=binning, set_temp=set_temp, camera=camera)
-        except Exception as e:
-            print(f"Error processing SGP header: {str(e)}")
-            return None
-
 
 class NINAHandler(FitsHeaderHandler):
     """Handler for FITS files created by N.I.N.A. (Nighttime Imaging 'N' Astronomy)."""
@@ -114,24 +136,6 @@ class NINAHandler(FitsHeaderHandler):
         software = header.get('SWCREATE', '')
         return software is not None and 'N.I.N.A.' in software
 
-    def process(self, file: File, header: Header) -> Optional[Image]:
-        try:
-            # Extract relevant information from the header
-            image_type = header.get('IMAGETYP')
-            filter_name = header.get('FILTER')
-            camera = header.get('INSTRUME')
-            exposure = _float(header.get('EXPOSURE'))
-            gain = _int(header.get('GAIN'))
-            binning = _int(header.get('XBINNING', 1))
-            set_temp = _float(header.get('SET-TEMP'))
-
-            # Create and return an Image object
-            return Image(file=file, image_type=image_type, filter=filter_name, exposure=exposure, gain=gain,
-                         binning=binning, set_temp=set_temp, camera=camera)
-        except Exception as e:
-            print(f"Error processing NINA header: {str(e)}")
-            return None
-
 
 class GenericHandler(FitsHeaderHandler):
     """Generic handler for FITS files from unknown sources."""
@@ -140,23 +144,23 @@ class GenericHandler(FitsHeaderHandler):
         # This is a fallback handler that can handle any FITS header
         return True
 
-    def process(self, file: File, header: Header) -> Optional[Image]:
-        try:
-            # Try to extract common FITS keywords
-            image_type = header.get('IMAGETYP', header.get('OBSTYPE'))
-            filter_name = header.get('FILTER', header.get('FILTNAME'))
-            camera = header.get('INSTRUME')
-            exposure = _float(header.get('EXPTIME', header.get('EXPOSURE')))
-            gain = _int(header.get('GAIN', header.get('EGAIN')))
-            binning = _int(header.get('XBINNING', header.get('BINNING', 1)))
-            set_temp = _float(header.get('SET-TEMP', header.get('CCDTEMP')))
+    def _get_image_type(self, header: Header) -> Optional[str]:
+        return header.get('IMAGETYP', header.get('OBSTYPE'))
 
-            # Create and return an Image object
-            return Image(file=file, image_type=image_type, filter=filter_name, exposure=exposure, gain=gain,
-                         binning=binning, set_temp=set_temp, camera=camera)
-        except Exception as e:
-            print(f"Error processing generic header: {str(e)}")
-            return None
+    def _get_filter(self, header: Header) -> Optional[str]:
+        return header.get('FILTER', header.get('FILTNAME'))
+
+    def _get_exposure(self, header: Header) -> Optional[float]:
+        return _float(header.get('EXPTIME', header.get('EXPOSURE')))
+
+    def _get_gain(self, header: Header) -> Optional[int]:
+        return _int(header.get('GAIN', header.get('EGAIN')))
+
+    def _get_binning(self, header: Header) -> Optional[int]:
+        return _int(header.get('XBINNING', header.get('BINNING', 1)))
+
+    def _get_set_temp(self, header: Header) -> Optional[float]:
+        return _float(header.get('SET-TEMP', header.get('CCDTEMP')))
 
 
 def normalize_fits_header(file: File, header: Header) -> Image | None:

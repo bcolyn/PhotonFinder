@@ -105,6 +105,8 @@ class Image(Model):
     gain = IntegerField(null=True, index=True)
     binning = IntegerField(null=True)
     set_temp = DoubleField(null=True)
+    telescope = CharField(null=True, index=True)
+    object_name = CharField(null=True, index=True)
 
     class Meta:
         database = None

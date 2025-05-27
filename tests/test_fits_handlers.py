@@ -93,6 +93,9 @@ END""".replace('\r\n', '\n')
         assert image.gain == 120
         assert image.binning == 1
         assert image.set_temp == -18.0
+        assert image.camera == 'ZWO ASI294MC Pro'
+        assert image.telescope == 'EQMOD ASCOM HEQ5/6'
+        assert image.object_name == 'M57'
 
     def test_nina_header(self):
         """Test processing a NINA FITS header."""
@@ -143,6 +146,9 @@ END"""
         assert image.gain == 120
         assert image.binning == 1
         assert image.set_temp == -10.0
+        assert image.camera == 'ZWO ASI294MC Pro'
+        assert image.telescope is None
+        assert image.object_name == 'MarsM45'
 
     def test_sharpcap_header(self):
         """Test processing a SharpCap FITS header."""
@@ -205,6 +211,9 @@ END                                                                             
         assert image.gain == 300
         assert image.binning == 1
         assert image.set_temp == 0.0
+        assert image.camera == 'ZWO ASI183MC Pro'
+        assert image.telescope is None
+        assert image.object_name == 'Markarian'
 
 
 def fix_embedded_header(header_str: str) -> bytes:
