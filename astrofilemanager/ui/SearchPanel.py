@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from PySide6.QtCore import *
 from PySide6.QtWidgets import *
@@ -94,7 +94,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Set up headers
         self.data_model.setHorizontalHeaderLabels([
-            "Name", "Type", "Filter", "Exposure", "Gain", "Binning", "Set Temp", 
+            "Name", "Type", "Filter", "Exposure", "Gain", "Binning", "Set Temp",
             "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified"
         ])
 
@@ -110,66 +110,70 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.loading_more = False
 
         # Add results to the data model
-        with self.context.database.bind_ctx(CORE_MODELS):
-            for file in results:
-                # Create row items
-                name_item = QStandardItem(file.name)
-                path_item = QStandardItem(file.path)
 
-                # Format size (convert bytes to KB, MB, etc.)
-                size_str = self._format_file_size(file.size)
-                size_item = QStandardItem(size_str)
+        for file in results:
+            # Create row items
+            name_item = QStandardItem(file.name)
+            path_item = QStandardItem(file.path)
 
-                # Get image data if available
-                type_item = QStandardItem("")
-                filter_item = QStandardItem("")
-                exposure_item = QStandardItem("")
-                gain_item = QStandardItem("")
-                binning_item = QStandardItem("")
-                set_temp_item = QStandardItem("")
-                camera_item = QStandardItem("")
-                telescope_item = QStandardItem("")
-                object_item = QStandardItem("")
-                date_obs_item = QStandardItem("")
+            # Format size (convert bytes to KB, MB, etc.)
+            size_str = self._format_file_size(file.size)
+            size_item = QStandardItem(size_str)
 
-                try:
-                    if hasattr(file, 'image') and file.image:
-                        if file.image.image_type is not None:
-                            type_item.setText(file.image.image_type)
-                        if file.image.filter is not None:
-                            filter_item.setText(file.image.filter)
-                        if file.image.exposure is not None:
-                            exposure_item.setText(str(file.image.exposure))
-                        if file.image.gain is not None:
-                            gain_item.setText(str(file.image.gain))
-                        if file.image.binning is not None:
-                            binning_item.setText(str(file.image.binning))
-                        if file.image.set_temp is not None:
-                            set_temp_item.setText(str(file.image.set_temp))
-                        if file.image.camera is not None:
-                            camera_item.setText(file.image.camera)
-                        if file.image.telescope is not None:
-                            telescope_item.setText(file.image.telescope)
-                        if file.image.object_name is not None:
-                            object_item.setText(file.image.object_name)
-                        if file.image.date_obs is not None:
-                            date_obs_item.setText(self._format_date(file.image.date_obs))
-                except Exception as e:
-                    logging.error(f"Error getting image data: {e}")
+            # Get image data if available
+            type_item = QStandardItem("")
+            filter_item = QStandardItem("")
+            exposure_item = QStandardItem("")
+            gain_item = QStandardItem("")
+            binning_item = QStandardItem("")
+            set_temp_item = QStandardItem("")
+            camera_item = QStandardItem("")
+            telescope_item = QStandardItem("")
+            object_item = QStandardItem("")
+            date_obs_item = QStandardItem("")
+            localtime: datetime
+            try:
+                if hasattr(file, 'image') and file.image:
+                    if file.image.image_type is not None:
+                        type_item.setText(file.image.image_type)
+                    if file.image.filter is not None:
+                        filter_item.setText(file.image.filter)
+                    if file.image.exposure is not None:
+                        exposure_item.setText(str(file.image.exposure))
+                    if file.image.gain is not None:
+                        gain_item.setText(str(file.image.gain))
+                    if file.image.binning is not None:
+                        binning_item.setText(str(file.image.binning))
+                    if file.image.set_temp is not None:
+                        set_temp_item.setText(str(file.image.set_temp))
+                    if file.image.camera is not None:
+                        camera_item.setText(file.image.camera)
+                    if file.image.telescope is not None:
+                        telescope_item.setText(file.image.telescope)
+                    if file.image.object_name is not None:
+                        object_item.setText(file.image.object_name)
+                    if file.image.date_obs is not None:
+                        from zoneinfo import ZoneInfo
+                        utctime = file.image.date_obs.replace(tzinfo=timezone.utc)
+                        localtime = utctime.astimezone(tz=None)
+                        date_obs_item.setText(self._format_date(localtime))
+            except Exception as e:
+                logging.error(f"Error getting image data: {e}")
 
-                # Format date from mtime_millis
-                date_str = self._format_date(file.mtime_millis)
-                date_item = QStandardItem(date_str)
+            # Format date from mtime_millis
+            dt = datetime.fromtimestamp(file.mtime_millis / 1000)
+            date_str = self._format_date(dt)
+            date_item = QStandardItem(date_str)
 
-                # Store the full filename in the name_item's data
-                name_item.setData(file.full_filename(), Qt.UserRole)
+            # Store the full filename in the name_item's data
+            name_item.setData(file, Qt.UserRole)
 
-                # Add row to model
-                self.data_model.appendRow([
-                    name_item, type_item, filter_item, exposure_item, gain_item,
-                    binning_item, set_temp_item, camera_item, telescope_item,
-                    object_item, date_obs_item, path_item, size_item, date_item
-                ])
+            # Add row to model
+            self.data_model.appendRow([
+                name_item, type_item, filter_item, exposure_item, gain_item,
+                binning_item, set_temp_item, camera_item, telescope_item,
+                object_item, date_obs_item, path_item, size_item, date_item
+            ])
 
         # Resize columns to content
         self.dataView.resizeColumnsToContents()
@@ -210,13 +214,13 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         else:
             return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
 
-    def _format_date(self, mtime_millis):
-        """Format date from milliseconds since epoch."""
+    @staticmethod
+    def _format_date(mtime: datetime):
         try:
-            dt = datetime.fromtimestamp(mtime_millis / 1000)
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return ""
+            return mtime.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception as ex:
+            logging.exception(f"Error formatting date {ex}", exc_info=ex)
+            return None
 
     def on_item_double_clicked(self, index):
         """Handle double-click on an item in the data view."""
@@ -225,7 +229,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Get the full filename from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
-            filename = self.data_model.data(name_index, Qt.UserRole)
+            file = self.data_model.data(name_index, Qt.UserRole)
+            filename = file.full_filename()
 
         if filename:
             # Open the file with the associated application
