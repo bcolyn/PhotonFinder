@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QApplication, QStyle
 
 from core import ApplicationContext
 from models import RootAndPath
-from .loaders import LibraryRootsLoader, FilePathsLoader
+from .BackgroundLoader import LibraryRootsLoader, FilePathsLoader
 from ..models import LibraryRoot
 
 

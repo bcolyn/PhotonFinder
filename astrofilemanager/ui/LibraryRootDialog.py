@@ -8,7 +8,7 @@ from astrofilemanager.models import LibraryRoot
 from astrofilemanager.ui.LibraryRootEditDialog import LibraryRootEditDialog
 from astrofilemanager.ui.generated.LibraryRootDialog_ui import Ui_LibraryRootDialog
 from core import ApplicationContext
-from ui.loaders import ImageReindexWorker
+from ui.BackgroundLoader import ImageReindexWorker
 
 
 class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):

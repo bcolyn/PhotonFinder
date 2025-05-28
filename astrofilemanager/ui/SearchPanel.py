@@ -1,18 +1,20 @@
 import logging
 import time
+import typing
 from datetime import datetime, timezone
+from logging import DEBUG
 
 from PySide6.QtCore import *
-from PySide6.QtWidgets import *
-from PySide6.QtGui import QStandardItemModel, QStandardItem
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtWidgets import *
 
 from core import ApplicationContext
-from models import SearchCriteria, CORE_MODELS
+from models import SearchCriteria, CORE_MODELS, Image
+from .BackgroundLoader import SearchResultsLoader, GenericControlLoader
 from .LibraryTreeModel import LibraryTreeModel
 from .generated.SearchPanel_ui import Ui_SearchPanel
-from .loaders import SearchResultsLoader
 
 
 # Using the new database-backed tree model for filesystemTreeView
@@ -22,17 +24,21 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.setupUi(self)
 
         self.context = context
+        self.update_in_progress = False
         self.search_criteria = SearchCriteria()
 
         # Initialize the search results loader
         self.search_results_loader = SearchResultsLoader(context)
         self.search_results_loader.results_loaded.connect(self.on_search_results_loaded)
+        self.combo_loader = GenericControlLoader(context)
+        self.combo_loader.data_ready.connect(self.on_combo_options_loaded)
 
         # Initialize the data view model
         self.data_model = QStandardItemModel(self)
         self.dataView.setModel(self.data_model)
         self.dataView.verticalScrollBar().valueChanged.connect(self.on_scroll)
         self.dataView.doubleClicked.connect(self.on_item_double_clicked)
+        self.dataView.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.has_more_results = False
         self.loading_more = False
 
@@ -67,7 +73,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if not indexes:
             return
         self.search_criteria.paths = self.library_tree_model.get_roots_and_paths(indexes)
-        self.refresh_data_grid()
+        self.update_search_criteria()
 
     def add_filter(self):
         self.add_filter_button()
@@ -89,20 +95,33 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def refresh_data_grid(self):
         """Trigger a search with the current search criteria."""
-        # Clear the current data model
-        self.data_model.clear()
+        if self.update_in_progress:
+            return
 
-        # Set up headers
+        self.data_model.clear()
         self.data_model.setHorizontalHeaderLabels([
             "Name", "Type", "Filter", "Exposure", "Gain", "Binning", "Set Temp",
             "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified"
         ])
-
-        # Make the datagrid readonly
-        self.dataView.setEditTriggers(QAbstractItemView.NoEditTriggers)
-
-        # Start the search
         self.search_results_loader.search(self.search_criteria)
+
+    def refresh_combo_options(self):
+        tasks = [
+            (self.filter_filter_combo, Image.load_filters),
+            (self.filter_type_combo, Image.load_types)
+        ]
+        self.combo_loader.run_tasks(tasks, self.search_criteria)
+
+    def on_combo_options_loaded(self, target: QComboBox, data: typing.List[str]):
+        logging.log(DEBUG, f"data for {target.objectName()}: {data}")
+        self.update_in_progress = True
+        current_text = target.currentText()
+        target.clear()
+        target.addItem("<clear>")
+        target.addItems(data)
+        if current_text in data:
+            target.setCurrentText(current_text)
+        self.update_in_progress = False
 
     def on_search_results_loaded(self, results, has_more):
         """Handle search results loaded from the database."""
@@ -190,18 +209,30 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def update_search_criteria(self):
         """Update search criteria from UI elements."""
-        # Update search criteria from UI elements
-        self.search_criteria.type = self.filter_type_combo.currentText()
-        self.search_criteria.filter = self.filter_filter_combo.currentText()
-        self.search_criteria.camera = self.filter_cam_text.text()
-        self.search_criteria.name = self.filter_name_text.text()
-        self.search_criteria.exposure = self.filter_exp_text.text()
+        if self.filter_type_combo.currentText() == "<clear>":
+            self.search_criteria.type = ""
+        else:
+            self.search_criteria.type = self.filter_type_combo.currentText()
+
+        if self.filter_filter_combo.currentText() == "<clear>":
+            self.search_criteria.filter = ""
+        else:
+            self.search_criteria.filter = self.filter_filter_combo.currentText()
+
+        if self.filter_cam_text.text():
+            self.search_criteria.camera = self.filter_cam_text.text()
+        if self.filter_name_text.text():
+            self.search_criteria.name = self.filter_name_text.text()
+        if self.filter_exp_text.text():
+            self.search_criteria.exposure = self.filter_exp_text.text()
+
         self.search_criteria.use_coordinates = self.filter_coord_button.isChecked()
         self.search_criteria.use_date = self.filter_date_button.isChecked()
         self.search_criteria.paths_as_prefix = self.checkBox.isChecked()
-
         # Refresh the data grid with the updated search criteria
         self.refresh_data_grid()
+        if not self.update_in_progress:
+            self.refresh_combo_options()
 
     def _format_file_size(self, size_bytes):
         """Format file size from bytes to human-readable format."""

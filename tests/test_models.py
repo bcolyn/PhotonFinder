@@ -42,17 +42,16 @@ class TestImage:
         filters = Image.get_distinct_values_available(search_criteria, Image.filter)
 
         # Assert that all filters are returned
-        assert filters == {"Red", "Green", "Blue", "Luminance"}
+        assert filters == ["Blue", "Green", "Luminance", "Red"]
 
     def test_get_image_type(self):
         types = Image.get_distinct_values_available(SearchCriteria(), Image.image_type)
-        assert types == {"Dark", "Light"}
-
+        assert types == ["Dark", "Light"]
 
     def test_get_file_sizes(self):
         # not expected to be used this way, but we can test it anyway.
         sizes = Image.get_distinct_values_available(SearchCriteria(), File.size)
-        assert sizes == {1000, 2000}
+        assert sizes == [1000, 2000]
 
     def test_get_filters_with_path(self):
         """Test get_filters with a specific RootAndPath returns only filters in that path."""
@@ -65,4 +64,4 @@ class TestImage:
         filters = Image.get_distinct_values_available(search_criteria, Image.filter)
 
         # Assert that only filters in the specified path are returned
-        assert filters == {"Green", "Blue"}
+        assert filters == ["Blue", "Green"]

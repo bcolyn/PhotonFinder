@@ -175,10 +175,18 @@ class Image(Model):
         return query
 
     @staticmethod
-    def get_distinct_values_available(search_criteria: SearchCriteria, field_ref):
-        query = Image.select(fn.Distinct(field_ref)).join(File, JOIN.INNER, on=(File.rowid == Image.file))
+    def get_distinct_values_available(search_criteria: SearchCriteria, field_ref) -> list[str|None]:
+        query = Image.select(fn.Distinct(field_ref)).join(File, JOIN.INNER, on=(File.rowid == Image.file)).order_by(field_ref)
         query = Image._apply_search_criteria(query, search_criteria)
-        return set(map(lambda x: x[0], query.tuples()))
+        return list(map(lambda x: x[0], query.tuples()))
+
+    @staticmethod
+    def load_filters(search_criteria: SearchCriteria):
+        return Image.get_distinct_values_available(search_criteria, Image.filter)
+
+    @staticmethod
+    def load_types(search_criteria: SearchCriteria):
+        return Image.get_distinct_values_available(search_criteria, Image.image_type)
 
 
 class FitsHeader(Model):

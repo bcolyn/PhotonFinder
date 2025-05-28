@@ -1,11 +1,13 @@
 import logging
+from typing import Callable, List
 
 from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
+from PySide6.QtWidgets import QWidget
 from peewee import JOIN
 
 from core import ApplicationContext
 from fits_handlers import normalize_fits_header
-from models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader
+from models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria
 
 
 class BackgroundLoaderBase(QObject):
@@ -34,6 +36,22 @@ class BackgroundLoaderBase(QObject):
                     logging.error(f"Error in worker thread: {e}")
 
         return WorkerRunnable()
+
+
+class GenericControlLoader(BackgroundLoaderBase):
+    """Generic background loader for arbitrary functions."""
+    data_ready = Signal(QWidget, list)
+
+    def run_tasks(self, tasks: List[tuple[QWidget, Callable]], search_criteria):
+        self.run_in_thread(self._run_tasks, tasks, search_criteria)
+
+    def _run_tasks(self, tasks: List[tuple[QWidget, Callable]], search_criteria: SearchCriteria):
+        for widget, task in tasks:
+            try:
+                result = task(search_criteria)
+                self.data_ready.emit(widget, result)
+            except Exception as e:
+                logging.error(f"Error loading data for control {widget.objectName()}: {e}")
 
 
 class LibraryRootsLoader(BackgroundLoaderBase):
