@@ -120,6 +120,16 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         target.clear()
         target.addItem("<clear>")
         target.addItems(data)
+        
+        # Calculate appropriate width based on the longest item
+        fm = target.fontMetrics()
+        max_width = max([fm.horizontalAdvance(item) for item in data]) if data else 0
+        # Add some padding to the width
+        popup_width = max_width + 30  # Add padding for scroll bar and margins
+        
+        # Set the minimum width for the popup view
+        target.view().setMinimumWidth(popup_width)
+        
         if current_text in data:
             target.setCurrentText(current_text)
         self.update_in_progress = False
