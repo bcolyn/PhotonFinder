@@ -51,7 +51,7 @@ class GenericControlLoader(BackgroundLoaderBase):
                 result = task(search_criteria)
                 self.data_ready.emit(widget, result)
             except Exception as e:
-                logging.error(f"Error loading data for control {widget.objectName()}: {e}")
+                logging.error(f"Error loading data for control {widget.objectName()}: {e}", exc_info=True)
 
 
 class LibraryRootsLoader(BackgroundLoaderBase):

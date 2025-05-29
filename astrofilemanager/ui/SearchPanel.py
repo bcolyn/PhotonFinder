@@ -56,7 +56,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # Connect UI elements to update search criteria
         self.filter_type_combo.currentTextChanged.connect(self.update_search_criteria)
         self.filter_filter_combo.currentTextChanged.connect(self.update_search_criteria)
-        self.filter_cam_text.textChanged.connect(self.update_search_criteria)
+        self.filter_cam_combo.currentTextChanged.connect(self.update_search_criteria)
         self.filter_name_text.textChanged.connect(self.update_search_criteria)
         self.filter_exp_text.textChanged.connect(self.update_search_criteria)
         self.filter_coord_button.toggled.connect(self.update_search_criteria)
@@ -108,7 +108,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def refresh_combo_options(self):
         tasks = [
             (self.filter_filter_combo, Image.load_filters),
-            (self.filter_type_combo, Image.load_types)
+            (self.filter_type_combo, Image.load_types),
+            (self.filter_cam_combo, Image.load_cameras)
         ]
         self.combo_loader.run_tasks(tasks, self.search_criteria)
 
@@ -219,8 +220,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         else:
             self.search_criteria.filter = self.filter_filter_combo.currentText()
 
-        if self.filter_cam_text.text():
-            self.search_criteria.camera = self.filter_cam_text.text()
+        if self.filter_cam_combo.currentText() == "<clear>":
+            self.search_criteria.camera = ""
+        else:
+            self.search_criteria.camera = self.filter_cam_combo.currentText()
         if self.filter_name_text.text():
             self.search_criteria.name = self.filter_name_text.text()
         if self.filter_exp_text.text():

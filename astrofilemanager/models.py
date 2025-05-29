@@ -154,14 +154,13 @@ class Image(Model):
             conditions.append(Image.filter == criteria.filter)
 
         # Apply additional criteria if available
-        if hasattr(criteria, 'camera') and criteria.camera and exclude_ref is not Image.camera:
-            # This would need to be mapped to the appropriate field in the database
-            pass
+        if criteria.camera and exclude_ref is not Image.camera:
+            conditions.append(Image.camera == criteria.camera)
 
-        if hasattr(criteria, 'name') and criteria.name and exclude_ref is not Image.object_name:
+        if criteria.name and exclude_ref is not Image.object_name:
             conditions.append(File.name.contains(criteria.name))
 
-        if hasattr(criteria, 'exposure') and criteria.exposure and exclude_ref is not Image.exposure:
+        if criteria.exposure and exclude_ref is not Image.exposure:
             try:
                 exp = float(criteria.exposure)
                 conditions.append(Image.exposure == exp)
@@ -187,6 +186,10 @@ class Image(Model):
     @staticmethod
     def load_types(search_criteria: SearchCriteria):
         return Image.get_distinct_values_available(search_criteria, Image.image_type)
+
+    @staticmethod
+    def load_cameras(search_criteria: SearchCriteria):
+        return Image.get_distinct_values_available(search_criteria, Image.camera)
 
 
 class FitsHeader(Model):

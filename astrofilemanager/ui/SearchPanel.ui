@@ -133,7 +133,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QLineEdit" name="filter_cam_text"/>
+          <widget class="QComboBox" name="filter_cam_combo"/>
          </item>
         </layout>
        </widget>
