@@ -17,9 +17,10 @@ class RootAndPath:
 class SearchCriteria:
     paths: list[RootAndPath] = field(default_factory=list)
     paths_as_prefix: bool = True
-    filter: str = ""
-    type: str = ""
-    camera: str = ""
+    filter: str | None = ""
+    type: str | None = ""
+    camera: str | None = ""
+
     name: str = ""
     exposure: str = ""
     use_coordinates: bool = False
@@ -113,7 +114,7 @@ class Image(Model):
         database = None
 
     @staticmethod
-    def _apply_search_criteria(query, criteria, exclude_ref = None):
+    def _apply_search_criteria(query, criteria, exclude_ref=None):
         """Apply search criteria to the query."""
         conditions = []
 
@@ -146,15 +147,15 @@ class Image(Model):
                 conditions.append(combined)
 
         # Filter by file type
-        if criteria.type and exclude_ref is not Image.image_type:
+        if criteria.type != "" and exclude_ref is not Image.image_type:
             conditions.append(Image.image_type == criteria.type)
 
         # Filter by filter
-        if criteria.filter and exclude_ref is not Image.filter:
+        if criteria.filter != "" and exclude_ref is not Image.filter:
             conditions.append(Image.filter == criteria.filter)
 
         # Apply additional criteria if available
-        if criteria.camera and exclude_ref is not Image.camera:
+        if criteria.camera != "" and exclude_ref is not Image.camera:
             conditions.append(Image.camera == criteria.camera)
 
         if criteria.name and exclude_ref is not Image.object_name:
@@ -174,8 +175,9 @@ class Image(Model):
         return query
 
     @staticmethod
-    def get_distinct_values_available(search_criteria: SearchCriteria, field_ref) -> list[str|None]:
-        query = Image.select(fn.Distinct(field_ref)).join(File, JOIN.INNER, on=(File.rowid == Image.file)).order_by(field_ref)
+    def get_distinct_values_available(search_criteria: SearchCriteria, field_ref) -> list[str | None]:
+        query = Image.select(fn.Distinct(field_ref)).join(File, JOIN.INNER, on=(File.rowid == Image.file)).order_by(
+            field_ref)
         query = Image._apply_search_criteria(query, search_criteria, field_ref)
         return list(map(lambda x: x[0], query.tuples()))
 

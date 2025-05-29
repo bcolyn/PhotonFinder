@@ -16,6 +16,8 @@ from .BackgroundLoader import SearchResultsLoader, GenericControlLoader
 from .LibraryTreeModel import LibraryTreeModel
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
+EMPTY_LABEL = "<empty>"
+RESET_LABEL = "<not selected>"
 
 # Using the new database-backed tree model for filesystemTreeView
 class SearchPanel(QFrame, Ui_SearchPanel):
@@ -32,6 +34,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_results_loader.results_loaded.connect(self.on_search_results_loaded)
         self.combo_loader = GenericControlLoader(context)
         self.combo_loader.data_ready.connect(self.on_combo_options_loaded)
+        self.refresh_combo_options()
 
         # Initialize the data view model
         self.data_model = QStandardItemModel(self)
@@ -118,21 +121,36 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.update_in_progress = True
         current_text = target.currentText()
         target.clear()
-        target.addItem("<clear>")
-        target.addItems(data)
-        
+        target.addItem(RESET_LABEL)
+        for datum in data:
+            if datum == "" or datum is None:
+                target.addItem(EMPTY_LABEL)
+            else:
+                target.addItem(datum)
+
         # Calculate appropriate width based on the longest item
         fm = target.fontMetrics()
+
+        # Get width of the longest item
         max_width = max([fm.horizontalAdvance(item) for item in data]) if data else 0
         # Add some padding to the width
-        popup_width = max_width + 30  # Add padding for scroll bar and margins
-        
+        padding = 30  # Add padding for scroll bar and margins
+
         # Set the minimum width for the popup view
-        target.view().setMinimumWidth(popup_width)
-        
-        if current_text in data:
+        target.view().setMinimumWidth(max_width + padding)
+
+        # Set the minimum width for the combo box itself
+        # We add extra padding for the dropdown arrow button
+        abs_min = 120
+        target.setMinimumWidth(max(abs_min, max_width + padding + 30))
+
+        if current_text in data or current_text == EMPTY_LABEL:
             target.setCurrentText(current_text)
-        self.update_in_progress = False
+            self.update_in_progress = False
+        else:
+            self.update_in_progress = False
+            target.setCurrentText(RESET_LABEL)
+            self.refresh_data_grid()
 
     def on_search_results_loaded(self, results, has_more):
         """Handle search results loaded from the database."""
@@ -220,20 +238,18 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def update_search_criteria(self):
         """Update search criteria from UI elements."""
-        if self.filter_type_combo.currentText() == "<clear>":
-            self.search_criteria.type = ""
-        else:
-            self.search_criteria.type = self.filter_type_combo.currentText()
+        def _get_combo_value(combo: QComboBox) -> str | None:
+            if combo.currentText() == RESET_LABEL:
+                return ""
+            elif combo.currentText() == EMPTY_LABEL:
+                return None
+            else:
+                return combo.currentText()
 
-        if self.filter_filter_combo.currentText() == "<clear>":
-            self.search_criteria.filter = ""
-        else:
-            self.search_criteria.filter = self.filter_filter_combo.currentText()
+        self.search_criteria.type = _get_combo_value(self.filter_type_combo)
+        self.search_criteria.filter = _get_combo_value(self.filter_filter_combo)
+        self.search_criteria.camera = _get_combo_value(self.filter_cam_combo)
 
-        if self.filter_cam_combo.currentText() == "<clear>":
-            self.search_criteria.camera = ""
-        else:
-            self.search_criteria.camera = self.filter_cam_combo.currentText()
         if self.filter_name_text.text():
             self.search_criteria.name = self.filter_name_text.text()
         if self.filter_exp_text.text():
