@@ -2,6 +2,7 @@ import logging
 import time
 import typing
 from datetime import datetime, timezone
+from enum import Enum
 from logging import DEBUG
 
 from PySide6.QtCore import *
@@ -11,11 +12,12 @@ from PySide6.QtWidgets import *
 from astrofilemanager.core import ApplicationContext
 from astrofilemanager.models import SearchCriteria, CORE_MODELS, Image
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader
+from .DateRangeDialog import DateRangeDialog
 from .LibraryTreeModel import LibraryTreeModel
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
 EMPTY_LABEL = "<empty>"
-RESET_LABEL = "<not selected>"
+RESET_LABEL = "<any>"
 
 
 # Using the new database-backed tree model for filesystemTreeView
@@ -27,6 +29,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.context = context
         self.update_in_progress = False
         self.search_criteria = SearchCriteria()
+        self.advanced_options = dict()
 
         # Initialize the search results loader
         self.search_results_loader = SearchResultsLoader(context)
@@ -62,9 +65,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.filter_filter_combo.currentTextChanged.connect(self.update_search_criteria)
         self.filter_cam_combo.currentTextChanged.connect(self.update_search_criteria)
         self.filter_name_text.textChanged.connect(self.update_search_criteria)
-        self.filter_exp_text.textChanged.connect(self.update_search_criteria)
-        self.filter_coord_button.toggled.connect(self.update_search_criteria)
-        self.filter_date_button.toggled.connect(self.update_search_criteria)
         self.checkBox.toggled.connect(self.update_search_criteria)
 
     def on_library_tree_ready(self):
@@ -79,23 +79,28 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_criteria.paths = self.library_tree_model.get_roots_and_paths(indexes)
         self.update_search_criteria()
 
-    def add_filter(self):
-        self.add_filter_button()
-
     def set_title(self, text: str):
         my_index = self.parent().indexOf(self)
         self.parent().setTabText(my_index, text)
 
-    def add_filter_button(self):
-        button = FilterButton(self)
+    def add_filter_button_control(self, button: 'FilterButton'):
+        current = self.advanced_options.get(button.filter_type, None)
+        if current:
+            self.remove_filter_button_control(current)
+        self.advanced_options[button.filter_type] = button
         self.filter_layout.insertWidget(0, button)
         button.clicked.connect(self.remove_filter_button)
 
     def remove_filter_button(self):
-        sender = self.sender()
-        self.filter_layout.removeWidget(sender)
-        sender.hide()
-        sender.destroy()
+        sender: FilterButton = self.sender()
+        self.remove_filter_button_control(sender)
+        self.update_search_criteria()
+
+    def remove_filter_button_control(self, button: 'FilterButton'):
+        self.filter_layout.removeWidget(button)
+        button.on_remove_filter.emit()
+        button.hide()
+        button.destroy()
 
     def refresh_data_grid(self):
         """Trigger a search with the current search criteria."""
@@ -166,7 +171,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             path_item = QStandardItem(file.path)
 
             # Format size (convert bytes to KB, MB, etc.)
-            size_str = self._format_file_size(file.size)
+            size_str = _format_file_size(file.size)
             size_item = QStandardItem(size_str)
 
             # Get image data if available
@@ -205,13 +210,13 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                         from zoneinfo import ZoneInfo
                         utctime = file.image.date_obs.replace(tzinfo=timezone.utc)
                         localtime = utctime.astimezone(tz=None)
-                        date_obs_item.setText(self._format_date(localtime))
+                        date_obs_item.setText(_format_date(localtime))
             except Exception as e:
                 logging.error(f"Error getting image data: {e}")
 
             # Format date from mtime_millis
             dt = datetime.fromtimestamp(file.mtime_millis / 1000)
-            date_str = self._format_date(dt)
+            date_str = _format_date(dt)
             date_item = QStandardItem(date_str)
 
             # Store the full filename in the name_item's data
@@ -240,49 +245,18 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def update_search_criteria(self):
         """Update search criteria from UI elements."""
 
-        def _get_combo_value(combo: QComboBox) -> str | None:
-            if combo.currentText() == RESET_LABEL:
-                return ""
-            elif combo.currentText() == EMPTY_LABEL:
-                return None
-            else:
-                return combo.currentText()
-
         self.search_criteria.type = _get_combo_value(self.filter_type_combo)
         self.search_criteria.filter = _get_combo_value(self.filter_filter_combo)
         self.search_criteria.camera = _get_combo_value(self.filter_cam_combo)
 
         if self.filter_name_text.text():
             self.search_criteria.object_name = self.filter_name_text.text()
-        if self.filter_exp_text.text():
-            self.search_criteria.exposure = self.filter_exp_text.text()
 
-        self.search_criteria.use_coordinates = self.filter_coord_button.isChecked()
-        self.search_criteria.use_date = self.filter_date_button.isChecked()
         self.search_criteria.paths_as_prefix = self.checkBox.isChecked()
         # Refresh the data grid with the updated search criteria
         self.refresh_data_grid()
         if not self.update_in_progress:
             self.refresh_combo_options()
-
-    def _format_file_size(self, size_bytes):
-        """Format file size from bytes to human-readable format."""
-        if size_bytes < 1024:
-            return f"{size_bytes} B"
-        elif size_bytes < 1024 * 1024:
-            return f"{size_bytes / 1024:.1f} KB"
-        elif size_bytes < 1024 * 1024 * 1024:
-            return f"{size_bytes / (1024 * 1024):.1f} MB"
-        else:
-            return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
-
-    @staticmethod
-    def _format_date(mtime: datetime):
-        try:
-            return mtime.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception as ex:
-            logging.exception(f"Error formatting date {ex}", exc_info=ex)
-            return None
 
     def show_context_menu(self, position):
         """Show context menu for the data view."""
@@ -341,11 +315,65 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         """Handle double-click on an item in the data view."""
         self.open_file(index)
 
+    def reset_date_criteria(self):
+        self.search_criteria.start_datetime = None
+        self.search_criteria.end_datetime = None
+
+    def add_exposure_filter(self):
+        pass
+
+    def add_datetime_filter(self):
+        dialog = DateRangeDialog(self.context)
+        if self.search_criteria.start_datetime is not None:
+            dialog.set_start_date(self.search_criteria.start_datetime)
+        if self.search_criteria.end_datetime is not None:
+            dialog.set_end_date(self.search_criteria.end_datetime)
+        if dialog.exec():
+            (start_datetime, end_datetime) = dialog.get_datetime_range()
+            text = f"Date {_format_date(start_datetime)} - {_format_date(end_datetime)}"
+            filter_button = FilterButton(self, text, AdvancedFilter.DATETIME)
+            filter_button.on_remove_filter.connect(self.reset_date_criteria)
+            self.add_filter_button_control(filter_button)
+            self.search_criteria.start_datetime = start_datetime
+            self.search_criteria.end_datetime = end_datetime
+            self.update_search_criteria()
+
+
+def _get_combo_value(combo: QComboBox) -> str | None:
+    if combo.currentText() == RESET_LABEL:
+        return ""
+    elif combo.currentText() == EMPTY_LABEL:
+        return None
+    else:
+        return combo.currentText()
+
+
+def _format_file_size(size_bytes):
+    """Format file size from bytes to human-readable format."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+
+
+def _format_date(value: datetime):
+    try:
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception as ex:
+        logging.exception(f"Error formatting date {ex}", exc_info=ex)
+        return None
+
 
 class FilterButton(QPushButton):
-    def __init__(self, parent) -> None:
+    on_remove_filter = Signal()
+
+    def __init__(self, parent, text: str, filter_type) -> None:
         super().__init__(parent)
-        self.setText("FilterTest" + str(int(time.time())))
+        self.setText(text)
         self.setMinimumHeight(20)
         self.setMinimumWidth(20)
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
@@ -353,3 +381,9 @@ class FilterButton(QPushButton):
         brush: QBrush = palette.windowText()
         self.setStyleSheet(
             f"border-radius : 10px; border : 1px solid {brush.color().name()}; padding-left:10px; padding-right:10px")
+        self.filter_type = filter_type
+
+
+class AdvancedFilter(Enum):
+    EXPOSURE = 1
+    DATETIME = 2

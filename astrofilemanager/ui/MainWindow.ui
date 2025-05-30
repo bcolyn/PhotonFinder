@@ -283,7 +283,23 @@
    <sender>actionExposure</sender>
    <signal>triggered()</signal>
    <receiver>MainWindow</receiver>
-   <slot>add_filter_exposure()</slot>
+   <slot>add_exposure_filter()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>actionDate</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>add_datetime_filter()</slot>
    <hints>
     <hint type="sourcelabel">
      <x>-1</x>
@@ -303,6 +319,7 @@
   <slot>manage_library_roots()</slot>
   <slot>open_settings_dialog()</slot>
   <slot>scan_libraries()</slot>
-  <slot>add_filter_exposure()</slot>
+  <slot>add_datetime_filter()</slot>
+  <slot>add_exposure_filter()</slot>
  </slots>
 </ui>

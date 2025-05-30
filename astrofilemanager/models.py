@@ -1,6 +1,7 @@
 import os
 import typing
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from peewee import *
@@ -24,7 +25,8 @@ class SearchCriteria:
     object_name: str = ""
     exposure: str = ""
     use_coordinates: bool = False
-    use_date: bool = False
+    start_datetime: datetime | None = None
+    end_datetime: datetime | None = None
 
 
 def auto_str(cls):
@@ -167,6 +169,12 @@ class Image(Model):
                 conditions.append(Image.exposure == exp)
             except (ValueError, TypeError):
                 pass
+
+        if criteria.start_datetime and exclude_ref is not Image.date_obs:
+            conditions.append(Image.date_obs >= criteria.start_datetime)
+
+        if criteria.end_datetime and exclude_ref is not Image.date_obs:
+            conditions.append(Image.date_obs <= criteria.end_datetime)
 
         # Apply all conditions to the query
         for condition in conditions:

@@ -136,6 +136,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if isinstance(widget, SearchPanel):
                 widget.library_tree_model.reload_library_roots()
 
-    def add_filter_exposure(self):
-        searchPanel: SearchPanel = self.tabWidget.currentWidget()
-        searchPanel.add_filter()
+    def add_exposure_filter(self):
+        self.tabWidget.currentWidget().add_exposure_filter()
+
+    def add_datetime_filter(self):
+        self.tabWidget.currentWidget().add_datetime_filter()
