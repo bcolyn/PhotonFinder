@@ -5,19 +5,18 @@ from datetime import datetime, timezone
 from logging import DEBUG
 
 from PySide6.QtCore import *
-from PySide6.QtCore import QUrl
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtGui import QStandardItemModel, QStandardItem
+from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
-from core import ApplicationContext
-from models import SearchCriteria, CORE_MODELS, Image
+from astrofilemanager.core import ApplicationContext
+from astrofilemanager.models import SearchCriteria, CORE_MODELS, Image
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader
 from .LibraryTreeModel import LibraryTreeModel
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
 EMPTY_LABEL = "<empty>"
 RESET_LABEL = "<not selected>"
+
 
 # Using the new database-backed tree model for filesystemTreeView
 class SearchPanel(QFrame, Ui_SearchPanel):
@@ -89,7 +88,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def add_filter_button(self):
         button = FilterButton(self)
-        self.filter_layout.insertWidget(1, button)
+        self.filter_layout.insertWidget(0, button)
         button.clicked.connect(self.remove_filter_button)
 
     def remove_filter_button(self):
@@ -240,6 +239,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def update_search_criteria(self):
         """Update search criteria from UI elements."""
+
         def _get_combo_value(combo: QComboBox) -> str | None:
             if combo.currentText() == RESET_LABEL:
                 return ""
@@ -347,4 +347,9 @@ class FilterButton(QPushButton):
         super().__init__(parent)
         self.setText("FilterTest" + str(int(time.time())))
         self.setMinimumHeight(20)
-        self.setStyleSheet("border-radius : 10px; border : 2px solid black; padding-left:10px; padding-right:10px")
+        self.setMinimumWidth(20)
+        self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        palette: QPalette = self.palette()
+        brush: QBrush = palette.windowText()
+        self.setStyleSheet(
+            f"border-radius : 10px; border : 1px solid {brush.color().name()}; padding-left:10px; padding-right:10px")

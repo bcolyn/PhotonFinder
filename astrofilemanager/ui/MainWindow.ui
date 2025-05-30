@@ -81,6 +81,13 @@
     <property name="title">
      <string>F&amp;ilter</string>
     </property>
+    <addaction name="actionExposure"/>
+    <addaction name="actionCoordinates"/>
+    <addaction name="actionDate"/>
+    <addaction name="actionTelescope"/>
+    <addaction name="actionBinning"/>
+    <addaction name="actionGain"/>
+    <addaction name="actionTemperature"/>
    </widget>
    <addaction name="menu_File"/>
    <addaction name="menuFilter"/>
@@ -120,6 +127,41 @@
   <action name="action_Scan_Libraries">
    <property name="text">
     <string>&amp;Scan Libraries</string>
+   </property>
+  </action>
+  <action name="actionExposure">
+   <property name="text">
+    <string>Exposure</string>
+   </property>
+  </action>
+  <action name="actionCoordinates">
+   <property name="text">
+    <string>Coordinates</string>
+   </property>
+  </action>
+  <action name="actionDate">
+   <property name="text">
+    <string>Date</string>
+   </property>
+  </action>
+  <action name="actionTelescope">
+   <property name="text">
+    <string>Telescope</string>
+   </property>
+  </action>
+  <action name="actionBinning">
+   <property name="text">
+    <string>Binning</string>
+   </property>
+  </action>
+  <action name="actionGain">
+   <property name="text">
+    <string>Gain</string>
+   </property>
+  </action>
+  <action name="actionTemperature">
+   <property name="text">
+    <string>Temperature</string>
    </property>
   </action>
  </widget>
@@ -237,6 +279,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionExposure</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>add_filter_exposure()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -245,5 +303,6 @@
   <slot>manage_library_roots()</slot>
   <slot>open_settings_dialog()</slot>
   <slot>scan_libraries()</slot>
+  <slot>add_filter_exposure()</slot>
  </slots>
 </ui>

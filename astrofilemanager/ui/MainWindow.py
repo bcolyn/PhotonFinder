@@ -3,12 +3,12 @@ import time
 from PySide6.QtWidgets import *
 from PySide6.QtCore import QThread, Signal, QObject
 
-from ..core import ApplicationContext, StatusReporter
+from astrofilemanager.core import ApplicationContext, StatusReporter
+from astrofilemanager.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
 from .LibraryRootDialog import LibraryRootDialog
 from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
 from .generated.MainWindow_ui import Ui_MainWindow
-from ..filesystem import Importer, update_fits_header_cache, check_missing_header_cache
 
 
 class UIStatusReporter(StatusReporter,QObject):
@@ -135,3 +135,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             widget = self.tabWidget.widget(i)
             if isinstance(widget, SearchPanel):
                 widget.library_tree_model.reload_library_roots()
+
+    def add_filter_exposure(self):
+        searchPanel: SearchPanel = self.tabWidget.currentWidget()
+        searchPanel.add_filter()

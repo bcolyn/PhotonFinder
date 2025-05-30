@@ -4,8 +4,8 @@ from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QStyle
 
-from core import ApplicationContext
-from models import RootAndPath
+from astrofilemanager.core import ApplicationContext
+from astrofilemanager.models import RootAndPath
 from .BackgroundLoader import LibraryRootsLoader, FilePathsLoader
 from ..models import LibraryRoot
 
