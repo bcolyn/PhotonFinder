@@ -48,7 +48,8 @@ class GenericControlLoader(BackgroundLoaderBase):
     def _run_tasks(self, tasks: List[tuple[QWidget, Callable]], search_criteria: SearchCriteria):
         for widget, task in tasks:
             try:
-                result = task(search_criteria)
+                with self.context.database.bind_ctx(CORE_MODELS):
+                    result = task(search_criteria)
                 self.data_ready.emit(widget, result)
             except Exception as e:
                 logging.error(f"Error loading data for control {widget.objectName()}: {e}", exc_info=True)

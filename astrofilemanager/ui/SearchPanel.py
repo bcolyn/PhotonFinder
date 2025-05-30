@@ -42,6 +42,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.dataView.verticalScrollBar().valueChanged.connect(self.on_scroll)
         self.dataView.doubleClicked.connect(self.on_item_double_clicked)
         self.dataView.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.dataView.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.dataView.customContextMenuRequested.connect(self.show_context_menu)
         self.has_more_results = False
         self.loading_more = False
 
@@ -103,7 +105,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         self.data_model.clear()
         self.data_model.setHorizontalHeaderLabels([
-            "Name", "Type", "Filter", "Exposure", "Gain", "Binning", "Set Temp",
+            "File name", "Type", "Filter", "Exposure", "Gain", "Binning", "Set Temp",
             "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified"
         ])
         self.search_results_loader.search(self.search_criteria)
@@ -251,7 +253,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_criteria.camera = _get_combo_value(self.filter_cam_combo)
 
         if self.filter_name_text.text():
-            self.search_criteria.name = self.filter_name_text.text()
+            self.search_criteria.object_name = self.filter_name_text.text()
         if self.filter_exp_text.text():
             self.search_criteria.exposure = self.filter_exp_text.text()
 
@@ -282,8 +284,30 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             logging.exception(f"Error formatting date {ex}", exc_info=ex)
             return None
 
-    def on_item_double_clicked(self, index):
-        """Handle double-click on an item in the data view."""
+    def show_context_menu(self, position):
+        """Show context menu for the data view."""
+        # Get the index at the position
+        index = self.dataView.indexAt(position)
+        if not index.isValid():
+            return
+
+        # Create context menu
+        menu = QMenu(self)
+        open_action = menu.addAction("Open")
+        show_location_action = menu.addAction("Show location")
+
+        # Show the menu and get the selected action
+        action = menu.exec(self.dataView.viewport().mapToGlobal(position))
+
+        if action == open_action:
+            # Reuse the double-click functionality
+            self.open_file(index)
+        elif action == show_location_action:
+            # Show the file location in explorer
+            self.show_file_location(index)
+
+    def open_file(self, index):
+        """Open the file at the given index."""
         # Get the name item from the first column
         name_index = self.data_model.index(index.row(), 0)
 
@@ -295,6 +319,27 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if filename:
             # Open the file with the associated application
             QDesktopServices.openUrl(QUrl.fromLocalFile(filename))
+
+    def show_file_location(self, index):
+        """Open the file explorer showing the directory containing the file."""
+        # Get the name item from the first column
+        name_index = self.data_model.index(index.row(), 0)
+
+        # Get the full filename from the name item's data
+        with self.context.database.bind_ctx(CORE_MODELS):
+            file = self.data_model.data(name_index, Qt.UserRole)
+            filename = file.full_filename()
+
+        if filename:
+            import os
+            # Get the directory containing the file
+            directory = os.path.dirname(filename)
+            # Open the directory in the file explorer
+            QDesktopServices.openUrl(QUrl.fromLocalFile(directory))
+
+    def on_item_double_clicked(self, index):
+        """Handle double-click on an item in the data view."""
+        self.open_file(index)
 
 
 class FilterButton(QPushButton):

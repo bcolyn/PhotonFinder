@@ -21,7 +21,7 @@ class SearchCriteria:
     type: str | None = ""
     camera: str | None = ""
 
-    name: str = ""
+    object_name: str = ""
     exposure: str = ""
     use_coordinates: bool = False
     use_date: bool = False
@@ -158,8 +158,8 @@ class Image(Model):
         if criteria.camera != "" and exclude_ref is not Image.camera:
             conditions.append(Image.camera == criteria.camera)
 
-        if criteria.name and exclude_ref is not Image.object_name:
-            conditions.append(File.name.contains(criteria.name))
+        if criteria.object_name and exclude_ref is not Image.object_name:
+            conditions.append(Image.object_name.contains(criteria.object_name))
 
         if criteria.exposure and exclude_ref is not Image.exposure:
             try:
