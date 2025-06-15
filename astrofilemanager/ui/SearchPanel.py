@@ -1,5 +1,4 @@
 import logging
-import time
 import typing
 from datetime import datetime, timezone
 from enum import Enum
@@ -251,6 +250,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         if self.filter_name_text.text():
             self.search_criteria.object_name = self.filter_name_text.text()
+        else:
+            self.search_criteria.object_name = None
 
         self.search_criteria.paths_as_prefix = self.checkBox.isChecked()
         # Refresh the data grid with the updated search criteria
