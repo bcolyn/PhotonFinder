@@ -75,6 +75,8 @@
     <property name="title">
      <string>&amp;Help</string>
     </property>
+    <addaction name="action_View_Log"/>
+    <addaction name="separator"/>
     <addaction name="action_About"/>
    </widget>
    <widget class="QMenu" name="menuFilter">
@@ -94,6 +96,11 @@
    <addaction name="menu_Help"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="action_View_Log">
+   <property name="text">
+    <string>View &amp;Log</string>
+   </property>
+  </action>
   <action name="action_About">
    <property name="text">
     <string>&amp;About</string>
@@ -311,6 +318,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>action_View_Log</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>view_log()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -321,5 +344,6 @@
   <slot>scan_libraries()</slot>
   <slot>add_datetime_filter()</slot>
   <slot>add_exposure_filter()</slot>
+  <slot>view_log()</slot>
  </slots>
 </ui>

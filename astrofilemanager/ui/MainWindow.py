@@ -6,6 +6,7 @@ from PySide6.QtCore import QThread, Signal, QObject
 from astrofilemanager.core import ApplicationContext, StatusReporter
 from astrofilemanager.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
 from .LibraryRootDialog import LibraryRootDialog
+from .LogWindow import LogWindow
 from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
 from .generated.MainWindow_ui import Ui_MainWindow
@@ -17,6 +18,7 @@ class UIStatusReporter(StatusReporter,QObject):
     def __init__(self):
         super().__init__()
         self.last_update_time = 0
+        self.log_messages = []
 
     def update_status(self, message: str, bulk=False) -> None:
         current_time = time.time()
@@ -24,6 +26,14 @@ class UIStatusReporter(StatusReporter,QObject):
             return
         self.last_update_time = current_time
         self.on_message.emit(message)
+
+        # Store non-bulk messages for the log window
+        if not bulk:
+            self.log_messages.append(message)
+
+    def get_log_messages(self):
+        """Return the list of log messages."""
+        return self.log_messages
 
 
 class LibraryScanWorker(QThread):
@@ -139,5 +149,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def add_exposure_filter(self):
         self.tabWidget.currentWidget().add_exposure_filter()
 
+    def add_telescope_filter(self):
+        self.tabWidget.currentWidget().add_telescope_filter()
+
+    def add_binning_filter(self):
+        self.tabWidget.currentWidget().add_binning_filter()
+
+    def add_gain_filter(self):
+        self.tabWidget.currentWidget().add_gain_filter()
+
+    def add_temperature_filter(self):
+        self.tabWidget.currentWidget().add_temperature_filter()
+
     def add_datetime_filter(self):
         self.tabWidget.currentWidget().add_datetime_filter()
+
+    def view_log(self):
+        """
+        Open the log window to display log messages.
+        """
+        log_window = LogWindow(self)
+
+        # Add all log messages to the log window
+        for message in self.reporter.get_log_messages():
+            log_window.add_message(message)
+
+        # Show the log window
+        log_window.exec()

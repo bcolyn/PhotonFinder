@@ -24,6 +24,10 @@ class SearchCriteria:
 
     object_name: str = ""
     exposure: str = ""
+    telescope: str = ""
+    binning: str = ""
+    gain: str = ""
+    temperature: str = ""
     use_coordinates: bool = False
     start_datetime: datetime | None = None
     end_datetime: datetime | None = None
@@ -167,6 +171,30 @@ class Image(Model):
             try:
                 exp = float(criteria.exposure)
                 conditions.append(Image.exposure == exp)
+            except (ValueError, TypeError):
+                pass
+
+        if criteria.telescope and exclude_ref is not Image.telescope:
+            conditions.append(Image.telescope.contains(criteria.telescope))
+
+        if criteria.binning and exclude_ref is not Image.binning:
+            try:
+                bin_val = int(criteria.binning)
+                conditions.append(Image.binning == bin_val)
+            except (ValueError, TypeError):
+                pass
+
+        if criteria.gain and exclude_ref is not Image.gain:
+            try:
+                gain_val = int(criteria.gain)
+                conditions.append(Image.gain == gain_val)
+            except (ValueError, TypeError):
+                pass
+
+        if criteria.temperature and exclude_ref is not Image.set_temp:
+            try:
+                temp_val = float(criteria.temperature)
+                conditions.append(Image.set_temp == temp_val)
             except (ValueError, TypeError):
                 pass
 

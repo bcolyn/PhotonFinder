@@ -9,10 +9,10 @@ from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
 from astrofilemanager.core import ApplicationContext
-from astrofilemanager.models import SearchCriteria, CORE_MODELS, Image
+from astrofilemanager.models import SearchCriteria, CORE_MODELS, Image, RootAndPath
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader
 from .DateRangeDialog import DateRangeDialog
-from .LibraryTreeModel import LibraryTreeModel
+from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
 EMPTY_LABEL = "<empty>"
@@ -29,6 +29,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.update_in_progress = False
         self.search_criteria = SearchCriteria()
         self.advanced_options = dict()
+        self.total_files = 0  # Track total number of files in search results
+        self.pending_selection = None  # Store pending path selection
 
         # Initialize the search results loader
         self.search_results_loader = SearchResultsLoader(context)
@@ -45,6 +47,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.dataView.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.dataView.setContextMenuPolicy(Qt.CustomContextMenu)
         self.dataView.customContextMenuRequested.connect(self.show_context_menu)
+        # Connect selection changes
+        self.dataView.selectionModel().selectionChanged.connect(self.on_data_selection_changed)
         self.has_more_results = False
         self.loading_more = False
 
@@ -52,6 +56,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.library_tree_model = LibraryTreeModel(context, self)
         self.library_tree_model.reload_library_roots()
         self.library_tree_model.ready_for_display.connect(self.on_library_tree_ready)
+
+        # Connect to the paths_loaded signal to handle pending selections
+        self.library_tree_model.file_paths_loader.paths_loaded.connect(self.on_paths_loaded)
 
         # Set up the tree view
         self.filesystemTreeView.setModel(self.library_tree_model)
@@ -69,6 +76,14 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def on_library_tree_ready(self):
         all_libraries_index = self.library_tree_model.index(0, 0, QModelIndex())
         self.filesystemTreeView.expand(all_libraries_index)
+
+    def on_paths_loaded(self, library_root, paths):
+        """Handle the paths_loaded signal from the FilePathsLoader."""
+        # If we have a pending selection, retry it
+        if self.pending_selection and self.pending_selection.root_id == library_root.rowid:
+            root_and_path = self.pending_selection
+            self.pending_selection = None
+            self._find_and_select_node(root_and_path)
 
     def on_tree_selection_changed(self, selected, deselected):
         # Get the current selection
@@ -111,6 +126,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             "File name", "Type", "Filter", "Exposure", "Gain", "Binning", "Set Temp",
             "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified"
         ])
+
+        # Reset total files counter when starting a new search
+        self.total_files = 0
+        self.context.status_reporter.update_status("Searching...")
+
         self.search_results_loader.search(self.search_criteria)
 
     def refresh_combo_options(self):
@@ -157,9 +177,32 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             target.setCurrentText(RESET_LABEL)
             self.refresh_data_grid()
 
+    def on_data_selection_changed(self, selected, deselected):
+        """Handle selection changes in the data grid."""
+        # Get the number of selected rows
+        selected_count = len(self.dataView.selectionModel().selectedRows())
+
+        # Update the status bar with the selection information
+        if selected_count > 0:
+            self.context.status_reporter.update_status(f"{selected_count} files out of {self.total_files} selected")
+        else:
+            self.context.status_reporter.update_status(f"{self.total_files} files")
+
     def on_search_results_loaded(self, results, has_more):
         """Handle search results loaded from the database."""
         self.has_more_results = has_more
+
+        # If this is a new search (data model is empty), reset the total files counter
+        if self.data_model.rowCount() == 0:
+            self.total_files = 0
+
+        # Add the new results to the total
+        self.total_files += len(results)
+
+        # Update the status bar with the total number of files
+        self.context.status_reporter.update_status(f"{self.total_files} files")
+
+        # Reset loading_more flag after processing
         self.loading_more = False
 
         # Add results to the data model
@@ -270,6 +313,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         menu = QMenu(self)
         open_action = menu.addAction("Open")
         show_location_action = menu.addAction("Show location")
+        select_path_action = menu.addAction("Select path")
 
         # Show the menu and get the selected action
         action = menu.exec(self.dataView.viewport().mapToGlobal(position))
@@ -280,6 +324,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         elif action == show_location_action:
             # Show the file location in explorer
             self.show_file_location(index)
+        elif action == select_path_action:
+            # Select the path in the tree view
+            self.select_path_in_tree(index)
 
     def open_file(self, index):
         """Open the file at the given index."""
@@ -316,19 +363,263 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         """Handle double-click on an item in the data view."""
         self.open_file(index)
 
+    def select_path_in_tree(self, index):
+        """Select the path in the tree view."""
+        # Get the name item from the first column
+        name_index = self.data_model.index(index.row(), 0)
+
+        # Get the file object from the name item's data
+        with self.context.database.bind_ctx(CORE_MODELS):
+            file = self.data_model.data(name_index, Qt.UserRole)
+            if not file:
+                return
+
+            # Get the library root and path
+            root_id = file.root.rowid
+            path = file.path
+
+            # Create a RootAndPath object
+            root_and_path = RootAndPath(root_id=root_id, path=path)
+
+            # Find and select the node in the tree
+            self._find_and_select_node(root_and_path)
+
+    def _find_and_select_node(self, root_and_path):
+        """Find and select a node in the tree view based on RootAndPath."""
+        # Start with the "All libraries" node
+        all_libraries_index = self.library_tree_model.index(0, 0, QModelIndex())
+        self.filesystemTreeView.expand(all_libraries_index)
+
+        # If no specific root or path, select "All libraries"
+        if root_and_path.root_id is None:
+            self.filesystemTreeView.selectionModel().select(all_libraries_index, QItemSelectionModel.ClearAndSelect)
+            return
+
+        # Find the library root node
+        for i in range(self.library_tree_model.rowCount(all_libraries_index)):
+            library_index = self.library_tree_model.index(i, 0, all_libraries_index)
+            library_node = self.library_tree_model.getItem(library_index)
+
+            if isinstance(library_node, LibraryRootNode) and library_node.library_root.rowid == root_and_path.root_id:
+                # If no specific path, select the library root
+                if not root_and_path.path:
+                    self.filesystemTreeView.selectionModel().select(library_index, QItemSelectionModel.ClearAndSelect)
+                    return
+
+                # Check if the library root's paths have been loaded
+                if library_node.library_root.rowid not in self.library_tree_model.loaded_library_roots:
+                    # Store the selection for later and expand the node to trigger loading
+                    self.pending_selection = root_and_path
+                    self.filesystemTreeView.expand(library_index)
+                    return
+
+                # Expand the library root to ensure its children are visible
+                self.filesystemTreeView.expand(library_index)
+
+                # Find the path node
+                path_segments = root_and_path.path.split('/')
+                current_index = library_index
+
+                for segment in path_segments:
+                    if not segment:  # Skip empty segments
+                        continue
+
+                    found = False
+                    for j in range(self.library_tree_model.rowCount(current_index)):
+                        child_index = self.library_tree_model.index(j, 0, current_index)
+                        child_node = self.library_tree_model.getItem(child_index)
+
+                        if isinstance(child_node, PathNode) and child_node.path_segment == segment:
+                            current_index = child_index
+                            self.filesystemTreeView.expand(current_index)
+                            found = True
+                            break
+
+                    if not found:
+                        # If we can't find the exact path, select the closest parent
+                        break
+
+                # Select the found node
+                self.filesystemTreeView.selectionModel().select(current_index, QItemSelectionModel.ClearAndSelect)
+                self.filesystemTreeView.scrollTo(current_index)
+                return
+
+        # If we couldn't find the library root, select "All libraries"
+        self.filesystemTreeView.selectionModel().select(all_libraries_index, QItemSelectionModel.ClearAndSelect)
+
     def reset_date_criteria(self):
         self.search_criteria.start_datetime = None
         self.search_criteria.end_datetime = None
 
     def add_exposure_filter(self):
-        pass
+        from .ExposureDialog import ExposureDialog
+        dialog = ExposureDialog(self.context)
+
+        # Check if there's a selected image with an exposure value
+        selected_image = self.get_selected_image()
+        if selected_image and selected_image.exposure is not None:
+            # Use the selected image's exposure as the default
+            dialog.set_exposure(selected_image.exposure)
+        elif self.search_criteria.exposure:
+            try:
+                dialog.set_exposure(float(self.search_criteria.exposure))
+            except (ValueError, TypeError):
+                pass
+
+        if dialog.exec():
+            exposure = dialog.get_exposure()
+            text = f"Exposure: {exposure} s"
+            filter_button = FilterButton(self, text, AdvancedFilter.EXPOSURE)
+            filter_button.on_remove_filter.connect(self.reset_exposure_criteria)
+            self.add_filter_button_control(filter_button)
+            self.search_criteria.exposure = str(exposure)
+            self.update_search_criteria()
+
+    def reset_exposure_criteria(self):
+        self.search_criteria.exposure = ""
+
+    def add_telescope_filter(self):
+        from .TelescopeDialog import TelescopeDialog
+        dialog = TelescopeDialog(self.context)
+
+        # Check if there's a selected image with a telescope value
+        selected_image = self.get_selected_image()
+        if selected_image and selected_image.telescope is not None:
+            # Use the selected image's telescope as the default
+            dialog.set_telescope(selected_image.telescope)
+        elif self.search_criteria.telescope:
+            dialog.set_telescope(self.search_criteria.telescope)
+
+        if dialog.exec():
+            telescope = dialog.get_telescope()
+            text = f"Telescope: {telescope}"
+            filter_button = FilterButton(self, text, AdvancedFilter.TELESCOPE)
+            filter_button.on_remove_filter.connect(self.reset_telescope_criteria)
+            self.add_filter_button_control(filter_button)
+            self.search_criteria.telescope = telescope
+            self.update_search_criteria()
+
+    def reset_telescope_criteria(self):
+        self.search_criteria.telescope = ""
+
+    def add_binning_filter(self):
+        from .BinningDialog import BinningDialog
+        dialog = BinningDialog(self.context)
+
+        # Check if there's a selected image with a binning value
+        selected_image = self.get_selected_image()
+        if selected_image and selected_image.binning is not None:
+            # Use the selected image's binning as the default
+            dialog.set_binning(selected_image.binning)
+        elif self.search_criteria.binning:
+            try:
+                dialog.set_binning(int(self.search_criteria.binning))
+            except (ValueError, TypeError):
+                pass
+
+        if dialog.exec():
+            binning = dialog.get_binning()
+            text = f"Binning: {binning}"
+            filter_button = FilterButton(self, text, AdvancedFilter.BINNING)
+            filter_button.on_remove_filter.connect(self.reset_binning_criteria)
+            self.add_filter_button_control(filter_button)
+            self.search_criteria.binning = str(binning)
+            self.update_search_criteria()
+
+    def reset_binning_criteria(self):
+        self.search_criteria.binning = ""
+
+    def add_gain_filter(self):
+        from .GainDialog import GainDialog
+        dialog = GainDialog(self.context)
+
+        # Check if there's a selected image with a gain value
+        selected_image = self.get_selected_image()
+        if selected_image and selected_image.gain is not None:
+            # Use the selected image's gain as the default
+            dialog.set_gain(selected_image.gain)
+        elif self.search_criteria.gain:
+            try:
+                dialog.set_gain(int(self.search_criteria.gain))
+            except (ValueError, TypeError):
+                pass
+
+        if dialog.exec():
+            gain = dialog.get_gain()
+            text = f"Gain: {gain}"
+            filter_button = FilterButton(self, text, AdvancedFilter.GAIN)
+            filter_button.on_remove_filter.connect(self.reset_gain_criteria)
+            self.add_filter_button_control(filter_button)
+            self.search_criteria.gain = str(gain)
+            self.update_search_criteria()
+
+    def reset_gain_criteria(self):
+        self.search_criteria.gain = ""
+
+    def add_temperature_filter(self):
+        from .TemperatureDialog import TemperatureDialog
+        dialog = TemperatureDialog(self.context)
+
+        # Check if there's a selected image with a set_temp value
+        selected_image = self.get_selected_image()
+        if selected_image and selected_image.set_temp is not None:
+            # Use the selected image's set_temp as the default
+            dialog.set_temperature(selected_image.set_temp)
+        elif self.search_criteria.temperature:
+            try:
+                dialog.set_temperature(float(self.search_criteria.temperature))
+            except (ValueError, TypeError):
+                pass
+
+        if dialog.exec():
+            temperature = dialog.get_temperature()
+            text = f"Temperature: {temperature} °C"
+            filter_button = FilterButton(self, text, AdvancedFilter.TEMPERATURE)
+            filter_button.on_remove_filter.connect(self.reset_temperature_criteria)
+            self.add_filter_button_control(filter_button)
+            self.search_criteria.temperature = str(temperature)
+            self.update_search_criteria()
+
+    def reset_temperature_criteria(self):
+        self.search_criteria.temperature = ""
+
+    def get_selected_image(self):
+        """Get the image data of the first selected file, if any."""
+        selected_rows = self.dataView.selectionModel().selectedRows()
+        if not selected_rows:
+            return None
+
+        # Get the first selected row
+        first_row = selected_rows[0].row()
+
+        # Get the name item from the first column
+        name_index = self.data_model.index(first_row, 0)
+
+        # Get the file object from the name item's data
+        with self.context.database.bind_ctx(CORE_MODELS):
+            file = self.data_model.data(name_index, Qt.UserRole)
+            if hasattr(file, 'image') and file.image:
+                return file.image
+
+        return None
 
     def add_datetime_filter(self):
         dialog = DateRangeDialog(self.context)
-        if self.search_criteria.start_datetime is not None:
+
+        # Check if there's a selected image with a date_obs value
+        selected_image = self.get_selected_image()
+        if selected_image and selected_image.date_obs is not None:
+            # Use the selected image's date_obs as the default
+            from zoneinfo import ZoneInfo
+            utctime = selected_image.date_obs.replace(tzinfo=timezone.utc)
+            localtime = utctime.astimezone(tz=None)
+            dialog.set_start_date(localtime)
+            dialog.set_end_date(localtime)
+        elif self.search_criteria.start_datetime is not None:
             dialog.set_start_date(self.search_criteria.start_datetime)
-        if self.search_criteria.end_datetime is not None:
-            dialog.set_end_date(self.search_criteria.end_datetime)
+            if self.search_criteria.end_datetime is not None:
+                dialog.set_end_date(self.search_criteria.end_datetime)
+
         if dialog.exec():
             (start_datetime, end_datetime) = dialog.get_datetime_range()
             text = f"Date {_format_date(start_datetime)} - {_format_date(end_datetime)}"
@@ -388,3 +679,7 @@ class FilterButton(QPushButton):
 class AdvancedFilter(Enum):
     EXPOSURE = 1
     DATETIME = 2
+    TELESCOPE = 3
+    BINNING = 4
+    GAIN = 5
+    TEMPERATURE = 6
