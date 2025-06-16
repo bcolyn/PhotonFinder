@@ -91,8 +91,15 @@
     <addaction name="actionGain"/>
     <addaction name="actionTemperature"/>
    </widget>
+   <widget class="QMenu" name="menu_Tools">
+    <property name="title">
+     <string>&amp;Tools</string>
+    </property>
+    <addaction name="action_Export_Data"/>
+   </widget>
    <addaction name="menu_File"/>
    <addaction name="menuFilter"/>
+   <addaction name="menu_Tools"/>
    <addaction name="menu_Help"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
@@ -171,6 +178,11 @@
     <string>Temperature</string>
    </property>
   </action>
+  <action name="action_Export_Data">
+   <property name="text">
+    <string>Export data</string>
+   </property>
+  </action>
  </widget>
  <resources/>
  <connections>
@@ -183,6 +195,22 @@
     <hint type="sourcelabel">
      <x>399</x>
      <y>300</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>action_Export_Data</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>export_data()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
     </hint>
     <hint type="destinationlabel">
      <x>399</x>
@@ -345,5 +373,6 @@
   <slot>add_datetime_filter()</slot>
   <slot>add_exposure_filter()</slot>
   <slot>view_log()</slot>
+  <slot>export_data()</slot>
  </slots>
 </ui>

@@ -38,6 +38,11 @@ def fopen(filename: Path | str):
         return open(filename, mode='rb')
 
 
+def is_compressed(filename):
+    last_ext = os.path.splitext(filename)[1]
+    return last_ext in compressed_exts.keys()
+
+
 def read_fits_header(file: str | Path, status_reporter: StatusReporter = None) -> bytes | None:
     """
     Read the FITS header from a file.
@@ -209,8 +214,7 @@ class Importer:
     @staticmethod
     def is_compressed(f: Info) -> bool:
         filename = f.name
-        last_ext = os.path.splitext(filename)[1]
-        return last_ext in compressed_exts.keys()
+        return is_compressed(filename)
 
     @staticmethod
     def _file_filter(x: Info):

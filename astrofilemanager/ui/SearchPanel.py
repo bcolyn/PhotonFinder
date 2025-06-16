@@ -116,6 +116,42 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         button.hide()
         button.destroy()
 
+    def get_selected_files(self):
+        """Get the currently selected files in the data grid."""
+        selected_indexes = self.dataView.selectionModel().selectedRows()
+        selected_files = []
+
+        for index in selected_indexes:
+            # Get the Image object from the model
+            image = self.get_image_at_row(index.row())
+            if image:
+                selected_files.append(image)
+
+        return selected_files
+
+    def get_total_files(self):
+        """Get the total number of files matching the current filters."""
+        return self.data_model.rowCount()
+
+    def get_all_files(self):
+        """Get all files matching the current filters."""
+        all_files = []
+
+        for row in range(self.data_model.rowCount()):
+            image = self.get_image_at_row(row)
+            if image:
+                all_files.append(image)
+
+        return all_files
+
+    def get_image_at_row(self, row):
+        """Get the Image object at the specified row."""
+        if row < 0 or row >= self.data_model.rowCount():
+            return None
+
+        name_index = self.data_model.index(row, 0)
+        return self.data_model.data(name_index, Qt.UserRole)
+
     def refresh_data_grid(self):
         """Trigger a search with the current search criteria."""
         if self.update_in_progress:
@@ -629,6 +665,36 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.search_criteria.start_datetime = start_datetime
             self.search_criteria.end_datetime = end_datetime
             self.update_search_criteria()
+
+    def export_data(self):
+        # Get the selected files
+        selected_files = self.get_selected_files()
+
+        # If no files are selected, use the search criteria
+        if not selected_files:
+            # Get the total number of files matching the current filters
+            total_files = self.get_total_files()
+
+            # If there are too many files, ask for confirmation
+            if total_files > 100:
+                response = QMessageBox.question(
+                    self,
+                    "Export Confirmation",
+                    f"No files are selected. Do you want to export all files matching the current filters?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if response == QMessageBox.No:
+                    return
+
+            # Pass the search criteria instead of loading all files
+            from .ExportDialog import ExportDialog
+            dialog = ExportDialog(self.context, self.search_criteria, parent=self)
+            dialog.exec()
+        else:
+            # Show the export dialog with selected files
+            from .ExportDialog import ExportDialog
+            dialog = ExportDialog(self.context, selected_files, parent=self)
+            dialog.exec()
 
 
 def _get_combo_value(combo: QComboBox) -> str | None:

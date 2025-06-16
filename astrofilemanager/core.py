@@ -86,6 +86,30 @@ class Settings:
         """Set the 'cache compressed headers' setting."""
         self.settings.setValue("cache_compressed_headers", value)
 
+    def get_last_export_path(self):
+        """Get the last export path."""
+        return self.settings.value("last_export_path", "", str)
+
+    def set_last_export_path(self, value):
+        """Set the last export path."""
+        self.settings.setValue("last_export_path", value)
+
+    def get_last_export_decompress(self):
+        """Get the last export decompress option."""
+        return self.settings.value("last_export_decompress", True, bool)
+
+    def set_last_export_decompress(self, value):
+        """Set the last export decompress option."""
+        self.settings.setValue("last_export_decompress", value)
+
+    def get_last_export_patterns(self):
+        """Get the last export patterns."""
+        return self.settings.value("last_export_patterns", [], list)
+
+    def set_last_export_patterns(self, value):
+        """Set the last export patterns."""
+        self.settings.setValue("last_export_patterns", value)
+
     def sync(self):
         """Ensure settings are saved to disk."""
         self.settings.sync()

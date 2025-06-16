@@ -120,7 +120,7 @@ class Image(Model):
         database = None
 
     @staticmethod
-    def _apply_search_criteria(query, criteria, exclude_ref=None):
+    def apply_search_criteria(query, criteria, exclude_ref=None):
         """Apply search criteria to the query."""
         conditions = []
 
@@ -214,7 +214,7 @@ class Image(Model):
     def get_distinct_values_available(search_criteria: SearchCriteria, field_ref) -> list[str | None]:
         query = Image.select(fn.Distinct(field_ref)).join(File, JOIN.INNER, on=(File.rowid == Image.file)).order_by(
             field_ref)
-        query = Image._apply_search_criteria(query, search_criteria, field_ref)
+        query = Image.apply_search_criteria(query, search_criteria, field_ref)
         return list(map(lambda x: x[0], query.tuples()))
 
     @staticmethod

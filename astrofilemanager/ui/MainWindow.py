@@ -12,7 +12,7 @@ from .SettingsDialog import SettingsDialog
 from .generated.MainWindow_ui import Ui_MainWindow
 
 
-class UIStatusReporter(StatusReporter,QObject):
+class UIStatusReporter(StatusReporter, QObject):
     on_message = Signal(str)
 
     def __init__(self):
@@ -176,3 +176,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # Show the log window
         log_window.exec()
+
+    def export_data(self):
+        self.tabWidget.currentWidget().export_data()

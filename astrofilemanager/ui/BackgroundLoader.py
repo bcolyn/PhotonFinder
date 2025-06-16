@@ -139,7 +139,7 @@ class SearchResultsLoader(BackgroundLoaderBase):
                      .order_by(File.root, File.path, File.name))
 
             # Apply search criteria to the query
-            query = Image._apply_search_criteria(query, search_criteria)
+            query = Image.apply_search_criteria(query, search_criteria)
 
             # Get total count for pagination
             self.total_results = query.count()
