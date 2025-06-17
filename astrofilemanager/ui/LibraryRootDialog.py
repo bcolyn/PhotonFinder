@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 from PySide6.QtCore import Slot, Qt
-from PySide6.QtWidgets import QDialog, QTableWidgetItem, QMessageBox, QPushButton
+from PySide6.QtWidgets import QDialog, QTableWidgetItem, QMessageBox
 
 from astrofilemanager.models import LibraryRoot
 from astrofilemanager.ui.LibraryRootEditDialog import LibraryRootEditDialog

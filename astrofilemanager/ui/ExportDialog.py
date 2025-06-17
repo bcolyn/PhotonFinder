@@ -12,7 +12,6 @@ from astrofilemanager.core import ApplicationContext
 from astrofilemanager.models import Image, File, SearchCriteria
 from astrofilemanager.ui.BackgroundLoader import BackgroundLoaderBase
 from astrofilemanager.ui.generated.ExportDialog_ui import Ui_ExportDialog
-from conftest import filesystem
 from filesystem import is_compressed, fopen
 
 

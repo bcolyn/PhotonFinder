@@ -1,7 +1,8 @@
 import logging
 import time
-from PySide6.QtWidgets import *
+
 from PySide6.QtCore import QThread, Signal, QObject
+from PySide6.QtWidgets import *
 
 from astrofilemanager.core import ApplicationContext, StatusReporter
 from astrofilemanager.filesystem import Importer, update_fits_header_cache, check_missing_header_cache

@@ -1,10 +1,9 @@
-from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Optional, Tuple
 
+import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astropy.io.fits import Header
-import astropy.units as u
 from astropy_healpix import HEALPix
 
 from astrofilemanager.models import File, Image

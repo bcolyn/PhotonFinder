@@ -13,8 +13,8 @@ from fs.info import Info
 from peewee import JOIN
 
 from astrofilemanager.core import StatusReporter
-from astrofilemanager.models import File, LibraryRoot, FitsHeader, Image
 from astrofilemanager.fits_handlers import normalize_fits_header
+from astrofilemanager.models import File, LibraryRoot, FitsHeader, Image
 
 compressed_exts = {
     ".xz": lzma.open,

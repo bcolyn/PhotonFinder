@@ -1,5 +1,4 @@
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout
-from PySide6.QtCore import Qt
 
 
 class LogWindow(QDialog):

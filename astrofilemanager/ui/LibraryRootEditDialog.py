@@ -4,7 +4,6 @@ from typing import Optional
 
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
-from peewee import Database
 
 from astrofilemanager.models import LibraryRoot
 from astrofilemanager.ui.generated.LibraryRootEditDialog_ui import Ui_LibraryRootEditDialog

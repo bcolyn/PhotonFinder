@@ -694,7 +694,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         selected_image = self.get_selected_image()
         if selected_image and selected_image.date_obs is not None:
             # Use the selected image's date_obs as the default
-            from zoneinfo import ZoneInfo
             utctime = selected_image.date_obs.replace(tzinfo=timezone.utc)
             localtime = utctime.astimezone(tz=None)
             dialog.set_start_date(localtime)

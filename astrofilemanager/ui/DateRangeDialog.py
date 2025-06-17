@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from PySide6.QtWidgets import QDialog
 
-from core import ApplicationContext
+from astrofilemanager.core import ApplicationContext
 from astrofilemanager.ui.generated.DateRangeDialog_ui import Ui_DateRangeDialog
 
 

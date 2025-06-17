@@ -1,5 +1,5 @@
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDialog, QInputDialog, QMessageBox
-from PySide6.QtCore import Slot, Signal
 
 from astrofilemanager.core import ApplicationContext
 from astrofilemanager.ui.BackgroundLoader import BackgroundLoaderBase
