@@ -29,6 +29,9 @@ class SearchCriteria:
     gain: str = ""
     temperature: str = ""
     use_coordinates: bool = False
+    coord_ra: str = ""  # Right Ascension in hours (can be in various formats)
+    coord_dec: str = ""  # Declination in degrees (can be in various formats)
+    coord_radius: float = 1.0  # Search radius in decimal degrees
     start_datetime: datetime | None = None
     end_datetime: datetime | None = None
 
@@ -206,6 +209,29 @@ class Image(Model):
 
         if criteria.end_datetime and exclude_ref is not Image.date_obs:
             conditions.append(Image.date_obs <= criteria.end_datetime)
+
+        # Filter by coordinates
+        if criteria.use_coordinates and criteria.coord_ra and criteria.coord_dec and exclude_ref is not Image.coord_pix256:
+            try:
+                from astropy.coordinates import SkyCoord
+                import astropy.units as u
+                from astropy_healpix import HEALPix
+
+                # Parse RA and DEC from strings to SkyCoord
+                coords = SkyCoord(criteria.coord_ra, criteria.coord_dec, unit=(u.hourangle, u.deg), frame='icrs')
+
+                # Create HEALPix object with the same parameters as used in fits_handlers.py
+                hp = HEALPix(nside=256, order='nested', frame='icrs')
+
+                # Get pixels in the cone
+                radius = criteria.coord_radius * u.deg
+                pixels = hp.cone_search_skycoord(coords, radius)
+
+                # Filter images where coord_pix256 is in the list of pixels
+                if len(pixels) > 0:
+                    conditions.append(Image.coord_pix256.in_(pixels))
+            except Exception as e:
+                print(f"Error applying coordinates filter: {str(e)}")
 
         # Apply all conditions to the query
         for condition in conditions:

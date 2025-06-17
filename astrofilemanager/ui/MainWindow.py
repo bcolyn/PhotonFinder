@@ -164,6 +164,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def add_datetime_filter(self):
         self.tabWidget.currentWidget().add_datetime_filter()
 
+    def add_coordinates_filter(self):
+        self.tabWidget.currentWidget().add_coordinates_filter()
+
     def view_log(self):
         """
         Open the log window to display log messages.

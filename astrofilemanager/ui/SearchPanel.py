@@ -619,6 +619,55 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def reset_temperature_criteria(self):
         self.search_criteria.temperature = ""
 
+    def add_coordinates_filter(self):
+        from .CoordinatesDialog import CoordinatesDialog
+        dialog = CoordinatesDialog(self.context)
+
+        # Check if there's a selected image with coordinate values
+        selected_image = self.get_selected_image()
+        if selected_image and selected_image.coord_ra is not None and selected_image.coord_dec is not None:
+            # Use the selected image's coordinates as the default
+            # Convert from decimal degrees to string format
+            from astropy.coordinates import SkyCoord
+            import astropy.units as u
+
+            try:
+                # Create SkyCoord from the image's coordinates
+                coords = SkyCoord(selected_image.coord_ra, selected_image.coord_dec, unit=u.deg, frame='icrs')
+
+                # Format RA as hours and DEC as degrees
+                ra_str = coords.ra.to_string(unit=u.hour, sep=':', precision=2)
+                dec_str = coords.dec.to_string(unit=u.deg, sep=':', precision=2)
+
+                dialog.set_coordinates(ra_str, dec_str, self.search_criteria.coord_radius)
+            except Exception as e:
+                print(f"Error setting coordinates from selected image: {str(e)}")
+        elif self.search_criteria.coord_ra and self.search_criteria.coord_dec:
+            # Use the existing search criteria
+            dialog.set_coordinates(
+                self.search_criteria.coord_ra,
+                self.search_criteria.coord_dec,
+                self.search_criteria.coord_radius
+            )
+
+        if dialog.exec():
+            ra, dec, radius = dialog.get_coordinates()
+            text = f"Coordinates: RA={ra}, DEC={dec}, r={radius}°"
+            filter_button = FilterButton(self, text, AdvancedFilter.COORDINATES)
+            filter_button.on_remove_filter.connect(self.reset_coordinates_criteria)
+            self.add_filter_button_control(filter_button)
+            self.search_criteria.use_coordinates = True
+            self.search_criteria.coord_ra = ra
+            self.search_criteria.coord_dec = dec
+            self.search_criteria.coord_radius = radius
+            self.update_search_criteria()
+
+    def reset_coordinates_criteria(self):
+        self.search_criteria.use_coordinates = False
+        self.search_criteria.coord_ra = ""
+        self.search_criteria.coord_dec = ""
+        self.search_criteria.coord_radius = 1.0
+
     def get_selected_image(self):
         """Get the image data of the first selected file, if any."""
         selected_rows = self.dataView.selectionModel().selectedRows()
@@ -749,3 +798,4 @@ class AdvancedFilter(Enum):
     BINNING = 4
     GAIN = 5
     TEMPERATURE = 6
+    COORDINATES = 7
