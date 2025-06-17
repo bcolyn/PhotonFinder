@@ -30,7 +30,7 @@ class SearchCriteria:
     temperature: str = ""
     coord_ra: str = ""  # Right Ascension in hours (can be in various formats)
     coord_dec: str = ""  # Declination in degrees (can be in various formats)
-    coord_radius: float = 1.0  # Search radius in decimal degrees
+    coord_radius: float = 0.5  # Search radius in decimal degrees
     start_datetime: datetime | None = None
     end_datetime: datetime | None = None
 

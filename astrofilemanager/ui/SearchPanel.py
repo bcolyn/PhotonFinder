@@ -665,7 +665,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def reset_coordinates_criteria(self):
         self.search_criteria.coord_ra = ""
         self.search_criteria.coord_dec = ""
-        self.search_criteria.coord_radius = 1.0
+        self.search_criteria.coord_radius = 0.5
 
     def get_selected_image(self):
         """Get the image data of the first selected file, if any."""
