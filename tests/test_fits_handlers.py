@@ -101,6 +101,16 @@ END""".replace('\r\n', '\n')
         assert isinstance(image.date_obs, datetime)
         assert image.date_obs == expected_date
 
+        # Assert coordinate fields
+        assert image.coord_ra is not None
+        assert image.coord_dec is not None
+        assert image.coord_pix256 is not None
+        assert isinstance(image.coord_ra, float)
+        assert isinstance(image.coord_dec, float)
+        assert isinstance(image.coord_pix256, int)
+        assert round(image.coord_ra, 6) == round(283.395539831101, 6)  # RA from header
+        assert round(image.coord_dec, 6) == round(33.0340625, 6)  # DEC from header
+
     def test_nina_header(self):
         """Test processing a NINA FITS header."""
         file = self.create_test_file()
@@ -156,6 +166,11 @@ END"""
         expected_date = datetime(2021, 3, 2, 20, 19, 0, 455000)
         assert isinstance(image.date_obs, datetime)
         assert image.date_obs == expected_date
+
+        # Assert coordinate fields, everything 0 is the same as missing
+        assert image.coord_ra is None
+        assert image.coord_dec is None
+        assert image.coord_pix256 is None
 
     def test_sharpcap_header(self):
         """Test processing a SharpCap FITS header."""
@@ -224,6 +239,16 @@ END                                                                             
         expected_date = datetime(2025, 3, 19, 22, 51, 59, 384632)
         assert isinstance(image.date_obs, datetime)
         assert image.date_obs == expected_date
+
+        # Assert coordinate fields
+        assert image.coord_ra is not None
+        assert image.coord_dec is not None
+        assert image.coord_pix256 is not None
+        assert isinstance(image.coord_ra, float)
+        assert isinstance(image.coord_dec, float)
+        assert isinstance(image.coord_pix256, int)
+        assert round(image.coord_ra, 6) == round(187.3498863705, 6)  # RA from header
+        assert round(image.coord_dec, 6) == round(12.8925716003, 6)  # DEC from header
 
 
 def fix_embedded_header(header_str: str) -> bytes:

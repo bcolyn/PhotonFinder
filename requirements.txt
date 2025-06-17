@@ -4,6 +4,7 @@ pyinstaller-hooks-contrib==2025.0
 pyqt-distutils==0.7.3
 peewee~=3.18.1
 astropy~=7.1.0
+astropy-healpix~=1.1.2
 
 setuptools~=80.4.0
 fs~=2.4.16

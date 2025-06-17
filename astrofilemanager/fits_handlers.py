@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Tuple
 
+from astropy.coordinates import SkyCoord
 from astropy.io.fits import Header
+import astropy.units as u
+from astropy_healpix import HEALPix
 
 from astrofilemanager.models import File, Image
 
@@ -79,23 +82,42 @@ class FitsHeaderHandler:
             object_name = self._get_object_name(header)
             date_obs = self._get_date_obs(header)
 
+            # Extract coordinates and HEALPix value
+            coord_ra, coord_dec, coord_pix256 = self._get_coordinates(header)
+
             # Create and return an Image object
             return Image(
-                file=file, 
-                image_type=image_type, 
-                filter=filter_name, 
-                exposure=exposure, 
+                file=file,
+                image_type=image_type,
+                filter=filter_name,
+                exposure=exposure,
                 gain=gain,
-                binning=binning, 
-                set_temp=set_temp, 
+                binning=binning,
+                set_temp=set_temp,
                 camera=camera,
                 telescope=telescope,
                 object_name=object_name,
-                date_obs=date_obs
+                date_obs=date_obs,
+                coord_ra=coord_ra,
+                coord_dec=coord_dec,
+                coord_pix256=coord_pix256
             )
         except Exception as e:
             print(f"Error processing header: {str(e)}")
             return None
+
+    # def get_wcs_values(self, header: Header) -> dict:
+    # NOTE: getting a usable WCS from most raw FITS subs is tricky
+    # we try and avoid it for now
+    # see http://tdc-www.harvard.edu/wcstools/wcstools.wcs.html, but TL;DR: we need center, CDELT1/2 and CROTA2
+    # For SGP
+    #  - SCALE/PIXSCALE => CDELT1 = CDELT2 (0.000181708333333333 = deg per pixel, SGP has "/px)
+    #  - ANGLE/POSANGLE => CROTA1 = CROTA2 ( 258.37 =>   78.36999511718801  ) (180 deg diff i.e upside down)
+    # For NINA
+    # - center from telescope
+    # - scale = ? XPIXSZ + XBINNING + FOCALLEN
+    # - rot = ignore? we do cone search anyway
+    # For SeeStar - all OK
 
     def _get_image_type(self, header: Header) -> Optional[str]:
         return header.get('IMAGETYP')
@@ -126,6 +148,62 @@ class FitsHeaderHandler:
 
     def _get_date_obs(self, header: Header) -> Optional[datetime]:
         return _datetime(header.get('DATE-OBS'))
+
+    def _get_coordinates(self, header: Header) -> Tuple[Optional[float], Optional[float], Optional[int]]:
+        """
+        Extract RA and DEC from the FITS header and calculate HEALPix value.
+
+        RA can be in either "RA" (preferred) or "OBJCTRA" fields.
+        DEC can be in either "DEC" (preferred) or "OBJCTDEC" fields.
+
+        Returns:
+            Tuple containing:
+            - RA as a floating point value in hours
+            - DEC as a floating point value in degrees
+            - HEALPix value (integer) with nside=256
+        """
+        # Extract RA from header
+        ra_value = header.get('RA')
+        if ra_value is None:
+            ra_value = header.get('OBJCTRA')
+
+        # Extract DEC from header
+        dec_value = header.get('DEC')
+        if dec_value is None:
+            dec_value = header.get('OBJCTDEC')
+
+        # If we don't have both RA and DEC, return None for all values
+        if ra_value is None or dec_value is None:
+            return None, None, None
+
+        try:
+            # Check if RA and DEC are already in degrees (numeric values)
+            ra_numeric = isinstance(ra_value, (int, float))
+            dec_numeric = isinstance(dec_value, (int, float))
+
+            if ra_numeric and dec_numeric:
+                # RA and DEC are already in degrees, use them directly for SkyCoord
+                ra_degrees = float(ra_value)
+                dec_degrees = float(dec_value)
+                # Create SkyCoord object for HEALPix calculation
+                coords = SkyCoord(float(ra_value), dec_degrees, unit=u.deg, frame='icrs')
+            else:
+                # RA and DEC are in string format (HH:MM:SS), parse them
+                coords = SkyCoord(ra_value, dec_value, unit=(u.hourangle, u.deg), frame='icrs')
+                ra_degrees = coords.ra.degree
+                dec_degrees = coords.dec.degree
+
+            if ra_degrees == 0.0 and dec_degrees == 0.0:
+                return None, None, None
+
+            # Calculate HEALPix value with nside=256
+            hp = HEALPix(nside=256, order='nested', frame='icrs')
+            healpix_index = hp.skycoord_to_healpix(coords)
+
+            return ra_degrees, dec_degrees, int(healpix_index)
+        except Exception as e:
+            print(f"Error processing coordinates: {str(e)}")
+            return None, None, None
 
 
 class SharpCapHandler(FitsHeaderHandler):

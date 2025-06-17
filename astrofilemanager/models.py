@@ -115,6 +115,9 @@ class Image(Model):
     telescope = CharField(null=True, index=True)
     object_name = CharField(null=True, index=True)
     date_obs = DateTimeField(null=True, index=True)
+    coord_ra = FloatField(null=True, index=True)  # Right Ascension as floating point value
+    coord_dec = FloatField(null=True, index=True)  # Declination as floating point value
+    coord_pix256 = IntegerField(null=True, index=True)  # HEALPix value (nside=256)
 
     class Meta:
         database = None
