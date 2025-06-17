@@ -71,6 +71,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.filter_filter_combo.currentTextChanged.connect(self.update_search_criteria)
         self.filter_cam_combo.currentTextChanged.connect(self.update_search_criteria)
         self.filter_name_text.textChanged.connect(self.update_search_criteria)
+        self.filter_fname_text.textChanged.connect(self.update_search_criteria)
         self.checkBox.toggled.connect(self.update_search_criteria)
 
     def on_library_tree_ready(self):
@@ -326,6 +327,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.search_criteria.object_name = self.filter_name_text.text()
         else:
             self.search_criteria.object_name = None
+
+        if self.filter_fname_text.text():
+            self.search_criteria.file_name = self.filter_fname_text.text()
+        else:
+            self.search_criteria.file_name = None
 
         self.search_criteria.paths_as_prefix = self.checkBox.isChecked()
         # Refresh the data grid with the updated search criteria
@@ -651,14 +657,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button = FilterButton(self, text, AdvancedFilter.COORDINATES)
             filter_button.on_remove_filter.connect(self.reset_coordinates_criteria)
             self.add_filter_button_control(filter_button)
-            self.search_criteria.use_coordinates = True
             self.search_criteria.coord_ra = ra
             self.search_criteria.coord_dec = dec
             self.search_criteria.coord_radius = radius
             self.update_search_criteria()
 
     def reset_coordinates_criteria(self):
-        self.search_criteria.use_coordinates = False
         self.search_criteria.coord_ra = ""
         self.search_criteria.coord_dec = ""
         self.search_criteria.coord_radius = 1.0

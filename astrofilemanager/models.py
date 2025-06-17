@@ -21,14 +21,13 @@ class SearchCriteria:
     filter: str | None = ""
     type: str | None = ""
     camera: str | None = ""
-
+    file_name: str | None = ""
     object_name: str = ""
     exposure: str = ""
     telescope: str = ""
     binning: str = ""
     gain: str = ""
     temperature: str = ""
-    use_coordinates: bool = False
     coord_ra: str = ""  # Right Ascension in hours (can be in various formats)
     coord_dec: str = ""  # Declination in degrees (can be in various formats)
     coord_radius: float = 1.0  # Search radius in decimal degrees
@@ -173,6 +172,9 @@ class Image(Model):
         if criteria.object_name and exclude_ref is not Image.object_name:
             conditions.append(Image.object_name.contains(criteria.object_name))
 
+        if criteria.file_name and exclude_ref is not File.name:
+            conditions.append(File.name.contains(criteria.file_name))
+
         if criteria.exposure and exclude_ref is not Image.exposure:
             try:
                 exp = float(criteria.exposure)
@@ -211,7 +213,7 @@ class Image(Model):
             conditions.append(Image.date_obs <= criteria.end_datetime)
 
         # Filter by coordinates
-        if criteria.use_coordinates and criteria.coord_ra and criteria.coord_dec and exclude_ref is not Image.coord_pix256:
+        if criteria.coord_ra and criteria.coord_dec and exclude_ref is not Image.coord_pix256:
             try:
                 from astropy.coordinates import SkyCoord
                 import astropy.units as u
