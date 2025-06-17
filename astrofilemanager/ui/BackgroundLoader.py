@@ -108,7 +108,7 @@ class SearchResultsLoader(BackgroundLoaderBase):
     """Helper class for asynchronous loading of search results from the database."""
 
     # Signal emitted when search results are loaded
-    results_loaded = Signal(list, bool)  # results, has_more
+    results_loaded = Signal(list, int, int, bool)  # results, page, total, has_more
 
     def __init__(self, context: ApplicationContext):
         super().__init__(context)
@@ -154,7 +154,7 @@ class SearchResultsLoader(BackgroundLoaderBase):
             has_more = (page + 1) * self.page_size < self.total_results
 
             # Emit signal with the results
-            self.results_loaded.emit(results, has_more)
+            self.results_loaded.emit(results, page, self.total_results, has_more)
         except Exception as e:
             logging.error(f"Error searching files: {e}", exc_info=True)
             self.results_loaded.emit([], False)

@@ -157,14 +157,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if self.update_in_progress:
             return
 
-        self.data_model.clear()
-        self.data_model.setHorizontalHeaderLabels([
-            "File name", "Type", "Filter", "Exposure", "Gain", "Binning", "Set Temp",
-            "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified"
-        ])
-
-        # Reset total files counter when starting a new search
-        self.total_files = 0
         self.context.status_reporter.update_status("Searching...")
 
         self.search_results_loader.search(self.search_criteria)
@@ -224,19 +216,22 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         else:
             self.context.status_reporter.update_status(f"{self.total_files} files")
 
-    def on_search_results_loaded(self, results, has_more):
+    def on_search_results_loaded(self, results, page, total_files, has_more):
         """Handle search results loaded from the database."""
         self.has_more_results = has_more
 
         # If this is a new search (data model is empty), reset the total files counter
-        if self.data_model.rowCount() == 0:
-            self.total_files = 0
+        if page == 0:
+            self.data_model.clear()
+            self.data_model.setHorizontalHeaderLabels([
+                "File name", "Type", "Filter", "Exposure", "Gain", "Binning", "Set Temp",
+                "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified"
+            ])
 
-        # Add the new results to the total
-        self.total_files += len(results)
-
-        # Update the status bar with the total number of files
-        self.context.status_reporter.update_status(f"{self.total_files} files")
+            # Reset total files counter when starting a new search
+            self.total_files = total_files
+            # Update the status bar with the total number of files
+            self.context.status_reporter.update_status(f"{self.total_files} files")
 
         # Reset loading_more flag after processing
         self.loading_more = False

@@ -229,14 +229,14 @@ class Image(Model):
 
                 # Filter images where coord_pix256 is in the list of pixels
                 if len(pixels) > 0:
-                    conditions.append(Image.coord_pix256.in_(pixels))
+                    conditions.append(Image.coord_pix256.in_(pixels.tolist()))
             except Exception as e:
                 print(f"Error applying coordinates filter: {str(e)}")
 
         # Apply all conditions to the query
         for condition in conditions:
             query = query.where(condition)
-
+        query.order_by(File.mtime_millis.desc())
         return query
 
     @staticmethod
