@@ -64,6 +64,9 @@
     <addaction name="action_New_Tab"/>
     <addaction name="action_Close_Tab"/>
     <addaction name="separator"/>
+    <addaction name="action_Create_Database"/>
+    <addaction name="action_Open_Database"/>
+    <addaction name="separator"/>
     <addaction name="action_Scan_Libraries"/>
     <addaction name="action_Manage_Libraries"/>
     <addaction name="separator"/>
@@ -96,6 +99,7 @@
      <string>&amp;Tools</string>
     </property>
     <addaction name="action_Export_Data"/>
+    <addaction name="action_Create_Backup"/>
    </widget>
    <addaction name="menu_File"/>
    <addaction name="menuFilter"/>
@@ -180,7 +184,22 @@
   </action>
   <action name="action_Export_Data">
    <property name="text">
-    <string>Export data</string>
+    <string>Export files</string>
+   </property>
+  </action>
+  <action name="action_Create_Backup">
+   <property name="text">
+    <string>Create &amp;Backup</string>
+   </property>
+  </action>
+  <action name="action_Create_Database">
+   <property name="text">
+    <string>Create &amp;Database</string>
+   </property>
+  </action>
+  <action name="action_Open_Database">
+   <property name="text">
+    <string>&amp;Open Database</string>
    </property>
   </action>
  </widget>
@@ -442,7 +461,55 @@
     </hint>
    </hints>
   </connection>
-</connections>
+  <connection>
+   <sender>action_Create_Backup</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>create_backup()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>action_Create_Database</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>create_database()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>action_Open_Database</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_database()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
   <slot>new_search_tab()</slot>
@@ -459,5 +526,8 @@
   <slot>add_temperature_filter()</slot>
   <slot>view_log()</slot>
   <slot>export_data()</slot>
+  <slot>create_backup()</slot>
+  <slot>create_database()</slot>
+  <slot>open_database()</slot>
  </slots>
 </ui>

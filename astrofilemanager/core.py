@@ -22,7 +22,7 @@ class ApplicationContext:
 
     def __init__(self, database_path: str | Path) -> None:
         self.database_path = database_path
-        self.database: Database | None = None
+        self.database: SqliteDatabase | None = None
         self.settings = Settings()
         self.status_reporter: StatusReporter | None = None
 
@@ -61,6 +61,11 @@ class ApplicationContext:
             self.database.close()
             logging.info("Database closed")
             self.database = None
+
+    def switch_database(self, database_path: str | Path) -> None:
+        self.close_database()
+        self.database_path = database_path
+        self.open_database()
 
 
 class Settings:
@@ -119,3 +124,13 @@ class Settings:
     def sync(self):
         """Ensure settings are saved to disk."""
         self.settings.sync()
+
+
+def backup_database(db: SqliteDatabase, backup_path: str | Path):
+    import sqlite3
+    try:
+        with sqlite3.connect(backup_path) as target:
+            db.connection().backup(target)
+    finally:
+        target.close()
+    logging.info(f"Database backup created at {backup_path}")

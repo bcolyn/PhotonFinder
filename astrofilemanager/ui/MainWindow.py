@@ -4,6 +4,7 @@ import time
 from PySide6.QtCore import QThread, Signal, QObject
 from PySide6.QtWidgets import *
 
+import core
 from astrofilemanager.core import ApplicationContext, StatusReporter
 from astrofilemanager.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
 from .LibraryRootDialog import LibraryRootDialog
@@ -183,3 +184,81 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def export_data(self):
         self.tabWidget.currentWidget().export_data()
+
+    def create_backup(self):
+        if not self.context.database:
+            QMessageBox.warning(self, "Backup Failed", "Database is not open.")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Database Backup", "",
+                                                   "SQLite Database (*.db);;All Files (*)")
+
+        if not file_path:
+            return  # User cancelled
+
+        try:
+            core.backup_database(self.context.database, file_path)
+            self.context.status_reporter.update_status(f"Database backup created at {file_path}")
+            QMessageBox.information(self, "Backup Complete", f"Database backup created at {file_path}")
+        except Exception as e:
+            error_msg = f"Failed to create backup: {str(e)}"
+            logging.error(error_msg)
+            self.context.status_reporter.update_status(error_msg)
+            QMessageBox.critical(self, "Backup Failed", error_msg)
+
+    def create_database(self):
+
+        file_path, _ = QFileDialog.getSaveFileName(            self,            "Create Database",
+            "",            "SQLite Database (*.db);;All Files (*)"        )
+
+        if not file_path:
+            return  # User cancelled
+
+        try:
+            # close all tabs
+            for i in range(self.tabWidget.count()):
+                self.close_search_tab(i)
+            self.context.switch_database(file_path)
+            # open new tab
+            self.new_search_tab()
+            self.context.status_reporter.update_status(f"Database created and opened at {file_path}")
+            self.reload_library_roots_in_all_panels()
+
+        except Exception as e:
+            error_msg = f"Failed to create database: {str(e)}"
+            logging.error(error_msg)
+            self.context.status_reporter.update_status(error_msg)
+            QMessageBox.critical(self, "Database Creation Failed", error_msg)
+
+    def open_database(self):
+        """
+        Open an existing database file.
+        Prompts the user for a file and calls ApplicationContext.switch_database
+        to open the selected database.
+        """
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Database",
+            "",
+            "SQLite Database (*.db);;All Files (*)"
+        )
+
+        if not file_path:
+            return  # User cancelled
+
+        try:
+            # close all tabs
+            for i in range(self.tabWidget.count()):
+                self.close_search_tab(i)
+            self.context.switch_database(file_path)
+            # open new tab
+            self.new_search_tab()
+
+
+            self.context.status_reporter.update_status(f"Database opened at {file_path}")
+            self.reload_library_roots_in_all_panels()
+        except Exception as e:
+            error_msg = f"Failed to open database: {str(e)}"
+            logging.error(error_msg)
+            self.context.status_reporter.update_status(error_msg)
+            QMessageBox.critical(self, "Database Open Failed", error_msg)
