@@ -110,6 +110,12 @@ class Settings:
         """Set the last export patterns."""
         self.settings.setValue("last_export_patterns", value)
 
+    def get_last_light_path(self):
+        return self.settings.value("last_light_path", "", str)
+
+    def set_last_light_path(self, value):
+        self.settings.setValue("last_light_path", value)
+
     def sync(self):
         """Ensure settings are saved to disk."""
         self.settings.sync()

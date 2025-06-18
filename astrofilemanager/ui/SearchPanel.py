@@ -130,21 +130,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         return selected_files
 
-    def get_total_files(self):
-        """Get the total number of files matching the current filters."""
-        return self.data_model.rowCount()
-
-    def get_all_files(self):
-        """Get all files matching the current filters."""
-        all_files = []
-
-        for row in range(self.data_model.rowCount()):
-            image = self.get_image_at_row(row)
-            if image:
-                all_files.append(image)
-
-        return all_files
-
     def get_image_at_row(self, row):
         """Get the Image object at the specified row."""
         if row < 0 or row >= self.data_model.rowCount():
@@ -720,10 +705,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # If no files are selected, use the search criteria
         if not selected_files:
             # Get the total number of files matching the current filters
-            total_files = self.get_total_files()
-
             # If there are too many files, ask for confirmation
-            if total_files > 100:
+            if self.total_files > 100:
                 response = QMessageBox.question(
                     self,
                     "Export Confirmation",

@@ -1,6 +1,8 @@
 import logging
 import os
 import shutil
+import string
+from datetime import timedelta
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -21,13 +23,16 @@ class ExportWorker(BackgroundLoaderBase):
     finished = Signal()
     error = Signal(str)
 
+    pattern: string.Template | None = None
+
     def __init__(self, context: ApplicationContext):
         super().__init__(context)
+        self.total_files = 0
         self.files = None
         self.search_criteria = None
         self.output_path = ""
         self.decompress = False
-        self.pattern = ""
+        self.pattern = None
         self.cancelled = False
 
     def export_files(self, files_or_criteria: Union[List[File], SearchCriteria], output_path: str, decompress: bool,
@@ -42,7 +47,7 @@ class ExportWorker(BackgroundLoaderBase):
 
         self.output_path = output_path
         self.decompress = decompress
-        self.pattern = pattern
+        self.pattern = string.Template(pattern)
         self.cancelled = False
         self.total_files = total_files
         self.run_in_thread(self._export_files_task)
@@ -80,16 +85,10 @@ class ExportWorker(BackgroundLoaderBase):
         source_path = file.full_filename()
 
         # Create the output filename using the pattern
-        # For now, just use the original filename
-        # In the future, this will use string.Template to fill in variables
-        output_filename = os.path.basename(source_path)
+        output_filename = self.template_filename(file, self.pattern)
 
         # Create the full output path
         output_file_path = os.path.join(self.output_path, output_filename)
-
-        # drop the last extension for the decompressed file name
-        if is_compressed(output_file_path) and self.decompress:
-            output_file_path = os.path.splitext(output_file_path)[0]
 
         # Ensure the output directory exists
         os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
@@ -103,6 +102,47 @@ class ExportWorker(BackgroundLoaderBase):
 
         # Update progress
         self.progress.emit(int((index + 1) / total_files * 100))
+
+    def template_filename(self, file: File, template: string.Template) -> str:
+        image = file.image if hasattr(file, 'image') and file.image else None
+        file_name = file.name
+
+        # drop the last extension for the decompressed file name
+        if is_compressed(file_name) and self.decompress:
+            file_name = os.path.splitext(file_name)[0]
+
+        mapping = {
+            'filename': file_name,
+            'lib_path': file.path,
+            'image_type': image.image_type if image else None,
+            'camera': image.camera if image else None,
+            'filter': image.filter if image else None,
+            'exposure': image.exposure if image else None,
+            'gain': image.gain if image else None,
+            'binning': image.binning if image else None,
+            'set_temp': image.set_temp if image else None,
+            'telescope': image.telescope if image else None,
+            'object_name': image.object_name if image else None,
+            'date_obs': image.date_obs.isoformat() if image else None
+        }
+        if (image and image.date_obs):
+            datetime_minus12 = image.date_obs - timedelta(hours=12)
+            mapping['date_minus12'] = datetime_minus12.date().isoformat()
+            mapping['date'] = image.date_obs.date().isoformat()
+        else:
+            mapping['date_minus12'] = None
+
+        mapping['last_light_path'] = self.context.settings.get_last_light_path()
+        mapping['filename_no_ext'] = os.path.splitext(file_name)[0]
+        mapping['ext'] = os.path.splitext(file_name)[1].lstrip('.')
+        mapping['root'] = file.root.name
+
+        result = template.safe_substitute(mapping)
+        if not result:
+            result = file_name
+        if image and image.image_type == 'LIGHT':
+            self.context.settings.set_last_light_path(Path(result).parent)
+        return result
 
     def copy_file(self, source_path, output_file_path):
         if is_compressed(source_path) and self.decompress:
@@ -161,6 +201,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
 
         # Connect the accepted signal to our export_files method
         self.buttonBox.accepted.connect(self.export_files)
+        self.patternComboBox.editTextChanged.connect(self.check_combo)
 
     def load_settings(self):
         """Load settings from the application context."""
@@ -263,3 +304,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         """Called when an error occurs during export."""
         QMessageBox.critical(self, "Export Error", error_message)
         self.reject()
+
+    def check_combo(self, text: str):
+        tpl = string.Template(template=text)
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(tpl.is_valid())
