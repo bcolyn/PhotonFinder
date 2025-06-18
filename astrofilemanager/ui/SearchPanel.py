@@ -95,8 +95,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.update_search_criteria()
 
     def set_title(self, text: str):
-        my_index = self.parent().indexOf(self)
-        self.parent().setTabText(my_index, text)
+        pages: QStackedWidget = self.parent()
+        tabs: QTabWidget = pages.parent()
+        my_index = pages.indexOf(self)
+        tabs.setTabText(my_index, text)
 
     def add_filter_button_control(self, button: 'FilterButton'):
         current = self.advanced_options.get(button.filter_type, None)
@@ -216,6 +218,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
             # Reset total files counter when starting a new search
             self.total_files = total_files
+            # Update our tab title
+            if self.search_criteria.is_empty():
+                self.set_title("All files")
+            else:
+                self.set_title(f"{self.total_files} files [{str(self.search_criteria)}]")
             # Update the status bar with the total number of files
             self.context.status_reporter.update_status(f"{self.total_files} files")
 
@@ -401,7 +408,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             path = file.path
 
             # Create a RootAndPath object
-            root_and_path = RootAndPath(root_id=root_id, path=path)
+            root_and_path = RootAndPath(root_id=root_id, root_label=file.root.name, path=path)
 
             # Find and select the node in the tree
             self._find_and_select_node(root_and_path)

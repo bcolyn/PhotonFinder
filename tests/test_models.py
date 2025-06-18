@@ -57,7 +57,7 @@ class TestImage:
         """Test get_filters with a specific RootAndPath returns only filters in that path."""
         # Create search criteria with a specific path
         search_criteria = SearchCriteria([
-            RootAndPath(1, "subdir1")
+            RootAndPath(1, "dummy", "subdir1")
         ])
 
         # Get filters for the specific path

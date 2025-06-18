@@ -10,8 +10,12 @@ from playhouse.sqlite_ext import RowIDField
 
 @dataclass
 class RootAndPath:
-    root_id: typing.Optional[int]
+    root_id: int
+    root_label: str
     path: typing.Optional[str]
+
+    def __str__(self):
+        return f"{self.root_label}/{self.path}" if self.path else str(self.root_label)
 
 
 @dataclass
@@ -21,8 +25,8 @@ class SearchCriteria:
     filter: str | None = ""
     type: str | None = ""
     camera: str | None = ""
-    file_name: str | None = ""
-    object_name: str = ""
+    file_name: str | None = None
+    object_name: str = None
     exposure: str = ""
     telescope: str = ""
     binning: str = ""
@@ -33,6 +37,24 @@ class SearchCriteria:
     coord_radius: float = 0.5  # Search radius in decimal degrees
     start_datetime: datetime | None = None
     end_datetime: datetime | None = None
+
+    def is_empty(self):
+        return self == SearchCriteria()
+
+    def __str__(self):
+        result = []
+        if len(self.paths) > 0:
+            result += list(map(str, self.paths))
+
+        for text in [self.type, self.filter, self.camera, self.file_name, self.object_name, self.exposure,
+                     self.telescope, self.binning, self.gain, self.temperature]:
+            if text:
+                result.append(text)
+        if self.coord_ra and self.coord_dec:
+            result.append(f"({self.coord_ra}{self.coord_dec})+-{self.coord_radius}d")
+        if self.start_datetime and self.end_datetime:
+            result.append(f"{self.start_datetime.isoformat()} to {self.end_datetime.isoformat()}")
+        return ', '.join(result)
 
 
 def auto_str(cls):

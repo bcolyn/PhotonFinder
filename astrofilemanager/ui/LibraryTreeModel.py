@@ -324,10 +324,12 @@ class LibraryTreeModel(QAbstractItemModel):
         result = list()
         for index in indexes:
             item = self.getItem(index)
-            if isinstance(item, AllLibrariesNode):
-                result.append(RootAndPath(root_id=None, path=None))
-            elif isinstance(item, LibraryRootNode):
-                result.append(RootAndPath(root_id=item.library_root.rowid, path=None))
+            # if isinstance(item, AllLibrariesNode):
+            #    result.append(RootAndPath(root_id=None, path=None))
+            if isinstance(item, LibraryRootNode):
+                root = item.library_root
+                result.append(RootAndPath(root_id=root.rowid, root_label=root.name, path=None))
             elif isinstance(item, PathNode):
-                result.append(RootAndPath(root_id=item.find_library_root().rowid, path=item.full_path))
+                root = item.find_library_root()
+                result.append(RootAndPath(root_id=root.rowid, root_label=root.name, path=item.full_path))
         return result

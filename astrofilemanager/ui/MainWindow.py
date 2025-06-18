@@ -75,7 +75,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def new_search_tab(self):
         panel = SearchPanel(self.context, self.tabWidget)
-        self.tabWidget.addTab(panel, "All data")
+        self.tabWidget.addTab(panel, "Loading")
 
     def close_current_search_tab(self):
         self.close_search_tab(self.tabWidget.currentIndex())
