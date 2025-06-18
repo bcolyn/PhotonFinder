@@ -14,16 +14,16 @@ class StatusReporter:
 
 class ApplicationContext:
 
-    @classmethod
-    def create_in_app_data(self, app_data_path: str) -> 'ApplicationContext':
+    @staticmethod
+    def create_in_app_data(app_data_path: str, settings) -> 'ApplicationContext':
         database_path = Path(app_data_path) / "astroFileManager.db"
         database_path.parent.mkdir(parents=True, exist_ok=True)
-        return ApplicationContext(database_path)
+        return ApplicationContext(database_path, settings)
 
-    def __init__(self, database_path: str | Path) -> None:
+    def __init__(self, database_path: str | Path, settings) -> None:
         self.database_path = database_path
         self.database: SqliteDatabase | None = None
-        self.settings = Settings()
+        self.settings = settings
         self.status_reporter: StatusReporter | None = None
 
     def __enter__(self):
@@ -46,7 +46,7 @@ class ApplicationContext:
             'user_version': 1
         })
         logging.info("Database opened")
-
+        self.settings.set_last_database_path(str(self.database_path))
         if self.database:
             from .models import CORE_MODELS
             self.database.bind(CORE_MODELS, bind_refs=False, bind_backrefs=False)
@@ -59,7 +59,7 @@ class ApplicationContext:
     def close_database(self) -> None:
         if self.database:
             self.database.close()
-            logging.info("Database closed")
+            logging.info(f"Database closed: {self.database_path}")
             self.database = None
 
     def switch_database(self, database_path: str | Path) -> None:
@@ -120,6 +120,12 @@ class Settings:
 
     def set_last_light_path(self, value):
         self.settings.setValue("last_light_path", value)
+
+    def get_last_database_path(self):
+        return self.settings.value("last_database_path", "", str)
+
+    def set_last_database_path(self, value):
+        self.settings.setValue("last_database_path", value)
 
     def sync(self):
         """Ensure settings are saved to disk."""

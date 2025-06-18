@@ -56,6 +56,36 @@ class SearchCriteria:
             result.append(f"{self.start_datetime.isoformat()} to {self.end_datetime.isoformat()}")
         return ', '.join(result)
 
+    @staticmethod
+    def find_dark(light_image: 'Image') -> 'SearchCriteria':
+        criteria = SearchCriteria()
+        if light_image.exposure:
+            criteria.exposure = str(light_image.exposure)
+        if light_image.camera:
+            criteria.camera = str(light_image.camera)
+        if light_image.set_temp:
+            criteria.temperature = str(light_image.set_temp)
+        if light_image.gain:
+            criteria.gain = str(light_image.gain)
+        if light_image.binning:
+            criteria.binning = str(light_image.binning)
+            # offset
+        criteria.type = "DARK"  # TODO: or darkflat?
+        return criteria
+
+    @staticmethod
+    def find_flat(light_image: 'Image') -> 'SearchCriteria':
+        criteria = SearchCriteria()
+        if light_image.camera:
+            criteria.camera = str(light_image.camera)
+        if light_image.filter:
+            criteria.filter = str(light_image.filter)
+        if light_image.binning:
+            criteria.binning = str(light_image.binning)
+            # offset
+        criteria.type = "FLAT"
+        return criteria
+
 
 def auto_str(cls):
     def _get_data_dict(obj):

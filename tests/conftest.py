@@ -4,7 +4,7 @@ import pytest
 from fs.memoryfs import MemoryFS
 from peewee import SqliteDatabase
 
-from astrofilemanager.core import ApplicationContext
+from astrofilemanager.core import ApplicationContext, Settings
 from astrofilemanager.models import CORE_MODELS
 
 
@@ -15,7 +15,7 @@ def app_context():
     Uses an in-memory database for testing.
     """
     # Create an application context with an in-memory database
-    context = ApplicationContext(":memory:")
+    context = ApplicationContext(":memory:", Settings())
 
     with context:
         yield context

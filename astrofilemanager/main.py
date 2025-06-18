@@ -4,7 +4,7 @@ import sys
 from PySide6.QtCore import QStandardPaths, Qt, QThreadPool
 from PySide6.QtWidgets import QApplication, QStyleFactory
 
-from astrofilemanager.core import ApplicationContext
+from astrofilemanager.core import ApplicationContext, Settings
 from astrofilemanager.ui.MainWindow import MainWindow
 
 
@@ -44,9 +44,12 @@ def main():
     # Log the maximum thread count
     thread_pool = QThreadPool.globalInstance()
     logging.info(f"Maximum thread count: {thread_pool.maxThreadCount()}")
-
-    app_data_path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
-    context = ApplicationContext.create_in_app_data(app_data_path)
+    settings = Settings()
+    if settings.get_last_database_path():
+        context = ApplicationContext(settings.get_last_database_path(), settings)
+    else:
+        app_data_path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
+        context = ApplicationContext.create_in_app_data(app_data_path, settings)
 
     with context:
         main_window = MainWindow(app, context)
