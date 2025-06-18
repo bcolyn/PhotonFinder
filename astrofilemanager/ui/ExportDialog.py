@@ -131,11 +131,12 @@ class ExportWorker(BackgroundLoaderBase):
             mapping['date'] = image.date_obs.date().isoformat()
         else:
             mapping['date_minus12'] = None
+            mapping['date'] = None
 
         mapping['last_light_path'] = self.context.settings.get_last_light_path()
         mapping['filename_no_ext'] = os.path.splitext(file_name)[0]
         mapping['ext'] = os.path.splitext(file_name)[1].lstrip('.')
-        mapping['root'] = file.root.name
+        #mapping['root'] = file.root.name
 
         result = template.safe_substitute(mapping)
         if not result:
