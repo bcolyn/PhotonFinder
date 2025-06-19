@@ -30,7 +30,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_criteria = SearchCriteria()
         self.advanced_options = dict()
         self.total_files = 0  # Track total number of files in search results
-        self.pending_selection = None  # Store pending path selection
+        self.pending_selections = list()  # Store pending path selections
 
         # Initialize the search results loader
         self.search_results_loader = SearchResultsLoader(context)
@@ -80,15 +80,26 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def on_paths_loaded(self, library_root, paths):
         """Handle the paths_loaded signal from the FilePathsLoader."""
-        # If we have a pending selection, retry it
-        if self.pending_selection and self.pending_selection.root_id == library_root.rowid:
-            root_and_path = self.pending_selection
-            self.pending_selection = None
-            self._find_and_select_node(root_and_path)
+        if self.pending_selections:
+            pending_roots = set(map(lambda p: p.root_id, self.pending_selections))
+            missing_roots = set(
+                filter(lambda root_id: root_id not in self.library_tree_model.loaded_library_roots, pending_roots))
+            if len(missing_roots) > 0:
+                return  # wait until we have all roots necessary
+
+            self.update_in_progress = True
+            # now apply pending selections
+            self.filesystemTreeView.selectionModel().clearSelection()
+            for pending_selection in self.pending_selections:
+                self._find_and_select_node(pending_selection)
+            self.pending_selections.clear()
+            self.update_in_progress = False
 
     def on_tree_selection_changed(self, selected, deselected):
         # Get the current selection
         indexes = self.filesystemTreeView.selectionModel().selectedIndexes()
+        if self.update_in_progress:
+            return
         if not indexes:
             return
         self.search_criteria.paths = self.library_tree_model.get_roots_and_paths(indexes)
@@ -412,7 +423,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
             # Create a RootAndPath object
             root_and_path = RootAndPath(root_id=root_id, root_label=file.root.name, path=path)
-
+            self.filesystemTreeView.selectionModel().clearSelection()
             # Find and select the node in the tree
             self._find_and_select_node(root_and_path)
 
@@ -424,7 +435,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # If no specific root or path, select "All libraries"
         if root_and_path.root_id is None:
-            self.filesystemTreeView.selectionModel().select(all_libraries_index, QItemSelectionModel.ClearAndSelect)
+            self.filesystemTreeView.selectionModel().select(all_libraries_index, QItemSelectionModel.SelectCurrent)
             return
 
         # Find the library root node
@@ -435,13 +446,13 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             if isinstance(library_node, LibraryRootNode) and library_node.library_root.rowid == root_and_path.root_id:
                 # If no specific path, select the library root
                 if not root_and_path.path:
-                    self.filesystemTreeView.selectionModel().select(library_index, QItemSelectionModel.ClearAndSelect)
+                    self.filesystemTreeView.selectionModel().select(library_index, QItemSelectionModel.Select)
                     return
 
                 # Check if the library root's paths have been loaded
                 if library_node.library_root.rowid not in self.library_tree_model.loaded_library_roots:
                     # Store the selection for later and expand the node to trigger loading
-                    self.pending_selection = root_and_path
+                    self.pending_selections.append(root_and_path)
                     self.filesystemTreeView.expand(library_index)
                     return
 
@@ -472,12 +483,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                         break
 
                 # Select the found node
-                self.filesystemTreeView.selectionModel().select(current_index, QItemSelectionModel.ClearAndSelect)
+                self.filesystemTreeView.selectionModel().select(current_index, QItemSelectionModel.Select)
                 self.filesystemTreeView.scrollTo(current_index)
                 return
 
         # If we couldn't find the library root, select "All libraries"
-        self.filesystemTreeView.selectionModel().select(all_libraries_index, QItemSelectionModel.ClearAndSelect)
+        self.filesystemTreeView.selectionModel().select(all_libraries_index, QItemSelectionModel.SelectCurrent)
 
     def reset_date_criteria(self):
         self.search_criteria.start_datetime = None
@@ -764,10 +775,24 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 combo.addItem(value)
                 combo.setCurrentText(value)
 
-    def apply_search_criteria(self, criteria):
+    def _apply_pending_path_criteria(self):
+        self.library_tree_model.library_roots_loader.library_roots_loaded.disconnect(self._apply_pending_path_criteria)
+        # update path selections
+        if len(self.search_criteria.paths) > 0:
+            self.filesystemTreeView.selectionModel().clearSelection()
+            for path in self.search_criteria.paths:
+                self._find_and_select_node(path)
+        else:
+            self.filesystemTreeView.selectionModel().clearSelection()
+
+    def apply_search_criteria(self, criteria: SearchCriteria):
         import copy
         self.search_criteria = copy.deepcopy(criteria)
-
+        if len(self.library_tree_model.loaded_library_roots) == 0:
+            self.library_tree_model.library_roots_loader.library_roots_loaded.connect(self._apply_pending_path_criteria)
+        else:
+            for path in self.search_criteria.paths:
+                self._find_and_select_node(paths)
         # Update combo boxes
         if criteria.type is not None:
             self._set_combo_value(self.filter_type_combo, criteria.type)
@@ -845,8 +870,6 @@ def _get_combo_value(combo: QComboBox) -> str | None:
         return None
     else:
         return combo.currentText()
-
-
 
 
 def _format_file_size(size_bytes):
