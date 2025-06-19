@@ -78,6 +78,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         panel = SearchPanel(self.context, self.tabWidget)
         self.tabWidget.addTab(panel, "Loading")
 
+    def dup_search_tab(self):
+        current_index = self.tabWidget.currentIndex()
+        if current_index == -1:
+            return
+        current_widget = self.tabWidget.widget(current_index)
+        assert isinstance(current_widget, SearchPanel)
+        current_criteria = current_widget.search_criteria
+        panel = SearchPanel(self.context, self.tabWidget)
+        tab = self.tabWidget.addTab(panel, "Loading")
+        panel.apply_search_criteria(current_criteria)
+        self.tabWidget.setCurrentIndex(tab)
+
     def close_current_search_tab(self):
         self.close_search_tab(self.tabWidget.currentIndex())
 
@@ -208,8 +220,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def create_database(self):
 
-        file_path, _ = QFileDialog.getSaveFileName(            self,            "Create Database",
-            "",            "SQLite Database (*.db);;All Files (*)"        )
+        file_path, _ = QFileDialog.getSaveFileName(self, "Create Database",
+                                                   "", "SQLite Database (*.db);;All Files (*)")
 
         if not file_path:
             return  # User cancelled
@@ -253,7 +265,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.context.switch_database(file_path)
             # open new tab
             self.new_search_tab()
-
 
             self.context.status_reporter.update_status(f"Database opened at {file_path}")
             self.reload_library_roots_in_all_panels()

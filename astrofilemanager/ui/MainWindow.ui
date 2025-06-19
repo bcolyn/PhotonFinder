@@ -62,6 +62,7 @@
      <string>&amp;File</string>
     </property>
     <addaction name="action_New_Tab"/>
+    <addaction name="actionDuplicate_Tab"/>
     <addaction name="action_Close_Tab"/>
     <addaction name="separator"/>
     <addaction name="action_Create_Database"/>
@@ -200,6 +201,11 @@
   <action name="action_Open_Database">
    <property name="text">
     <string>&amp;Open Database</string>
+   </property>
+  </action>
+  <action name="actionDuplicate_Tab">
+   <property name="text">
+    <string>Duplicate Tab</string>
    </property>
   </action>
  </widget>
@@ -509,6 +515,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionDuplicate_Tab</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>dup_search_tab()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -529,5 +551,6 @@
   <slot>create_backup()</slot>
   <slot>create_database()</slot>
   <slot>open_database()</slot>
+  <slot>dup_search_tab()</slot>
  </slots>
 </ui>

@@ -748,6 +748,95 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             dialog = ExportDialog(self.context, selected_files, parent=self)
             dialog.exec()
 
+    def _set_combo_value(self, combo: QComboBox, value: str | None):
+        """Set the value of a combo box based on the search criteria."""
+        if value == "":
+            combo.setCurrentText(RESET_LABEL)
+        elif value is None:
+            combo.setCurrentText(EMPTY_LABEL)
+        else:
+            # Try to find the exact value
+            index = combo.findText(value)
+            if index >= 0:
+                combo.setCurrentIndex(index)
+            else:
+                # If the value is not in the combo box, add it
+                combo.addItem(value)
+                combo.setCurrentText(value)
+
+    def apply_search_criteria(self, criteria):
+        import copy
+        self.search_criteria = copy.deepcopy(criteria)
+
+        # Update combo boxes
+        if criteria.type is not None:
+            self._set_combo_value(self.filter_type_combo, criteria.type)
+        if criteria.filter is not None:
+            self._set_combo_value(self.filter_filter_combo, criteria.filter)
+        if criteria.camera is not None:
+            self._set_combo_value(self.filter_cam_combo, criteria.camera)
+
+        # Update text edits
+        if criteria.file_name is not None:
+            self.filter_fname_text.setText(criteria.file_name)
+        else:
+            self.filter_fname_text.clear()
+
+        if criteria.object_name is not None:
+            self.filter_name_text.setText(criteria.object_name)
+        else:
+            self.filter_name_text.clear()
+
+        # Clear existing filter buttons
+        for button in list(self.advanced_options.values()):
+            self.remove_filter_button_control(button)
+        self.advanced_options.clear()
+
+        # Add filter buttons for other filters
+        if criteria.exposure:
+            text = f"Exposure: {criteria.exposure} s"
+            filter_button = FilterButton(self, text, AdvancedFilter.EXPOSURE)
+            filter_button.on_remove_filter.connect(self.reset_exposure_criteria)
+            self.add_filter_button_control(filter_button)
+
+        if criteria.telescope:
+            text = f"Telescope: {criteria.telescope}"
+            filter_button = FilterButton(self, text, AdvancedFilter.TELESCOPE)
+            filter_button.on_remove_filter.connect(self.reset_telescope_criteria)
+            self.add_filter_button_control(filter_button)
+
+        if criteria.binning:
+            text = f"Binning: {criteria.binning}"
+            filter_button = FilterButton(self, text, AdvancedFilter.BINNING)
+            filter_button.on_remove_filter.connect(self.reset_binning_criteria)
+            self.add_filter_button_control(filter_button)
+
+        if criteria.gain:
+            text = f"Gain: {criteria.gain}"
+            filter_button = FilterButton(self, text, AdvancedFilter.GAIN)
+            filter_button.on_remove_filter.connect(self.reset_gain_criteria)
+            self.add_filter_button_control(filter_button)
+
+        if criteria.temperature:
+            text = f"Temperature: {criteria.temperature} °C"
+            filter_button = FilterButton(self, text, AdvancedFilter.TEMPERATURE)
+            filter_button.on_remove_filter.connect(self.reset_temperature_criteria)
+            self.add_filter_button_control(filter_button)
+
+        if criteria.coord_ra and criteria.coord_dec:
+            text = f"Coordinates: RA={criteria.coord_ra}, DEC={criteria.coord_dec}, r={criteria.coord_radius}°"
+            filter_button = FilterButton(self, text, AdvancedFilter.COORDINATES)
+            filter_button.on_remove_filter.connect(self.reset_coordinates_criteria)
+            self.add_filter_button_control(filter_button)
+
+        if criteria.start_datetime and criteria.end_datetime:
+            text = f"Date {_format_date(criteria.start_datetime)} - {_format_date(criteria.end_datetime)}"
+            filter_button = FilterButton(self, text, AdvancedFilter.DATETIME)
+            filter_button.on_remove_filter.connect(self.reset_date_criteria)
+            self.add_filter_button_control(filter_button)
+
+        self.update_search_criteria()
+
 
 def _get_combo_value(combo: QComboBox) -> str | None:
     if combo.currentText() == RESET_LABEL:
@@ -756,6 +845,8 @@ def _get_combo_value(combo: QComboBox) -> str | None:
         return None
     else:
         return combo.currentText()
+
+
 
 
 def _format_file_size(size_bytes):
