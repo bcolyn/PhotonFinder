@@ -8,6 +8,15 @@ from astrofilemanager.core import ApplicationContext, Settings
 from astrofilemanager.models import CORE_MODELS
 
 
+class TempSettings(Settings):
+
+    def sync(self):
+        pass
+
+    def set_last_database_path(self, value):
+        pass
+
+
 @pytest.fixture(scope="class")
 def app_context():
     """
@@ -15,7 +24,7 @@ def app_context():
     Uses an in-memory database for testing.
     """
     # Create an application context with an in-memory database
-    context = ApplicationContext(":memory:", Settings())
+    context = ApplicationContext(":memory:", TempSettings())
 
     with context:
         yield context
