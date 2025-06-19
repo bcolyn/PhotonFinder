@@ -30,6 +30,7 @@ class SearchCriteria:
     exposure: str = ""
     telescope: str = ""
     binning: str = ""
+    offset: int | None = None
     gain: str = ""
     temperature: str = ""
     coord_ra: str = ""  # Right Ascension in hours (can be in various formats)
@@ -164,6 +165,7 @@ class Image(Model):
     filter = CharField(null=True, index=True)
     exposure = DoubleField(null=True, index=True)
     gain = IntegerField(null=True, index=True)
+    offset = IntegerField(null=True, index=True)
     binning = IntegerField(null=True)
     set_temp = DoubleField(null=True)
     telescope = CharField(null=True, index=True)
@@ -248,6 +250,13 @@ class Image(Model):
             try:
                 gain_val = int(criteria.gain)
                 conditions.append(Image.gain == gain_val)
+            except (ValueError, TypeError):
+                pass
+
+        if criteria.offset and exclude_ref is not Image.offset:
+            try:
+                offset_val = int(criteria.offset)
+                conditions.append(Image.offset == offset_val)
             except (ValueError, TypeError):
                 pass
 

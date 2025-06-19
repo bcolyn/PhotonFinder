@@ -11,6 +11,7 @@ class GainDialog(QDialog, Ui_GainDialog):
         super(GainDialog, self).__init__(parent)
         self.setupUi(self)
         self.context = context
+        self.offset_check.toggled.connect(self.offset_spin.setEnabled)
 
     def get_gain(self) -> int:
         """Get the gain value entered by the user."""
@@ -23,5 +24,19 @@ class GainDialog(QDialog, Ui_GainDialog):
                 gain_val = int(gain)
                 if gain_val >= 0:
                     self.gain_spin.setValue(gain_val)
+            except (ValueError, TypeError):
+                pass
+
+    def get_offset(self) -> int | None:
+        if self.offset_check.isChecked():
+            return self.offset_spin.value()
+        else:
+            return None
+
+    def set_offset(self, value):
+        if value is not None:
+            try:
+                self.offset_spin.setValue(int(value))
+                self.offset_check.setChecked(True)
             except (ValueError, TypeError):
                 pass

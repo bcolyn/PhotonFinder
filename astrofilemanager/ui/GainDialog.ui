@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>300</width>
-    <height>150</height>
+    <height>202</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -38,9 +38,39 @@
     </widget>
    </item>
    <item>
+    <widget class="QCheckBox" name="offset_check">
+     <property name="text">
+      <string>Filter on Offset:</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QSpinBox" name="offset_spin">
+     <property name="enabled">
+      <bool>false</bool>
+     </property>
+     <property name="maximum">
+      <number>10000</number>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Orientation::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item>
     <widget class="QDialogButtonBox" name="buttonBox">
      <property name="standardButtons">
-      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
      </property>
     </widget>
    </item>
@@ -55,8 +85,8 @@
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>149</x>
-     <y>125</y>
+     <x>158</x>
+     <y>192</y>
     </hint>
     <hint type="destinationlabel">
      <x>149</x>
@@ -71,8 +101,8 @@
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>149</x>
-     <y>125</y>
+     <x>158</x>
+     <y>192</y>
     </hint>
     <hint type="destinationlabel">
      <x>149</x>

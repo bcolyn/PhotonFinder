@@ -212,7 +212,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if page == 0:
             self.data_model.clear()
             self.data_model.setHorizontalHeaderLabels([
-                "File name", "Type", "Filter", "Exposure", "Gain", "Binning", "Set Temp",
+                "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
                 "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified"
             ])
 
@@ -245,6 +245,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_item = QStandardItem("")
             exposure_item = QStandardItem("")
             gain_item = QStandardItem("")
+            offset_item = QStandardItem("")
             binning_item = QStandardItem("")
             set_temp_item = QStandardItem("")
             camera_item = QStandardItem("")
@@ -262,6 +263,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                         exposure_item.setText(str(file.image.exposure))
                     if file.image.gain is not None:
                         gain_item.setText(str(file.image.gain))
+                    if file.image.offset is not None:
+                        offset_item.setText(str(file.image.offset))
                     if file.image.binning is not None:
                         binning_item.setText(str(file.image.binning))
                     if file.image.set_temp is not None:
@@ -290,7 +293,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
             # Add row to model
             self.data_model.appendRow([
-                name_item, type_item, filter_item, exposure_item, gain_item,
+                name_item, type_item, filter_item, exposure_item, gain_item, offset_item,
                 binning_item, set_temp_item, camera_item, telescope_item,
                 object_item, date_obs_item, path_item, size_item, date_item
             ])
@@ -563,7 +566,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         dialog = GainDialog(self.context)
 
         # Check if there's a selected image with a gain value
-        selected_image = self.get_selected_image()
+        selected_image: Image = self.get_selected_image()
         if selected_image and selected_image.gain is not None:
             # Use the selected image's gain as the default
             dialog.set_gain(selected_image.gain)
@@ -573,17 +576,29 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             except (ValueError, TypeError):
                 pass
 
+        if selected_image and selected_image.offset is not None:
+            # Use the selected image's gain as the default
+            dialog.set_offset(selected_image.offset)
+        elif self.search_criteria.offset:
+            try:
+                dialog.set_offset(int(self.search_criteria.offset))
+            except (ValueError, TypeError):
+                pass
+
         if dialog.exec():
             gain = dialog.get_gain()
+            offset = dialog.get_offset()
             text = f"Gain: {gain}"
             filter_button = FilterButton(self, text, AdvancedFilter.GAIN)
             filter_button.on_remove_filter.connect(self.reset_gain_criteria)
             self.add_filter_button_control(filter_button)
             self.search_criteria.gain = str(gain)
+            self.search_criteria.offset = offset
             self.update_search_criteria()
 
     def reset_gain_criteria(self):
         self.search_criteria.gain = ""
+        self.search_criteria.offset = None
 
     def add_temperature_filter(self):
         from .TemperatureDialog import TemperatureDialog

@@ -239,7 +239,7 @@ END                                                                             
         expected_date = datetime(2025, 3, 19, 22, 51, 59, 384632)
         assert isinstance(image.date_obs, datetime)
         assert image.date_obs == expected_date
-
+        assert image.offset == 8
         # Assert coordinate fields
         assert image.coord_ra is not None
         assert image.coord_dec is not None

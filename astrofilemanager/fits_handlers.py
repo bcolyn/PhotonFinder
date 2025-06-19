@@ -75,6 +75,7 @@ class FitsHeaderHandler:
             camera = self._get_camera(header)
             exposure = self._get_exposure(header)
             gain = self._get_gain(header)
+            offset = self._get_offset(header)
             binning = self._get_binning(header)
             set_temp = self._get_set_temp(header)
             telescope = self._get_telescope(header)
@@ -91,6 +92,7 @@ class FitsHeaderHandler:
                 filter=filter_name,
                 exposure=exposure,
                 gain=gain,
+                offset=offset,
                 binning=binning,
                 set_temp=set_temp,
                 camera=camera,
@@ -147,6 +149,9 @@ class FitsHeaderHandler:
 
     def _get_date_obs(self, header: Header) -> Optional[datetime]:
         return _datetime(header.get('DATE-OBS'))
+
+    def _get_offset(self, header: Header) -> Optional[int]:
+        return _int(header.get('OFFSET'))
 
     def _get_coordinates(self, header: Header) -> Tuple[Optional[float], Optional[float], Optional[int]]:
         """
@@ -255,7 +260,7 @@ class GenericHandler(FitsHeaderHandler):
         return _float(header.get('EXPTIME', header.get('EXPOSURE')))
 
     def _get_gain(self, header: Header) -> Optional[int]:
-        return _int(header.get('GAIN', header.get('EGAIN')))
+        return _int(header.get('GAIN'))
 
     def _get_binning(self, header: Header) -> Optional[int]:
         return _int(header.get('XBINNING', header.get('BINNING', 1)))
