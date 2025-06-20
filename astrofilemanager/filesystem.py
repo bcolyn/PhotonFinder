@@ -114,11 +114,11 @@ def update_fits_header_cache(change_list, status_reporter=None):
         if Importer.is_fits_by_name(file.name):
             header_bytes = read_fits_header(file.full_filename(), status_reporter)
             if header_bytes:
+                FitsHeader(file=file, header=header_bytes).create().on_conflict_replace().execute()
                 # Normalize the header and create an Image object if possible
                 header = Header.fromstring(header_bytes)
                 image = normalize_fits_header(file, header)
                 assert file.rowid is not None, "File rowid must be set before creating FitsHeader"
-                FitsHeader(file=file, header=header_bytes).create().on_conflict_replace().execute()
                 image.insert().on_conflict_replace().execute()
 
     # Process removed files
@@ -153,11 +153,11 @@ def check_missing_header_cache(status_reporter=None):
     # Process these files as new files
     for file in missing_header_files:
         if Importer.is_fits_by_name(file.name):
-            header_bytes = read_fits_header(file.full_filename())
+            header_bytes = read_fits_header(file.full_filename(), status_reporter)
             if header_bytes:
+                FitsHeader(file=file, header=header_bytes).save()
                 # Normalize the header and create an Image object if possible
                 header = Header.fromstring(header_bytes)
-                FitsHeader(file=file, header=header_bytes).save()
                 image = normalize_fits_header(file, header)
                 if image is not None:
                     Image.insert(image.__data__).on_conflict_replace().execute()
@@ -245,6 +245,7 @@ class Importer:
         result = ChangeList()
         while len(dir_queue) > 0:
             current_dir: str = dir_queue.pop()
+            self.status.update_status(f"Scanning directory: {current_dir}", bulk=True)
             filtered_files = set()
             entry: Info
             for entry in root_fs.scandir(current_dir, namespaces=['details']):
