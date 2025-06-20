@@ -159,7 +159,8 @@ def check_missing_header_cache(status_reporter=None):
                 header = Header.fromstring(header_bytes)
                 FitsHeader(file=file, header=header_bytes).save()
                 image = normalize_fits_header(file, header)
-                Image.insert(image.__data__).on_conflict_replace().execute()
+                if image is not None:
+                    Image.insert(image.__data__).on_conflict_replace().execute()
 
     if status_reporter:
         status_reporter.update_status("FITS header cache updated.")

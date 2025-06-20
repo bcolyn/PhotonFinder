@@ -105,6 +105,7 @@ class FitsHeaderHandler:
             )
         except Exception as e:
             print(f"Error processing header: {str(e)}")
+            print(header)
             return None
 
     # def get_wcs_values(self, header: Header) -> dict:
@@ -257,13 +258,19 @@ class GenericHandler(FitsHeaderHandler):
         return header.get('FILTER', header.get('FILTNAME'))
 
     def _get_exposure(self, header: Header) -> Optional[float]:
-        return _float(header.get('EXPTIME', header.get('EXPOSURE')))
+        return _float(header.get('EXPTIME', header.get('EXPOSURE', header.get('EXP'))))
 
     def _get_gain(self, header: Header) -> Optional[int]:
         return _int(header.get('GAIN'))
 
     def _get_binning(self, header: Header) -> Optional[int]:
-        return _int(header.get('XBINNING', header.get('BINNING', 1)))
+        bin = _int(header.get('XBINNING'))
+        if bin is not None:
+            return bin
+        combined = header.get('BINNING', 1)
+        if combined is not None and '*' in combined:
+            return int(combined.split('*')[0])
+        return None
 
     def _get_set_temp(self, header: Header) -> Optional[float]:
         return _float(header.get('SET-TEMP', header.get('CCDTEMP')))
@@ -298,8 +305,8 @@ def normalize_fits_header(file: File, header: Header) -> Image | None:
     for handler in handlers:
         if handler.can_handle(header):
             image = handler.process(file, header)
-            image.file = file
             if image:
+                image.file = file
                 return image
 
     return None
