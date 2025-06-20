@@ -4,7 +4,7 @@ import pytest
 from fs.memoryfs import MemoryFS
 from peewee import SqliteDatabase
 
-from astrofilemanager.core import ApplicationContext, Settings
+from astrofilemanager.core import ApplicationContext, Settings, StatusReporter
 from astrofilemanager.models import CORE_MODELS
 
 
@@ -25,7 +25,7 @@ def app_context():
     """
     # Create an application context with an in-memory database
     context = ApplicationContext(":memory:", TempSettings())
-
+    context.set_status_reporter(StatusReporter())
     with context:
         yield context
 

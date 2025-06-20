@@ -1,3 +1,6 @@
+import logging
+from logging import log
+from logging import WARN
 from datetime import datetime
 from typing import Optional, Tuple
 
@@ -7,6 +10,7 @@ from astropy.io.fits import Header
 from astropy_healpix import HEALPix
 
 from astrofilemanager.models import File, Image
+from astrofilemanager.core import StatusReporter
 
 
 def _upper(value: str):
@@ -23,7 +27,7 @@ def _float(value):
 
 def _datetime(value):
     """Convert ISO 8601 formatted date string to datetime object."""
-    if value is None:
+    if value is None or value == '' or value == 'N/A':
         return None
     try:
         return datetime.fromisoformat(value.replace('Z', '+00:00'))
@@ -35,7 +39,7 @@ def _datetime(value):
             try:
                 return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S')
             except ValueError:
-                print(f"Could not parse date string: {value}")
+                log(WARN, f"Could not parse date string: {value}")
                 return None
 
 
@@ -68,45 +72,40 @@ class FitsHeaderHandler:
         Returns:
             Optional[Image]: An Image object if processing was successful, None otherwise
         """
-        try:
-            # Extract common fields from the header
-            image_type = self._get_image_type(header)
-            filter_name = self._get_filter(header)
-            camera = self._get_camera(header)
-            exposure = self._get_exposure(header)
-            gain = self._get_gain(header)
-            offset = self._get_offset(header)
-            binning = self._get_binning(header)
-            set_temp = self._get_set_temp(header)
-            telescope = self._get_telescope(header)
-            object_name = self._get_object_name(header)
-            date_obs = self._get_date_obs(header)
+        # Extract common fields from the header
+        image_type = self._get_image_type(header)
+        filter_name = self._get_filter(header)
+        camera = self._get_camera(header)
+        exposure = self._get_exposure(header)
+        gain = self._get_gain(header)
+        offset = self._get_offset(header)
+        binning = self._get_binning(header)
+        set_temp = self._get_set_temp(header)
+        telescope = self._get_telescope(header)
+        object_name = self._get_object_name(header)
+        date_obs = self._get_date_obs(header)
 
-            # Extract coordinates and HEALPix value
-            coord_ra, coord_dec, coord_pix256 = self._get_coordinates(header)
+        # Extract coordinates and HEALPix value
+        coord_ra, coord_dec, coord_pix256 = self._get_coordinates(header)
 
-            # Create and return an Image object
-            return Image(
-                file=file,
-                image_type=image_type,
-                filter=filter_name,
-                exposure=exposure,
-                gain=gain,
-                offset=offset,
-                binning=binning,
-                set_temp=set_temp,
-                camera=camera,
-                telescope=telescope,
-                object_name=object_name,
-                date_obs=date_obs,
-                coord_ra=coord_ra,
-                coord_dec=coord_dec,
-                coord_pix256=coord_pix256
-            )
-        except Exception as e:
-            print(f"Error processing header: {str(e)}")
-            print(header)
-            return None
+        # Create and return an Image object
+        return Image(
+            file=file,
+            image_type=image_type,
+            filter=filter_name,
+            exposure=exposure,
+            gain=gain,
+            offset=offset,
+            binning=binning,
+            set_temp=set_temp,
+            camera=camera,
+            telescope=telescope,
+            object_name=object_name,
+            date_obs=date_obs,
+            coord_ra=coord_ra,
+            coord_dec=coord_dec,
+            coord_pix256=coord_pix256
+        )
 
     # def get_wcs_values(self, header: Header) -> dict:
     # NOTE: getting a usable WCS from most raw FITS subs is tricky
@@ -268,7 +267,7 @@ class GenericHandler(FitsHeaderHandler):
         if bin is not None:
             return bin
         combined = header.get('BINNING', 1)
-        if combined is not None and '*' in combined:
+        if combined and '*' in str(combined):
             return int(combined.split('*')[0])
         return None
 
@@ -276,7 +275,7 @@ class GenericHandler(FitsHeaderHandler):
         return _float(header.get('SET-TEMP', header.get('CCDTEMP')))
 
 
-def normalize_fits_header(file: File, header: Header) -> Image | None:
+def normalize_fits_header(file: File, header: Header, status_reporter: StatusReporter = None) -> Image | None:
     """
     Normalize a FITS file header and return a processed Image object or None.
 
@@ -304,7 +303,13 @@ def normalize_fits_header(file: File, header: Header) -> Image | None:
 
     for handler in handlers:
         if handler.can_handle(header):
-            image = handler.process(file, header)
+            try:
+                image = handler.process(file, header)
+            except Exception as e:
+                logging.error(f"Error processing FITS header: {str(e)} for file {file.name}", exc_info=True)
+                if status_reporter:
+                    status_reporter.update_status(f"Error processing FITS header: {str(e)} for file {file.name}")
+                return None
             if image:
                 image.file = file
                 return image

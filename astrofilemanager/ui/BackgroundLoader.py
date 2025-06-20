@@ -8,6 +8,7 @@ from peewee import JOIN
 from astrofilemanager.core import ApplicationContext
 from astrofilemanager.fits_handlers import normalize_fits_header
 from astrofilemanager.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria
+from astrofilemanager.filesystem import parse_header
 
 
 class BackgroundLoaderBase(QObject):
@@ -163,7 +164,6 @@ class SearchResultsLoader(BackgroundLoaderBase):
 class ImageReindexWorker(BackgroundLoaderBase):
     """Worker class for reindexing image metadata."""
     finished = Signal()
-    progress = Signal(str)
 
     def reindex_images(self):
         """Start the reindexing process in a background thread."""
@@ -173,10 +173,10 @@ class ImageReindexWorker(BackgroundLoaderBase):
         """Background task to reindex image metadata."""
         try:
             # Report starting
-            self.progress.emit("Starting image metadata reindexing...")
+            self.context.status_reporter.update_status("Starting image metadata reindexing...")
 
             # Drop and recreate the Image table
-            self.progress.emit("Dropping Image table...")
+            self.context.status_reporter.update_status("Dropping Image table...")
             with self.context.database.bind_ctx([Image]):
                 Image.drop_table()
                 Image.create_table()
@@ -185,7 +185,7 @@ class ImageReindexWorker(BackgroundLoaderBase):
             with self.context.database.bind_ctx([FitsHeader]):
                 total_headers = FitsHeader.select().count()
 
-            self.progress.emit(f"Processing {total_headers} FITS headers...")
+            self.context.status_reporter.update_status(f"Processing {total_headers} FITS headers...")
 
             # Process headers in batches
             batch_size = 100
@@ -203,38 +203,40 @@ class ImageReindexWorker(BackgroundLoaderBase):
                     try:
                         # Deserialize the header
                         from astropy.io.fits import Header
-                        header = Header.fromstring(header_record.header.decode('utf-8'))
+                        header = parse_header(header_record.header)
 
                         # Process the header
-                        image = normalize_fits_header(header_record.file, header)
+                        image = normalize_fits_header(header_record.file, header, self.context.status_reporter)
                         if image:
                             new_images.append(image)
 
                         # Update progress periodically
                         processed += 1
                         if processed % 10 == 0 or processed == total_headers:
-                            self.progress.emit(f"Processed {processed}/{total_headers} headers...")
+                            self.context.status_reporter.update_status(
+                                f"Processed {processed}/{total_headers} headers...", True)
 
                         # Bulk save images in batches
                         if len(new_images) >= batch_size:
                             with self.context.database.atomic():
                                 Image.bulk_create(new_images)
-                            self.progress.emit(f"Saved {len(new_images)} images to database")
+                            self.context.status_reporter.update_status(
+                                f"Saved {len(new_images)} images to database", True)
                             new_images = []
 
                     except Exception as e:
-                        self.progress.emit(f"Error processing header: {str(e)}")
+                        self.context.status_reporter.update_status(f"Error processing header: {str(e)}")
 
                 # Save any remaining images
                 if new_images:
                     with self.context.database.atomic():
                         Image.bulk_create(new_images)
-                    self.progress.emit(f"Saved {len(new_images)} images to database")
+                    self.context.status_reporter.update_status(f"Saved {len(new_images)} images to database", True)
 
-            self.progress.emit("Image metadata reindexing complete!")
+            self.context.status_reporter.update_status("Image metadata reindexing complete!")
 
         except Exception as e:
-            self.progress.emit(f"Error during reindexing: {str(e)}")
+            self.context.status_reporter.update_status(f"Error during reindexing: {str(e)}")
 
         # Signal that we're done
         self.finished.emit()

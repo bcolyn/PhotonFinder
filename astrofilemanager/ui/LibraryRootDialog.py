@@ -158,7 +158,6 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         self.reindex_worker = ImageReindexWorker(self.context)
 
         # Connect signals
-        self.reindex_worker.progress.connect(self._update_reindex_status)
         self.reindex_worker.finished.connect(self._reindex_finished)
 
         # Disable the reindex button while processing
@@ -166,10 +165,6 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
 
         # Start the worker
         self.reindex_worker.reindex_images()
-
-    def _update_reindex_status(self, message):
-        """Update the status with progress from the reindex worker."""
-        self.context.status_reporter.update_status(message)
 
     def _reindex_finished(self):
         """Called when reindexing is finished."""

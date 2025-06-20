@@ -1,7 +1,7 @@
 from datetime import datetime
 from astropy.io.fits import Header
 
-import sample_headers
+from .sample_headers import *
 from astrofilemanager.models import File
 from astrofilemanager.fits_handlers import normalize_fits_header
 
@@ -252,11 +252,17 @@ END                                                                             
         assert round(image.coord_dec, 6) == round(12.8925716003, 6)  # DEC from header
 
     def test_dwarflab_header(self):
-        header = Header.fromstring(sample_headers.header_dwarflab, "\n")
+        header = Header.fromstring(header_dwarflab, "\n")
         file = self.create_test_file()
         image = normalize_fits_header(file, header)
         assert image is not None
         assert image.binning == 2
+
+    def test_app_header(self):
+        header = Header.fromstring(header_app, "\n")
+        file = self.create_test_file()
+        image = normalize_fits_header(file, header)
+        assert image is not None
 
 
 def fix_embedded_header(header_str: str) -> bytes:

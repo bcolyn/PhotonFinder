@@ -3,7 +3,7 @@ import gzip
 import lzma
 import os
 import typing
-from logging import log, INFO, DEBUG, ERROR
+from logging import log, INFO, DEBUG, ERROR, WARN
 from pathlib import Path
 
 import fs.path
@@ -116,10 +116,11 @@ def update_fits_header_cache(change_list, status_reporter=None):
             if header_bytes:
                 FitsHeader(file=file, header=header_bytes).create().on_conflict_replace().execute()
                 # Normalize the header and create an Image object if possible
-                header = Header.fromstring(header_bytes)
-                image = normalize_fits_header(file, header)
-                assert file.rowid is not None, "File rowid must be set before creating FitsHeader"
-                image.insert().on_conflict_replace().execute()
+                header = parse_header(header_bytes)
+                image = normalize_fits_header(file, header, status_reporter)
+                if image is not None:
+                    assert file.rowid is not None, "File rowid must be set before creating FitsHeader"
+                    image.insert().on_conflict_replace().execute()
 
     # Process removed files
     for file in change_list.removed_files:
@@ -133,6 +134,13 @@ def update_fits_header_cache(change_list, status_reporter=None):
 
     if status_reporter:
         status_reporter.update_status("FITS header cache updated.")
+
+
+def parse_header(header_bytes):
+    if b'\x09' in header_bytes:
+        log(WARN, f"FITS header contains tab characters: {header_bytes}")
+        header_bytes = header_bytes.replace(b'\x09', b' ')
+    return Header.fromstring(header_bytes)
 
 
 def check_missing_header_cache(status_reporter=None):
@@ -157,8 +165,8 @@ def check_missing_header_cache(status_reporter=None):
             if header_bytes:
                 FitsHeader(file=file, header=header_bytes).save()
                 # Normalize the header and create an Image object if possible
-                header = Header.fromstring(header_bytes)
-                image = normalize_fits_header(file, header)
+                header = parse_header(header_bytes)
+                image = normalize_fits_header(file, header, status_reporter)
                 if image is not None:
                     Image.insert(image.__data__).on_conflict_replace().execute()
 
@@ -176,6 +184,7 @@ class ChangeList:
     def apply_all(self):
         with File._meta.database.atomic():
             # note that bulk_create does not assign the rowid, and we need this later on, hence the loop.
+            # FIXME: for some reason this still fails later on when inserting the header cache
             for file in self.new_files:
                 file.save(force_insert=True)
             for file in self.removed_files:
@@ -245,7 +254,7 @@ class Importer:
         result = ChangeList()
         while len(dir_queue) > 0:
             current_dir: str = dir_queue.pop()
-            self.status.update_status(f"Scanning directory: {current_dir}", bulk=True)
+            self.status.update_status(f"Scanning directory: {root.name}/{current_dir}", bulk=True)
             filtered_files = set()
             entry: Info
             for entry in root_fs.scandir(current_dir, namespaces=['details']):

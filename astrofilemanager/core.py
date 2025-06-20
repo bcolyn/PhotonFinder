@@ -9,7 +9,7 @@ from peewee import Database, SqliteDatabase
 class StatusReporter:
     @abstractmethod
     def update_status(self, message: str, bulk=False) -> None:
-        pass
+        logging.info(message)
 
 
 class ApplicationContext:

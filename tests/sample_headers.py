@@ -290,3 +290,30 @@ TELESCOP= 'DWARFII '           / DWARF II telescope
 INSTRUME= 'DWARFII '           / DWARF II instrument
 ORIGIN  = 'DWARFLAB'           / DWARF II's creator
 """
+
+header_app = """
+SIMPLE  =                    T / Java FITS: Mon Aug 20 13:26:55 CEST 2018       
+BITPIX  =                  -32 / bits per data value                            
+NAXIS   =                    2 / number of axes                                 
+NAXIS1  =                 4009 / size of the n'th axis                          
+NAXIS2  =                 2674 / size of the n'th axis                          
+EXTEND  =                    T / Extensions are permitted                       
+BSCALE  =                  1.0 / scale factor                                   
+BZERO   =                  0.0 / no offset                                      
+DATE    = '2018-08-20T11:28:45' / creation date of Integration                  
+SOFTWARE= 'Astro Pixel Processor by Aries Productions' / software               
+VERSION = '1.062   '           / Astro Pixel Processor version                  
+INTEGRAT= 'Integration'        / integration of light frames                    
+CFAIMAGE= 'no      '           / Color Filter Array pattern                     
+GAIN    =                  0.0 / gain or ISO depending on instrument            
+EXPTIME =                900.0 / exposure time (s)                              
+LOK-1   = ' 9,78E-03'          / lokation of channel 1                          
+SCALE-1 = ' 1,86E-03'          / dispersion of channel 1                        
+NOISE-1 = ' 9,41E-04'          / noise level of channel 1                       
+SNR-1   = ' 4,33E+00'          / Signal to Noise Ratio of channel 1             
+medNR-1 = ' 1,05E+00'          / median noise reduction, channel 1              
+medENR-1= ' 1,15E+00'          / effective median noise reduction, channel 1    
+refNR-1 = ' 1,06E+00'          / reference noise reduction, channel 1           
+refENR-1= ' 1,18E+00'          / effective reference noise reduction, channel 1 
+END                                                                             
+"""
