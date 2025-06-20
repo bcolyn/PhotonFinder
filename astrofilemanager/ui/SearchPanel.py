@@ -20,13 +20,18 @@ RESET_LABEL = "<any>"
 
 
 # Using the new database-backed tree model for filesystemTreeView
+def _not_empty(current_text):
+    return current_text != EMPTY_LABEL and current_text and current_text != RESET_LABEL
+
+
 class SearchPanel(QFrame, Ui_SearchPanel):
-    def __init__(self, context: ApplicationContext, parent=None) -> None:
+    def __init__(self, context: ApplicationContext, mainWindow: 'MainWindow', parent=None) -> None:
         super(SearchPanel, self).__init__(parent)
         self.setupUi(self)
 
         self.context = context
         self.update_in_progress = False
+        self.mainWindow = mainWindow
         self.search_criteria = SearchCriteria()
         self.advanced_options = dict()
         self.total_files = 0  # Track total number of files in search results
@@ -196,13 +201,13 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         abs_min = 120
         target.setMinimumWidth(max(abs_min, max_width + padding + 30))
 
-        if current_text in data or current_text == EMPTY_LABEL:
-            target.setCurrentText(current_text)
-            self.update_in_progress = False
-        else:
-            self.update_in_progress = False
-            target.setCurrentText(RESET_LABEL)
-            self.refresh_data_grid()
+        if _not_empty(current_text) and not current_text in data:
+            target.addItem(current_text)
+
+        target.setCurrentText(current_text)
+        self.update_in_progress = False
+
+        self.refresh_data_grid()
 
     def on_data_selection_changed(self, selected, deselected):
         """Handle selection changes in the data grid."""
@@ -214,6 +219,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.context.status_reporter.update_status(f"{selected_count} files out of {self.total_files} selected")
         else:
             self.context.status_reporter.update_status(f"{self.total_files} files")
+
+        self.mainWindow.enable_actions_for_current_tab()
 
     def on_search_results_loaded(self, results, page, total_files, has_more):
         """Handle search results loaded from the database."""
@@ -324,6 +331,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def update_search_criteria(self):
         """Update search criteria from UI elements."""
+        if self.update_in_progress:
+            return
 
         self.search_criteria.type = _get_combo_value(self.filter_type_combo)
         self.search_criteria.filter = _get_combo_value(self.filter_filter_combo)
@@ -342,8 +351,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_criteria.paths_as_prefix = self.checkBox.isChecked()
         # Refresh the data grid with the updated search criteria
         self.refresh_data_grid()
-        if not self.update_in_progress:
-            self.refresh_combo_options()
+        #if not self.update_in_progress:
+        self.refresh_combo_options()
 
     def show_context_menu(self, position):
         """Show context menu for the data view."""
@@ -685,7 +694,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_criteria.coord_dec = ""
         self.search_criteria.coord_radius = 0.5
 
-    def get_selected_image(self):
+    def get_selected_image(self) -> Image | None:
         """Get the image data of the first selected file, if any."""
         selected_rows = self.dataView.selectionModel().selectedRows()
         if not selected_rows:
@@ -792,8 +801,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.library_tree_model.library_roots_loader.library_roots_loaded.connect(self._apply_pending_path_criteria)
         else:
             for path in self.search_criteria.paths:
-                self._find_and_select_node(paths)
+                self._find_and_select_node(path)
+
         # Update combo boxes
+        self.update_in_progress = True
         if criteria.type is not None:
             self._set_combo_value(self.filter_type_combo, criteria.type)
         if criteria.filter is not None:
@@ -811,6 +822,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.filter_name_text.setText(criteria.object_name)
         else:
             self.filter_name_text.clear()
+
+        self.update_in_progress = False
 
         # Clear existing filter buttons
         for button in list(self.advanced_options.values()):
@@ -859,8 +872,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button = FilterButton(self, text, AdvancedFilter.DATETIME)
             filter_button.on_remove_filter.connect(self.reset_date_criteria)
             self.add_filter_button_control(filter_button)
-
-        self.update_search_criteria()
 
 
 def _get_combo_value(combo: QComboBox) -> str | None:

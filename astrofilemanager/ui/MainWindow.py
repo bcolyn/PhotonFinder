@@ -7,6 +7,7 @@ from PySide6.QtWidgets import *
 import core
 from astrofilemanager.core import ApplicationContext, StatusReporter
 from astrofilemanager.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
+from models import SearchCriteria
 from .LibraryRootDialog import LibraryRootDialog
 from .LogWindow import LogWindow
 from .SearchPanel import SearchPanel
@@ -75,8 +76,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         context.set_status_reporter(self.reporter)
 
     def new_search_tab(self):
-        panel = SearchPanel(self.context, self.tabWidget)
-        self.tabWidget.addTab(panel, "Loading")
+        panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
+        tab = self.tabWidget.addTab(panel, "Loading")
+        self.tabWidget.setCurrentIndex(tab)
 
     def dup_search_tab(self):
         current_index = self.tabWidget.currentIndex()
@@ -85,7 +87,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_widget = self.tabWidget.widget(current_index)
         assert isinstance(current_widget, SearchPanel)
         current_criteria = current_widget.search_criteria
-        panel = SearchPanel(self.context, self.tabWidget)
+        panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
         tab = self.tabWidget.addTab(panel, "Loading")
         panel.apply_search_criteria(current_criteria)
         self.tabWidget.setCurrentIndex(tab)
@@ -161,25 +163,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 widget.library_tree_model.reload_library_roots()
 
     def add_exposure_filter(self):
-        self.tabWidget.currentWidget().add_exposure_filter()
+        self.getCurrentSearchPanel().add_exposure_filter()
+
+    def getCurrentSearchPanel(self) -> SearchPanel:
+        return self.tabWidget.currentWidget()
 
     def add_telescope_filter(self):
-        self.tabWidget.currentWidget().add_telescope_filter()
+        self.getCurrentSearchPanel().add_telescope_filter()
 
     def add_binning_filter(self):
-        self.tabWidget.currentWidget().add_binning_filter()
+        self.getCurrentSearchPanel().add_binning_filter()
 
     def add_gain_filter(self):
-        self.tabWidget.currentWidget().add_gain_filter()
+        self.getCurrentSearchPanel().add_gain_filter()
 
     def add_temperature_filter(self):
-        self.tabWidget.currentWidget().add_temperature_filter()
+        self.getCurrentSearchPanel().add_temperature_filter()
 
     def add_datetime_filter(self):
-        self.tabWidget.currentWidget().add_datetime_filter()
+        self.getCurrentSearchPanel().add_datetime_filter()
 
     def add_coordinates_filter(self):
-        self.tabWidget.currentWidget().add_coordinates_filter()
+        self.getCurrentSearchPanel().add_coordinates_filter()
 
     def view_log(self):
         """
@@ -195,7 +200,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         log_window.exec()
 
     def export_data(self):
-        self.tabWidget.currentWidget().export_data()
+        self.getCurrentSearchPanel().export_data()
 
     def create_backup(self):
         if not self.context.database:
@@ -273,3 +278,39 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             logging.error(error_msg)
             self.context.status_reporter.update_status(error_msg)
             QMessageBox.critical(self, "Database Open Failed", error_msg)
+
+    def find_matching_darks(self):
+        current_panel = self.getCurrentSearchPanel()
+        selected_image = current_panel.get_selected_image()
+        if not selected_image:
+            return
+        dark_criteria = SearchCriteria.find_dark(selected_image)
+        panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
+        tab = self.tabWidget.addTab(panel, "Loading")
+        panel.apply_search_criteria(dark_criteria)
+        self.tabWidget.setCurrentIndex(tab)
+
+
+    def find_matching_flats(self):
+        current_panel = self.getCurrentSearchPanel()
+        selected_image = current_panel.get_selected_image()
+        if not selected_image:
+            return
+        flat_criteria = SearchCriteria.find_flat(selected_image)
+        panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
+        tab = self.tabWidget.addTab(panel, "Loading")
+        panel.apply_search_criteria(flat_criteria)
+        self.tabWidget.setCurrentIndex(tab)
+
+    def on_tab_switch(self):
+        self.enable_actions_for_current_tab()
+
+    def enable_actions_for_current_tab(self):
+        current_panel = self.getCurrentSearchPanel()
+        if not current_panel:
+            return
+        selected_image = current_panel.get_selected_image()
+        if selected_image:
+            current_type =  selected_image.image_type
+            self.actionFind_matching_darks.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
+            self.actionFind_matching_flats.setEnabled(current_type == "LIGHT")

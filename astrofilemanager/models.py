@@ -1,8 +1,9 @@
 import os
 import typing
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+from tkinter import Image
 
 from peewee import *
 from playhouse.sqlite_ext import RowIDField
@@ -38,6 +39,7 @@ class SearchCriteria:
     coord_radius: float = 0.5  # Search radius in decimal degrees
     start_datetime: datetime | None = None
     end_datetime: datetime | None = None
+    reference_frame: Image | None = None
 
     def is_empty(self):
         return self == SearchCriteria()
@@ -58,33 +60,43 @@ class SearchCriteria:
         return ', '.join(result)
 
     @staticmethod
-    def find_dark(light_image: 'Image') -> 'SearchCriteria':
+    def find_dark(reference_frame: 'Image') -> 'SearchCriteria':
         criteria = SearchCriteria()
-        if light_image.exposure:
-            criteria.exposure = str(light_image.exposure)
-        if light_image.camera:
-            criteria.camera = str(light_image.camera)
-        if light_image.set_temp:
-            criteria.temperature = str(light_image.set_temp)
-        if light_image.gain:
-            criteria.gain = str(light_image.gain)
-        if light_image.binning:
-            criteria.binning = str(light_image.binning)
-            # offset
-        criteria.type = "DARK"  # TODO: or darkflat?
+        if reference_frame.exposure:
+            criteria.exposure = str(reference_frame.exposure)
+        if reference_frame.camera:
+            criteria.camera = str(reference_frame.camera)
+        if reference_frame.set_temp:
+            criteria.temperature = str(reference_frame.set_temp)
+        if reference_frame.gain:
+            criteria.gain = str(reference_frame.gain)
+        if reference_frame.binning:
+            criteria.binning = str(reference_frame.binning)
+        if reference_frame.offset:
+            criteria.offset = int(reference_frame.offset)
+
+        if reference_frame.image_type == "FLAT":
+            criteria.type = "DARKFLAT"
+        else:
+            criteria.type = "DARK"
+
+        criteria.reference_frame = reference_frame
         return criteria
 
     @staticmethod
-    def find_flat(light_image: 'Image') -> 'SearchCriteria':
+    def find_flat(reference_frame: 'Image') -> 'SearchCriteria':
         criteria = SearchCriteria()
-        if light_image.camera:
-            criteria.camera = str(light_image.camera)
-        if light_image.filter:
-            criteria.filter = str(light_image.filter)
-        if light_image.binning:
-            criteria.binning = str(light_image.binning)
-            # offset
+        if reference_frame.camera:
+            criteria.camera = str(reference_frame.camera)
+        if reference_frame.filter:
+            criteria.filter = str(reference_frame.filter)
+        if reference_frame.binning:
+            criteria.binning = str(reference_frame.binning)
+        if reference_frame.date_obs:
+            criteria.start_datetime = reference_frame.date_obs - timedelta(days=1)
+            criteria.end_datetime = reference_frame.date_obs + timedelta(days=1)
         criteria.type = "FLAT"
+        criteria.reference_frame = reference_frame
         return criteria
 
 

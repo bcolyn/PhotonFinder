@@ -67,6 +67,7 @@
     <addaction name="separator"/>
     <addaction name="action_Create_Database"/>
     <addaction name="action_Open_Database"/>
+    <addaction name="action_Create_Backup"/>
     <addaction name="separator"/>
     <addaction name="action_Scan_Libraries"/>
     <addaction name="action_Manage_Libraries"/>
@@ -100,7 +101,9 @@
      <string>&amp;Tools</string>
     </property>
     <addaction name="action_Export_Data"/>
-    <addaction name="action_Create_Backup"/>
+    <addaction name="separator"/>
+    <addaction name="actionFind_matching_darks"/>
+    <addaction name="actionFind_matching_flats"/>
    </widget>
    <addaction name="menu_File"/>
    <addaction name="menuFilter"/>
@@ -190,7 +193,7 @@
   </action>
   <action name="action_Create_Backup">
    <property name="text">
-    <string>Create &amp;Backup</string>
+    <string>&amp;Backup Database</string>
    </property>
   </action>
   <action name="action_Create_Database">
@@ -206,6 +209,22 @@
   <action name="actionDuplicate_Tab">
    <property name="text">
     <string>Duplicate Tab</string>
+   </property>
+  </action>
+  <action name="actionFind_matching_darks">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Find matching darks</string>
+   </property>
+  </action>
+  <action name="actionFind_matching_flats">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Find matching flats</string>
    </property>
   </action>
  </widget>
@@ -531,6 +550,54 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionFind_matching_darks</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>find_matching_darks()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>actionFind_matching_flats</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>find_matching_flats()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>tabWidget</sender>
+   <signal>currentChanged(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>on_tab_switch()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>399</x>
+     <y>305</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -552,5 +619,8 @@
   <slot>create_database()</slot>
   <slot>open_database()</slot>
   <slot>dup_search_tab()</slot>
+  <slot>find_matching_darks()</slot>
+  <slot>find_matching_flats()</slot>
+  <slot>on_tab_switch()</slot>
  </slots>
 </ui>
