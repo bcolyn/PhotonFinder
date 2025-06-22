@@ -351,7 +351,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_criteria.paths_as_prefix = self.checkBox.isChecked()
         # Refresh the data grid with the updated search criteria
         self.refresh_data_grid()
-        #if not self.update_in_progress:
+        # if not self.update_in_progress:
         self.refresh_combo_options()
 
     def show_context_menu(self, position):
@@ -758,15 +758,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 if response == QMessageBox.No:
                     return
 
-            # Pass the search criteria instead of loading all files
-            from .ExportDialog import ExportDialog
-            dialog = ExportDialog(self.context, self.search_criteria, parent=self)
-            dialog.exec()
-        else:
-            # Show the export dialog with selected files
-            from .ExportDialog import ExportDialog
-            dialog = ExportDialog(self.context, selected_files, parent=self)
-            dialog.exec()
+        # Pass the search criteria instead of loading all files
+        from .ExportDialog import ExportDialog
+        dialog = ExportDialog(self.context, self.search_criteria, selected_files, parent=self)
+        dialog.exec()
 
     def _set_combo_value(self, combo: QComboBox, value: str | None):
         """Set the value of a combo box based on the search criteria."""

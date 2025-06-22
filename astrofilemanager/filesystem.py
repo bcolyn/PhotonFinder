@@ -240,6 +240,7 @@ class Importer:
         for root in roots:
             self.status.update_status(f"importing library root: {root.name}")
             try:
+                # TODO: check root exists and is non-empty
                 open_fs = fs.open_fs(root.path, writeable=False)
                 change_list = self.import_files_from(open_fs, root)
                 yield change_list
@@ -247,7 +248,6 @@ class Importer:
                 self.status.update_status(f"Error importing library: {root.name} - {str(err)}")
         self.status.update_status("done.")
 
-    # TODO: check root exists and is non-empty
     def import_files_from(self, root_fs: FS, root: LibraryRoot) -> ChangeList:
         dir_queue: typing.List[str] = ['.']
         all_dirs = set(dir_queue)
@@ -264,13 +264,13 @@ class Importer:
                         dir_queue.append(dir_path)
                         all_dirs.add(dir_path)
                     else:
-                        pass  # TODO: log skipping
+                        self.status.update_status(f"Skipping directory: {root.name}/{dir_path}", bulk=False)
                 if entry.is_file:
                     if self._file_filter(entry):
                         self._import_file(entry, current_dir, root, result)
                         filtered_files.add(entry.name)
                     else:
-                        pass  # TODO: log skipping
+                        self.status.update_status(f"Skipping file: {root.name}/{dir_path}/{entry.name}", bulk=False)
 
             # evict deleted files
             query = File.select(File.rowid, File.name).where(File.root == root, File.path == current_dir)

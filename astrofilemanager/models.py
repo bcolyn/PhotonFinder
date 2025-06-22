@@ -3,7 +3,7 @@ import typing
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from tkinter import Image
+from typing import Optional
 
 from peewee import *
 from playhouse.sqlite_ext import RowIDField
@@ -39,7 +39,7 @@ class SearchCriteria:
     coord_radius: float = 0.5  # Search radius in decimal degrees
     start_datetime: datetime | None = None
     end_datetime: datetime | None = None
-    reference_frame: Image | None = None
+    reference_file: Optional['File'] = None
 
     def is_empty(self):
         return self == SearchCriteria()
@@ -59,9 +59,9 @@ class SearchCriteria:
             result.append(f"{self.start_datetime.isoformat()} to {self.end_datetime.isoformat()}")
         return ', '.join(result)
 
-    @staticmethod
-    def find_dark(reference_frame: 'Image') -> 'SearchCriteria':
-        criteria = SearchCriteria()
+    @classmethod
+    def find_dark(cls, reference_frame: 'Image') -> 'SearchCriteria':
+        criteria = cls()
         if reference_frame.exposure:
             criteria.exposure = str(reference_frame.exposure)
         if reference_frame.camera:
@@ -80,12 +80,14 @@ class SearchCriteria:
         else:
             criteria.type = "DARK"
 
-        criteria.reference_frame = reference_frame
+        reference_file = reference_frame.file
+        reference_file.image = reference_frame
+        criteria.reference_file = reference_file
         return criteria
 
-    @staticmethod
-    def find_flat(reference_frame: 'Image') -> 'SearchCriteria':
-        criteria = SearchCriteria()
+    @classmethod
+    def find_flat(cls, reference_frame: 'Image') -> 'SearchCriteria':
+        criteria = cls()
         if reference_frame.camera:
             criteria.camera = str(reference_frame.camera)
         if reference_frame.filter:
@@ -96,7 +98,10 @@ class SearchCriteria:
             criteria.start_datetime = reference_frame.date_obs - timedelta(days=1)
             criteria.end_datetime = reference_frame.date_obs + timedelta(days=1)
         criteria.type = "FLAT"
-        criteria.reference_frame = reference_frame
+
+        reference_file = reference_frame.file
+        reference_file.image = reference_frame
+        criteria.reference_file = reference_file
         return criteria
 
 

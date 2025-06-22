@@ -24,6 +24,12 @@ def _int(value):
 def _float(value):
     return None if value is None else float(value)
 
+def _type(value):
+    if value is None:
+        return None
+    value = value.upper()
+    value = value.replace(' FRAME', '')
+    return value
 
 def _datetime(value):
     """Convert ISO 8601 formatted date string to datetime object."""
@@ -121,7 +127,7 @@ class FitsHeaderHandler:
     # For SeeStar - all OK
 
     def _get_image_type(self, header: Header) -> Optional[str]:
-        return header.get('IMAGETYP')
+        return _type(header.get('IMAGETYP'))
 
     def _get_filter(self, header: Header) -> Optional[str]:
         return header.get('FILTER')
@@ -251,7 +257,7 @@ class GenericHandler(FitsHeaderHandler):
         return True
 
     def _get_image_type(self, header: Header) -> Optional[str]:
-        return header.get('IMAGETYP', header.get('OBSTYPE'))
+        return _type(header.get('IMAGETYP', header.get('OBSTYPE')))
 
     def _get_filter(self, header: Header) -> Optional[str]:
         return header.get('FILTER', header.get('FILTNAME'))

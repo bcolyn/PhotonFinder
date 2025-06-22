@@ -7,7 +7,7 @@ from PySide6.QtWidgets import *
 import core
 from astrofilemanager.core import ApplicationContext, StatusReporter
 from astrofilemanager.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
-from models import SearchCriteria
+from astrofilemanager.models import SearchCriteria
 from .LibraryRootDialog import LibraryRootDialog
 from .LogWindow import LogWindow
 from .SearchPanel import SearchPanel

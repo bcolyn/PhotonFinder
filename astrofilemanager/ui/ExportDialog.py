@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import shutil
@@ -10,11 +11,66 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QDialogButtonBox
 from peewee import JOIN
 
-from astrofilemanager.core import ApplicationContext
+from astrofilemanager.core import ApplicationContext, Settings
 from astrofilemanager.models import Image, File, SearchCriteria
 from astrofilemanager.ui.BackgroundLoader import BackgroundLoaderBase
 from astrofilemanager.ui.generated.ExportDialog_ui import Ui_ExportDialog
 from filesystem import is_compressed, fopen
+
+
+def template_filename_with_ref(file: File, ref: File, template: string.Template, settings: Settings,
+                               decompress=False) -> str:
+    regular_filename = template_filename(file, template, settings, decompress=decompress)
+    if ref is None:
+        return regular_filename
+    else:
+        ref_filename = template_filename(ref, template, settings, decompress=decompress)
+        ref_path = Path(ref_filename).parent
+        regular_name = Path(regular_filename).name
+        return os.path.join(ref_path, regular_name)
+
+
+def template_filename(file: File, template: string.Template, settings: Settings, decompress=False) -> str:
+    image = file.image if hasattr(file, 'image') and file.image else None
+    file_name = file.name
+
+    # drop the last extension for the decompressed file name
+    if is_compressed(file_name) and decompress:
+        file_name = os.path.splitext(file_name)[0]
+
+    mapping = {
+        'filename': file_name,
+        'lib_path': file.path,
+        'image_type': image.image_type if image else None,
+        'camera': image.camera if image else None,
+        'filter': image.filter if image else None,
+        'exposure': image.exposure if image else None,
+        'gain': image.gain if image else None,
+        'binning': image.binning if image else None,
+        'set_temp': image.set_temp if image else None,
+        'telescope': image.telescope if image else None,
+        'object_name': image.object_name if image else None,
+        'date_obs': image.date_obs.isoformat() if image else None
+    }
+    if image and image.date_obs:
+        datetime_minus12 = image.date_obs - timedelta(hours=12)
+        mapping['date_minus12'] = datetime_minus12.date().isoformat()
+        mapping['date'] = image.date_obs.date().isoformat()
+    else:
+        mapping['date_minus12'] = None
+        mapping['date'] = None
+
+    mapping['last_light_path'] = settings.get_last_light_path()
+    mapping['filename_no_ext'] = os.path.splitext(file_name)[0]
+    mapping['ext'] = os.path.splitext(file_name)[1].lstrip('.')
+    # mapping['root'] = file.root.name
+
+    result = template.safe_substitute(mapping)
+    if not result:
+        result = file_name
+    if image and image.image_type == 'LIGHT':
+        settings.set_last_light_path(Path(result).parent)
+    return result
 
 
 class ExportWorker(BackgroundLoaderBase):
@@ -35,16 +91,12 @@ class ExportWorker(BackgroundLoaderBase):
         self.pattern = None
         self.cancelled = False
 
-    def export_files(self, files_or_criteria: Union[List[File], SearchCriteria], output_path: str, decompress: bool,
+    def export_files(self, search_criteria: SearchCriteria,
+                     files: Optional[List[File]], output_path: str, decompress: bool,
                      pattern: str, total_files: int):
         """Start the export process in a background thread."""
-        if isinstance(files_or_criteria, SearchCriteria):
-            self.search_criteria = files_or_criteria
-            self.files = None
-        else:
-            self.files = files_or_criteria
-            self.search_criteria = None
-
+        self.search_criteria = search_criteria
+        self.files = files
         self.output_path = output_path
         self.decompress = decompress
         self.pattern = string.Template(pattern)
@@ -55,7 +107,12 @@ class ExportWorker(BackgroundLoaderBase):
     def _export_files_task(self):
         """Background task to export files."""
         try:
-            if self.search_criteria:
+            if self.files is not None:
+                for i, file in enumerate(self.files):
+                    if self.cancelled:
+                        break
+                    self._process_file(file, i)
+            else:
                 with self.context.database.bind_ctx([File, Image]):
                     query = (File
                              .select(File, Image)
@@ -65,27 +122,21 @@ class ExportWorker(BackgroundLoaderBase):
                     for i, file in enumerate(query):
                         if self.cancelled:
                             break
-
-                        self._process_file(file, i, self.total_files)
-            else:
-                for i, file in enumerate(self.files):
-                    if self.cancelled:
-                        break
-
-                    self._process_file(file, i, self.total_files)
+                        self._process_file(file, i)
 
             self.finished.emit()
         except Exception as e:
             logging.error(f"Error exporting files: {e}", exc_info=True)
             self.error.emit(str(e))
 
-    def _process_file(self, file, index, total_files):
+    def _process_file(self, file, index):
         """Process a single file during export."""
         # Get the source file path
         source_path = file.full_filename()
 
         # Create the output filename using the pattern
-        output_filename = self.template_filename(file, self.pattern)
+        output_filename = template_filename_with_ref(file, self.search_criteria.reference_file, self.pattern,
+                                                     self.context.settings)
 
         # Create the full output path
         output_file_path = os.path.join(self.output_path, output_filename)
@@ -101,49 +152,7 @@ class ExportWorker(BackgroundLoaderBase):
             self.copy_file(source_path, output_file_path)
 
         # Update progress
-        self.progress.emit(int((index + 1) / total_files * 100))
-
-    def template_filename(self, file: File, template: string.Template) -> str:
-        image = file.image if hasattr(file, 'image') and file.image else None
-        file_name = file.name
-
-        # drop the last extension for the decompressed file name
-        if is_compressed(file_name) and self.decompress:
-            file_name = os.path.splitext(file_name)[0]
-
-        mapping = {
-            'filename': file_name,
-            'lib_path': file.path,
-            'image_type': image.image_type if image else None,
-            'camera': image.camera if image else None,
-            'filter': image.filter if image else None,
-            'exposure': image.exposure if image else None,
-            'gain': image.gain if image else None,
-            'binning': image.binning if image else None,
-            'set_temp': image.set_temp if image else None,
-            'telescope': image.telescope if image else None,
-            'object_name': image.object_name if image else None,
-            'date_obs': image.date_obs.isoformat() if image else None
-        }
-        if (image and image.date_obs):
-            datetime_minus12 = image.date_obs - timedelta(hours=12)
-            mapping['date_minus12'] = datetime_minus12.date().isoformat()
-            mapping['date'] = image.date_obs.date().isoformat()
-        else:
-            mapping['date_minus12'] = None
-            mapping['date'] = None
-
-        mapping['last_light_path'] = self.context.settings.get_last_light_path()
-        mapping['filename_no_ext'] = os.path.splitext(file_name)[0]
-        mapping['ext'] = os.path.splitext(file_name)[1].lstrip('.')
-        #mapping['root'] = file.root.name
-
-        result = template.safe_substitute(mapping)
-        if not result:
-            result = file_name
-        if image and image.image_type == 'LIGHT':
-            self.context.settings.set_last_light_path(Path(result).parent)
-        return result
+        self.progress.emit(int((index + 1) / self.total_files * 100))
 
     def copy_file(self, source_path, output_file_path):
         if is_compressed(source_path) and self.decompress:
@@ -162,18 +171,19 @@ class ExportWorker(BackgroundLoaderBase):
 class ExportDialog(QDialog, Ui_ExportDialog):
     """Dialog for exporting files."""
 
-    def __init__(self, context: ApplicationContext,
-                 files_or_criteria: Union[Optional[List[File]], SearchCriteria] = None, parent=None):
+    def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria,
+                 files: Optional[List[File]] = None, parent=None):
         super(ExportDialog, self).__init__(parent)
         self.setupUi(self)
         self.setModal(True)
         self.context = context
+        self.search_criteria = copy.deepcopy(search_criteria)  # make a copy since we may modify it.
+        self.files = files if files else None
 
-        # Determine if we have files or search criteria
-        if isinstance(files_or_criteria, SearchCriteria):
-            self.search_criteria = files_or_criteria
-            self.files = None
-
+        if files: # user has a selection made
+            self.total_files = len(self.files)
+            self.first_file = self.files[0]
+        else:
             # Count the total number of files matching the criteria
             with self.context.database.bind_ctx([File, Image]):
                 query = (File
@@ -182,10 +192,11 @@ class ExportDialog(QDialog, Ui_ExportDialog):
                          .order_by(File.root, File.path, File.name))
                 query = Image.apply_search_criteria(query, self.search_criteria)
                 self.total_files = query.count()
-        else:
-            self.files = files_or_criteria or []
-            self.search_criteria = None
-            self.total_files = len(self.files)
+                self.first_file = query.first()
+
+        if self.search_criteria.reference_file:
+            self.useRefCheckBox.setEnabled(True)
+            self.useRefCheckBox.setText(self.search_criteria.reference_file.name)
         self.setWindowTitle(f"Export {self.total_files} images")
 
         # Load settings
@@ -202,7 +213,9 @@ class ExportDialog(QDialog, Ui_ExportDialog):
 
         # Connect the accepted signal to our export_files method
         self.buttonBox.accepted.connect(self.export_files)
-        self.patternComboBox.editTextChanged.connect(self.check_combo)
+        self.patternComboBox.editTextChanged.connect(self.update_preview)
+        self.useRefCheckBox.stateChanged.connect(self.update_preview)
+        self.update_preview(self.patternComboBox.currentText())
 
     def load_settings(self):
         """Load settings from the application context."""
@@ -256,23 +269,13 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.save_settings()
         self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
 
-        # Disconnect and reconnect signals to avoid multiple connections
-        try:
-            self.export_worker.progress.disconnect(self.progressBar.setValue)
-            self.export_worker.finished.disconnect(self.on_export_finished)
-            self.export_worker.error.disconnect(self.on_export_error)
-        except RuntimeError:
-            # Signals were not connected
-            pass
-
-        # Connect signals
-        self.export_worker.progress.connect(self.progressBar.setValue)
-        self.export_worker.finished.connect(self.on_export_finished)
-        self.export_worker.error.connect(self.on_export_error)
+        if not self.useRefCheckBox.isChecked():
+            self.search_criteria.reference_file = None
 
         # Start the export process with either files or search criteria
         self.export_worker.export_files(
-            self.search_criteria if self.search_criteria else self.files,
+            self.search_criteria,
+            self.files,
             self.outputPathEdit.text(),
             self.decompressCheckBox.isChecked(),
             self.patternComboBox.currentText(),
@@ -306,6 +309,11 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         QMessageBox.critical(self, "Export Error", error_message)
         self.reject()
 
-    def check_combo(self, text: str):
+    def update_preview(self, ignored):
+        text = self.patternComboBox.currentText()
         tpl = string.Template(template=text)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(tpl.is_valid())
+        ref = self.search_criteria.reference_file if self.useRefCheckBox.isChecked() else None
+        filename = template_filename_with_ref(self.first_file, ref, tpl, self.context.settings,
+                                              decompress=self.decompressCheckBox.isChecked())
+        self.outputPreview.setText(filename)
