@@ -2,29 +2,29 @@ from pathlib import Path
 
 import pytest
 from fs.memoryfs import MemoryFS
+from fs.opener import Opener
 from peewee import SqliteDatabase
 
 from astrofilemanager.core import ApplicationContext, Settings, StatusReporter
 from astrofilemanager.models import CORE_MODELS
 
 
-class TempSettings(Settings):
-
-    def sync(self):
-        pass
-
-    def set_last_database_path(self, value):
-        pass
+@pytest.fixture(scope="class")
+def settings(class_mocker):
+    mock_settings = class_mocker.Mock()
+    mock_settings.get_last_database_path.return_value = ":memory:"
+    mock_settings.sync = class_mocker.Mock()
+    yield mock_settings
 
 
 @pytest.fixture(scope="class")
-def app_context():
+def app_context(settings: Settings):
     """
     Fixture that provides an application context for tests.
     Uses an in-memory database for testing.
     """
     # Create an application context with an in-memory database
-    context = ApplicationContext(":memory:", TempSettings())
+    context = ApplicationContext(":memory:", settings)
     context.set_status_reporter(StatusReporter())
     with context:
         yield context
@@ -69,6 +69,15 @@ def filesystem():
         mem_fs.appendbytes(dir_light + "BAD_image07.fits", dummy_bytes)
         mem_fs.appendbytes(dir_darks + "image08.fits.xz", dummy_bytes)
         mem_fs.appendbytes(dir_darks + "statistics.csv", dummy_bytes)
+
+        class FSOpener(Opener):
+            protocols = ['test']
+
+            def open_fs(self, fs_url, parse_result, writeable, create, cwd):
+                return mem_fs
+
+        from fs.opener import registry
+        registry.install(FSOpener())
 
         yield mem_fs
     finally:

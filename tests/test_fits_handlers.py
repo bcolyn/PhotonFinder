@@ -1,6 +1,7 @@
 from datetime import datetime
 from astropy.io.fits import Header
 
+from tests.utils import fix_embedded_header
 from .sample_headers import *
 from astrofilemanager.models import File
 from astrofilemanager.fits_handlers import normalize_fits_header
@@ -265,14 +266,4 @@ END                                                                             
         assert image is not None
 
 
-def fix_embedded_header(header_str: str) -> bytes:
-    result = ""
-    for line in header_str.splitlines():
-        adj = line.ljust(80, " ")
-        result += adj
 
-    blocks = len(result) // 2880
-    rem = len(result) % 2880
-    if rem > 0:
-        blocks += 1
-    return bytes(result.ljust(blocks * 2880, " "), "ascii")

@@ -52,7 +52,7 @@ def read_fits_header(file: str | Path, status_reporter: StatusReporter = None) -
     The header ends with a line that starts with 'END'.
 
     Args:
-        file: A File object with a full_filename() method
+        file: filename or Path object
 
     Returns:
         The FITS header as a string, or None if the file is not a valid FITS file
@@ -111,16 +111,7 @@ def update_fits_header_cache(change_list, status_reporter=None):
 
     # Process new files
     for file in [*change_list.new_files, *change_list.changed_files]:
-        if Importer.is_fits_by_name(file.name):
-            header_bytes = read_fits_header(file.full_filename(), status_reporter)
-            if header_bytes:
-                FitsHeader(file=file, header=header_bytes).create().on_conflict_replace().execute()
-                # Normalize the header and create an Image object if possible
-                header = parse_header(header_bytes)
-                image = normalize_fits_header(file, header, status_reporter)
-                if image is not None:
-                    assert file.rowid is not None, "File rowid must be set before creating FitsHeader"
-                    image.insert().on_conflict_replace().execute()
+        _handle_file_metadata(file, status_reporter)
 
     # Process removed files
     for file in change_list.removed_files:
@@ -134,6 +125,18 @@ def update_fits_header_cache(change_list, status_reporter=None):
 
     if status_reporter:
         status_reporter.update_status("FITS header cache updated.")
+
+
+def _handle_file_metadata(file, status_reporter):
+    if Importer.is_fits_by_name(file.name):
+        header_bytes = read_fits_header(file.full_filename(), status_reporter)
+        if header_bytes:
+            FitsHeader(file=file, header=header_bytes).save()
+            # Normalize the header and create an Image object if possible
+            header = parse_header(header_bytes)
+            image = normalize_fits_header(file, header, status_reporter)
+            if image is not None:
+                Image.insert(image.__data__).on_conflict_replace().execute()
 
 
 def parse_header(header_bytes):
@@ -160,15 +163,7 @@ def check_missing_header_cache(status_reporter=None):
 
     # Process these files as new files
     for file in missing_header_files:
-        if Importer.is_fits_by_name(file.name):
-            header_bytes = read_fits_header(file.full_filename(), status_reporter)
-            if header_bytes:
-                FitsHeader(file=file, header=header_bytes).save()
-                # Normalize the header and create an Image object if possible
-                header = parse_header(header_bytes)
-                image = normalize_fits_header(file, header, status_reporter)
-                if image is not None:
-                    Image.insert(image.__data__).on_conflict_replace().execute()
+        _handle_file_metadata(file, status_reporter)
 
     if status_reporter:
         status_reporter.update_status("FITS header cache updated.")
@@ -184,7 +179,6 @@ class ChangeList:
     def apply_all(self):
         with File._meta.database.atomic():
             # note that bulk_create does not assign the rowid, and we need this later on, hence the loop.
-            # FIXME: for some reason this still fails later on when inserting the header cache
             for file in self.new_files:
                 file.save(force_insert=True)
             for file in self.removed_files:
@@ -264,13 +258,13 @@ class Importer:
                         dir_queue.append(dir_path)
                         all_dirs.add(dir_path)
                     else:
-                        self.status.update_status(f"Skipping directory: {root.name}/{dir_path}", bulk=False)
+                        self.status.update_status(f"Skipping directory: {root.name}/{current_dir}/{entry.name}", bulk=False)
                 if entry.is_file:
                     if self._file_filter(entry):
                         self._import_file(entry, current_dir, root, result)
                         filtered_files.add(entry.name)
                     else:
-                        self.status.update_status(f"Skipping file: {root.name}/{dir_path}/{entry.name}", bulk=False)
+                        self.status.update_status(f"Skipping file: {root.name}/{current_dir}/{entry.name}", bulk=False)
 
             # evict deleted files
             query = File.select(File.rowid, File.name).where(File.root == root, File.path == current_dir)
