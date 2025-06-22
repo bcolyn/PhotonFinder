@@ -2,7 +2,7 @@ from pyqt_distutils.build_ui import build_ui
 from setuptools import setup, find_packages
 
 setup(
-    name='astrofilemanager',
+    name='PhotonFinder',
     version='1.0.0',
     packages=find_packages(),
     url='',

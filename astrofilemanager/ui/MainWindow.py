@@ -4,10 +4,10 @@ import time
 from PySide6.QtCore import QThread, Signal, QObject
 from PySide6.QtWidgets import *
 
-import core
-from astrofilemanager.core import ApplicationContext, StatusReporter
+from astrofilemanager.core import ApplicationContext, StatusReporter, backup_database
 from astrofilemanager.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
 from astrofilemanager.models import SearchCriteria
+from .AboutDialog import AboutDialog
 from .LibraryRootDialog import LibraryRootDialog
 from .LogWindow import LogWindow
 from .SearchPanel import SearchPanel
@@ -199,6 +199,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Show the log window
         log_window.exec()
 
+    def show_about_dialog(self):
+        """
+        Show the about dialog with project information.
+        """
+        dialog = AboutDialog(self)
+        dialog.exec()
+
     def export_data(self):
         self.getCurrentSearchPanel().export_data()
 
@@ -214,7 +221,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return  # User cancelled
 
         try:
-            core.backup_database(self.context.database, file_path)
+            backup_database(self.context.database, file_path)
             self.context.status_reporter.update_status(f"Database backup created at {file_path}")
             QMessageBox.information(self, "Backup Complete", f"Database backup created at {file_path}")
         except Exception as e:

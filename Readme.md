@@ -1,6 +1,6 @@
-# AstroFileManager
+# PhotonFinder
 
-A desktop application for managing astronomical files.
+A desktop application for managing astronomical image files.
 
 ## Installation
 
