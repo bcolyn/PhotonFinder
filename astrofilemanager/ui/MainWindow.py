@@ -2,6 +2,7 @@ import logging
 import time
 
 from PySide6.QtCore import QThread, Signal, QObject
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import *
 
 from astrofilemanager.core import ApplicationContext, StatusReporter, backup_database
@@ -13,7 +14,7 @@ from .LogWindow import LogWindow
 from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
 from .generated.MainWindow_ui import Ui_MainWindow
-
+import astrofilemanager.ui.generated.resources_rc
 
 class UIStatusReporter(StatusReporter, QObject):
     on_message = Signal(str)
@@ -70,6 +71,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.app = app
         self.scan_worker = None  # Initialize scan_worker attribute
         self.new_search_tab()
+
+        # Set the window icon from the resource file
+        icon = QIcon(":/icon.png")
+        self.setWindowIcon(icon)
 
         self.reporter = UIStatusReporter()
         self.reporter.on_message.connect(self.statusBar().showMessage)

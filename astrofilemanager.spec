@@ -6,7 +6,7 @@ block_cipher = None
 
 a = Analysis(['astrofilemanager\\main.py'],
              binaries=[],
-             datas=[],
+             datas=[('icon.png', '.')],
              hiddenimports=[],
              hookspath=[],
              hooksconfig={},
@@ -44,7 +44,8 @@ exe = EXE(pyz,
           disable_windowed_traceback=False,
           target_arch=None,
           codesign_identity=None,
-          entitlements_file=None )
+          entitlements_file=None,
+          icon='icon.png' )
 coll = COLLECT(exe,
                a.binaries,
                a.zipfiles,
