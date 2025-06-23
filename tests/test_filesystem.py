@@ -4,7 +4,7 @@ from typing import Iterable
 from astrofilemanager.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_dict
 from astrofilemanager.models import LibraryRoot, File, Image, FitsHeader
 from astrofilemanager.filesystem import update_fits_header_cache, check_missing_header_cache
-from fits_handlers import normalize_fits_header, NINAHandler
+from astrofilemanager.fits_handlers import normalize_fits_header, NINAHandler
 from tests.utils import fix_embedded_header
 
 NUM_FILES = 6  # 8 images, 2 bad, 1 csv ignored

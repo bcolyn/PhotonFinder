@@ -101,8 +101,8 @@ def read_fits_header(file: str | Path, status_reporter: StatusReporter = None) -
         return None
 
 
-def read_xisf_header(file: str | Path, status_reporter: StatusReporter = None) -> tuple[bytes, dict[str, list]] | tuple[
-    None, None]:
+def read_xisf_header(file: str | Path, status_reporter: StatusReporter = None) -> (tuple[bytes, dict[str, list]] |
+                                                                                   tuple[None, None]):
     try:
         if status_reporter:
             status_reporter.update_status(f"Reading XISF header for {file}...", bulk=True)
@@ -245,8 +245,7 @@ class Importer:
 
     @staticmethod
     def is_xisf_by_name(filename: str) -> bool:
-        if filename.lower().endswith(tuple(compressed_exts.keys())):
-            filename = os.path.splitext(filename)[0]
+        # we don't support externally compressed xisf
         return filename.lower().endswith(".xisf")
 
     @staticmethod
