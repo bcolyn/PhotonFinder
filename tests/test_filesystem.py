@@ -1,10 +1,10 @@
 import logging
 from typing import Iterable
 
-
-from astrofilemanager.filesystem import Importer, read_fits_header, ChangeList
+from astrofilemanager.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_dict
 from astrofilemanager.models import LibraryRoot, File, Image, FitsHeader
 from astrofilemanager.filesystem import update_fits_header_cache, check_missing_header_cache
+from fits_handlers import normalize_fits_header, NINAHandler
 from tests.utils import fix_embedded_header
 
 NUM_FILES = 6  # 8 images, 2 bad, 1 csv ignored
@@ -93,3 +93,27 @@ def test_read_fits_header(global_test_data_dir):
     header_bytes = read_fits_header(file_path)
     assert len(header_bytes) % 2880 == 0, "FITS header should be multiple of 2880 bytes"
     assert header_bytes[:80].decode('ascii').startswith('SIMPLE  ='), "FITS header should start with SIMPLE"
+
+
+def test_read_read_xisf_header(global_test_data_dir):
+    file_path = global_test_data_dir / "2021-05-31_00-10-25__18.30_1.00s_0000.xisf"
+    assert file_path.exists()
+    header_bytes, header_dict = read_xisf_header(file_path)
+    assert header_dict is not None
+    assert header_bytes is not None
+    header = header_from_dict(header_dict)
+    assert NINAHandler().can_handle(header)
+    image = normalize_fits_header(File(), header)
+    assert image is not None
+
+    file_path = global_test_data_dir / "masterFlat_BIN-1_5496x3672_FILTER-LP_CFA_SESS-2020-04-11.xisf"
+    header_bytes, header_dict = read_xisf_header(file_path)
+    assert header_dict['INSTRUME'][0]['value'] == 'ZWO ASI183MC Pro'
+
+    file_path = global_test_data_dir / "masterLight_BIN-1_1080x1920_EXPOSURE-10.00s_FILTER-LP_RGB.xisf"
+    header_bytes, header_dict = read_xisf_header(file_path)
+    header = header_from_dict(header_dict)
+    image = normalize_fits_header(File(), header)
+    assert image is not None
+    assert image.camera == "Seestar S50"
+    assert image.object_name == 'NGC 2174'

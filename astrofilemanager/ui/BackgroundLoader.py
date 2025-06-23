@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Callable, List
 
@@ -8,7 +9,7 @@ from peewee import JOIN
 from astrofilemanager.core import ApplicationContext
 from astrofilemanager.fits_handlers import normalize_fits_header
 from astrofilemanager.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria
-from astrofilemanager.filesystem import parse_header
+from astrofilemanager.filesystem import parse_FITS_header, Importer
 
 
 class BackgroundLoaderBase(QObject):
@@ -203,7 +204,14 @@ class ImageReindexWorker(BackgroundLoaderBase):
                     try:
                         # Deserialize the header
                         from astropy.io.fits import Header
-                        header = parse_header(header_record.header)
+                        header = None
+                        if Importer.is_fits_by_name(header_record.file.name):
+                            header = parse_FITS_header(header_record.header)
+                        elif Importer.is_xisf_by_name(header_record.file.name):
+                            header = json.loads(header_record.header)
+
+                        if header is None:
+                            continue
 
                         # Process the header
                         image = normalize_fits_header(header_record.file, header, self.context.status_reporter)

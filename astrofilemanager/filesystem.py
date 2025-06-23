@@ -1,16 +1,19 @@
 import bz2
 import gzip
+import json
 import lzma
 import os
 import typing
 from logging import log, INFO, DEBUG, ERROR, WARN
 from pathlib import Path
+from typing import Any
 
 import fs.path
-from astropy.io.fits import Header
+from astropy.io.fits import Header, Card
 from fs.base import FS
 from fs.info import Info
 from peewee import JOIN
+from xisf import XISF
 
 from astrofilemanager.core import StatusReporter
 from astrofilemanager.fits_handlers import normalize_fits_header
@@ -98,6 +101,22 @@ def read_fits_header(file: str | Path, status_reporter: StatusReporter = None) -
         return None
 
 
+def read_xisf_header(file: str | Path, status_reporter: StatusReporter = None) -> tuple[bytes, dict[str, list]] | tuple[
+    None, None]:
+    try:
+        if status_reporter:
+            status_reporter.update_status(f"Reading XISF header for {file}...", bulk=True)
+        xisf = XISF(file)
+        metas = xisf.get_images_metadata()
+        for meta in metas:
+            if "FITSKeywords" in meta:
+                fits_keywords = meta["FITSKeywords"]
+                return json.dumps(fits_keywords).encode(), fits_keywords
+    except Exception as e:
+        log(WARN, f"Error reading XISF header from {file}: {str(e)}")
+        return None, None
+
+
 def update_fits_header_cache(change_list, status_reporter=None):
     """
     Update the FITS header cache based on the changes in the change_list.
@@ -128,18 +147,33 @@ def update_fits_header_cache(change_list, status_reporter=None):
 
 
 def _handle_file_metadata(file, status_reporter):
+    header = None
     if Importer.is_fits_by_name(file.name):
         header_bytes = read_fits_header(file.full_filename(), status_reporter)
         if header_bytes:
             FitsHeader(file=file, header=header_bytes).save()
             # Normalize the header and create an Image object if possible
-            header = parse_header(header_bytes)
-            image = normalize_fits_header(file, header, status_reporter)
-            if image is not None:
-                Image.insert(image.__data__).on_conflict_replace().execute()
+            header = parse_FITS_header(header_bytes)
+    elif Importer.is_xisf_by_name(file.name):
+        header_bytes, header_dict = read_xisf_header(file.full_filename(), status_reporter)
+        if header_bytes:
+            FitsHeader(file=file, header=header_bytes).save()
+            header = header_from_dict(header_dict)
+    if header is not None:
+        image = normalize_fits_header(file, header, status_reporter)
+        if image is not None:
+            Image.insert(image.__data__).on_conflict_replace().execute()
 
 
-def parse_header(header_bytes):
+def header_from_dict(header_dict: dict[str, list]):
+    result = Header()
+    for key, values in header_dict.items():
+        for value_dict in values:
+            result.append(Card(key, value_dict['value'], value_dict['comment']))
+    return result
+
+
+def parse_FITS_header(header_bytes):
     if b'\x09' in header_bytes:
         log(WARN, f"FITS header contains tab characters: {header_bytes}")
         header_bytes = header_bytes.replace(b'\x09', b' ')
@@ -204,16 +238,24 @@ class Importer:
 
     @staticmethod
     def is_fits_by_name(filename: str) -> bool:
-        """Check if a filename is a FITS file based on its extension."""
         # Handle compressed files
         if filename.lower().endswith(tuple(compressed_exts.keys())):
             filename = os.path.splitext(filename)[0]
         return filename.lower().endswith(".fit") or filename.lower().endswith(".fits")
 
     @staticmethod
+    def is_xisf_by_name(filename: str) -> bool:
+        if filename.lower().endswith(tuple(compressed_exts.keys())):
+            filename = os.path.splitext(filename)[0]
+        return filename.lower().endswith(".xisf")
+
+    @staticmethod
     def is_fits(f: Info) -> bool:
-        """Check if a file is a FITS file based on its Info object."""
         return Importer.is_fits_by_name(f.name)
+
+    @staticmethod
+    def is_xisf(f: Info) -> bool:
+        return Importer.is_xisf_by_name(f.name)
 
     @staticmethod
     def is_compressed(f: Info) -> bool:
@@ -222,7 +264,7 @@ class Importer:
 
     @staticmethod
     def _file_filter(x: Info):
-        return Importer.is_fits(x) and not Importer.marked_bad(x)
+        return (Importer.is_fits(x) or Importer.is_xisf(x)) and not Importer.marked_bad(x)
 
     @staticmethod
     def _dir_filter(x: Info):
@@ -258,7 +300,8 @@ class Importer:
                         dir_queue.append(dir_path)
                         all_dirs.add(dir_path)
                     else:
-                        self.status.update_status(f"Skipping directory: {root.name}/{current_dir}/{entry.name}", bulk=False)
+                        self.status.update_status(f"Skipping directory: {root.name}/{current_dir}/{entry.name}",
+                                                  bulk=False)
                 if entry.is_file:
                     if self._file_filter(entry):
                         self._import_file(entry, current_dir, root, result)
