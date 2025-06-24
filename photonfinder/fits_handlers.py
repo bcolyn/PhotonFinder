@@ -9,8 +9,8 @@ from astropy.coordinates import SkyCoord
 from astropy.io.fits import Header
 from astropy_healpix import HEALPix
 
-from astrofilemanager.models import File, Image
-from astrofilemanager.core import StatusReporter
+from photonfinder.models import File, Image
+from photonfinder.core import StatusReporter
 
 
 def _upper(value: str):

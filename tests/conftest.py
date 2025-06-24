@@ -5,8 +5,8 @@ from fs.memoryfs import MemoryFS
 from fs.opener import Opener
 from peewee import SqliteDatabase
 
-from astrofilemanager.core import ApplicationContext, Settings, StatusReporter
-from astrofilemanager.models import CORE_MODELS
+from photonfinder.core import ApplicationContext, Settings, StatusReporter
+from photonfinder.models import CORE_MODELS
 
 
 @pytest.fixture(scope="class")

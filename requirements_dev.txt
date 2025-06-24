@@ -5,3 +5,6 @@ pytest>=7.0.0
 pytest-qt>=4.2.0
 pytest-mock>=3.10.0
 pytest-cov>=4.1.0  # For test coverage reporting
+
+# for building the exe
+matplotlib

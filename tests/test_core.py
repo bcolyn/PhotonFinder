@@ -2,7 +2,7 @@ import logging
 
 from playhouse.reflection import print_table_sql
 
-from astrofilemanager.models import File, LibraryRoot, Image
+from photonfinder.models import File, LibraryRoot, Image
 
 logger = logging.getLogger('peewee')
 logger.addHandler(logging.StreamHandler())

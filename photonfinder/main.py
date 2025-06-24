@@ -4,8 +4,8 @@ import sys
 from PySide6.QtCore import QStandardPaths, Qt, QThreadPool
 from PySide6.QtWidgets import QApplication, QStyleFactory
 
-from astrofilemanager.core import ApplicationContext, Settings
-from astrofilemanager.ui.MainWindow import MainWindow
+from photonfinder.core import ApplicationContext, Settings
+from photonfinder.ui.MainWindow import MainWindow
 
 
 def main():

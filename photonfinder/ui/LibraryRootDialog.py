@@ -4,11 +4,11 @@ from typing import Optional
 from PySide6.QtCore import Slot, Qt
 from PySide6.QtWidgets import QDialog, QTableWidgetItem, QMessageBox
 
-from astrofilemanager.models import LibraryRoot
-from astrofilemanager.ui.LibraryRootEditDialog import LibraryRootEditDialog
-from astrofilemanager.ui.generated.LibraryRootDialog_ui import Ui_LibraryRootDialog
-from astrofilemanager.core import ApplicationContext
-from astrofilemanager.ui.BackgroundLoader import ImageReindexWorker
+from photonfinder.models import LibraryRoot
+from photonfinder.ui.LibraryRootEditDialog import LibraryRootEditDialog
+from photonfinder.ui.generated.LibraryRootDialog_ui import Ui_LibraryRootDialog
+from photonfinder.core import ApplicationContext
+from photonfinder.ui.BackgroundLoader import ImageReindexWorker
 
 
 class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):

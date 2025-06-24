@@ -11,10 +11,10 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QDialogButtonBox
 from peewee import JOIN
 
-from astrofilemanager.core import ApplicationContext, Settings
-from astrofilemanager.models import Image, File, SearchCriteria
-from astrofilemanager.ui.BackgroundLoader import BackgroundLoaderBase
-from astrofilemanager.ui.generated.ExportDialog_ui import Ui_ExportDialog
+from photonfinder.core import ApplicationContext, Settings
+from photonfinder.models import Image, File, SearchCriteria
+from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
+from photonfinder.ui.generated.ExportDialog_ui import Ui_ExportDialog
 from filesystem import is_compressed, fopen
 
 

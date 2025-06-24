@@ -5,16 +5,16 @@ from PySide6.QtCore import QThread, Signal, QObject
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import *
 
-from astrofilemanager.core import ApplicationContext, StatusReporter, backup_database
-from astrofilemanager.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
-from astrofilemanager.models import SearchCriteria
+from photonfinder.core import ApplicationContext, StatusReporter, backup_database
+from photonfinder.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
+from photonfinder.models import SearchCriteria
 from .AboutDialog import AboutDialog
 from .LibraryRootDialog import LibraryRootDialog
 from .LogWindow import LogWindow
 from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
 from .generated.MainWindow_ui import Ui_MainWindow
-import astrofilemanager.ui.generated.resources_rc
+import photonfinder.ui.generated.resources_rc
 
 class UIStatusReporter(StatusReporter, QObject):
     on_message = Signal(str)

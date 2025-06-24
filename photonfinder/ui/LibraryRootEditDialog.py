@@ -5,8 +5,8 @@ from typing import Optional
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
 
-from astrofilemanager.models import LibraryRoot
-from astrofilemanager.ui.generated.LibraryRootEditDialog_ui import Ui_LibraryRootEditDialog
+from photonfinder.models import LibraryRoot
+from photonfinder.ui.generated.LibraryRootEditDialog_ui import Ui_LibraryRootEditDialog
 
 
 class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):

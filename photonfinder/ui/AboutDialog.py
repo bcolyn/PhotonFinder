@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QDialog
 
-from astrofilemanager.ui.generated.AboutDialog_ui import Ui_AboutDialog
+from photonfinder.ui.generated.AboutDialog_ui import Ui_AboutDialog
 
 
 class AboutDialog(QDialog, Ui_AboutDialog):

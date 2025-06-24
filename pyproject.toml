@@ -40,7 +40,7 @@ dev = [
 #"Bug Tracker" = ""
 
 [tool.setuptools]
-packages = ["astrofilemanager"]
+packages = ["photonfinder"]
 
 [tool.setuptools.cmdclass]
 build_ui = "pyqt_distutils.build_ui.build_ui"

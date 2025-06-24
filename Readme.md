@@ -37,5 +37,5 @@ pytest tests/
 to build exe:
 
 ```bash
-pyinstaller astrofilemanager.spec
+pyinstaller photonfinder.spec
 ```

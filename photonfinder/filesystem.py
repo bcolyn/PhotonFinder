@@ -15,9 +15,9 @@ from fs.info import Info
 from peewee import JOIN
 from xisf import XISF
 
-from astrofilemanager.core import StatusReporter
-from astrofilemanager.fits_handlers import normalize_fits_header
-from astrofilemanager.models import File, LibraryRoot, FitsHeader, Image
+from photonfinder.core import StatusReporter
+from photonfinder.fits_handlers import normalize_fits_header
+from photonfinder.models import File, LibraryRoot, FitsHeader, Image
 
 compressed_exts = {
     ".xz": lzma.open,

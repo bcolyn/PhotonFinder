@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 
 from PySide6.QtWidgets import QDialog
 
-from astrofilemanager.core import ApplicationContext
-from astrofilemanager.ui.generated.DateRangeDialog_ui import Ui_DateRangeDialog
+from photonfinder.core import ApplicationContext
+from photonfinder.ui.generated.DateRangeDialog_ui import Ui_DateRangeDialog
 
 
 class DateRangeDialog(QDialog, Ui_DateRangeDialog):

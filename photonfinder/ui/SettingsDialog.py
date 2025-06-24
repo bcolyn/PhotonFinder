@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QDialog
 
-from astrofilemanager.core import ApplicationContext
-from astrofilemanager.ui.generated.SettingsDialog_ui import Ui_SettingsDialog
+from photonfinder.core import ApplicationContext
+from photonfinder.ui.generated.SettingsDialog_ui import Ui_SettingsDialog
 
 
 class SettingsDialog(QDialog, Ui_SettingsDialog):

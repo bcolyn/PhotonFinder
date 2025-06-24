@@ -48,7 +48,7 @@ To run tests with coverage reporting:
 
 ```bash
 pip install pytest-cov
-pytest --cov=astrofilemanager tests/
+pytest --cov=photonfinder tests/
 ```
 
 ## Writing New Tests

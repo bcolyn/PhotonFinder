@@ -3,8 +3,8 @@ from astropy.io.fits import Header
 
 from tests.utils import fix_embedded_header
 from .sample_headers import *
-from astrofilemanager.models import File
-from astrofilemanager.fits_handlers import normalize_fits_header
+from photonfinder.models import File
+from photonfinder.fits_handlers import normalize_fits_header
 
 
 class TestNormalizeFitsHeader:

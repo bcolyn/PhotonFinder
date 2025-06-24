@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QDialog
 
-from astrofilemanager.core import ApplicationContext
-from astrofilemanager.ui.generated.TelescopeDialog_ui import Ui_TelescopeDialog
+from photonfinder.core import ApplicationContext
+from photonfinder.ui.generated.TelescopeDialog_ui import Ui_TelescopeDialog
 
 
 class TelescopeDialog(QDialog, Ui_TelescopeDialog):

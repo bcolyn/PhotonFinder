@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QDialog
 
-from astrofilemanager.core import ApplicationContext
-from astrofilemanager.ui.generated.ExposureDialog_ui import Ui_ExposureDialog
+from photonfinder.core import ApplicationContext
+from photonfinder.ui.generated.ExposureDialog_ui import Ui_ExposureDialog
 
 
 class ExposureDialog(QDialog, Ui_ExposureDialog):

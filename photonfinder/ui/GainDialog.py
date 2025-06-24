@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QDialog
 
-from astrofilemanager.core import ApplicationContext
-from astrofilemanager.ui.generated.GainDialog_ui import Ui_GainDialog
+from photonfinder.core import ApplicationContext
+from photonfinder.ui.generated.GainDialog_ui import Ui_GainDialog
 
 
 class GainDialog(QDialog, Ui_GainDialog):

@@ -6,10 +6,10 @@ from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
 from peewee import JOIN
 
-from astrofilemanager.core import ApplicationContext
-from astrofilemanager.fits_handlers import normalize_fits_header
-from astrofilemanager.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria
-from astrofilemanager.filesystem import parse_FITS_header, Importer
+from photonfinder.core import ApplicationContext
+from photonfinder.fits_handlers import normalize_fits_header
+from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria
+from photonfinder.filesystem import parse_FITS_header, Importer
 
 
 class BackgroundLoaderBase(QObject):

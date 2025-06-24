@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QDialog
 
-from astrofilemanager.core import ApplicationContext
-from astrofilemanager.ui.generated.BinningDialog_ui import Ui_BinningDialog
+from photonfinder.core import ApplicationContext
+from photonfinder.ui.generated.BinningDialog_ui import Ui_BinningDialog
 
 
 class BinningDialog(QDialog, Ui_BinningDialog):

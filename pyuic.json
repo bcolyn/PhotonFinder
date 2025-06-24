@@ -1,7 +1,7 @@
 {
     "files": [
-        ["astrofilemanager/ui/*.ui", "astrofilemanager/ui/generated"],
-        ["astrofilemanager/ui/*.qrc", "astrofilemanager/ui/generated"]
+        ["photonfinder/ui/*.ui", "photonfinder/ui/generated"],
+        ["photonfinder/ui/*.qrc", "photonfinder/ui/generated"]
     ],
     "hooks": [],
     "pyrcc": "pyside6-rcc",

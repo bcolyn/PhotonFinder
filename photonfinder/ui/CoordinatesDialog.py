@@ -1,9 +1,9 @@
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDialog, QInputDialog, QMessageBox
 
-from astrofilemanager.core import ApplicationContext
-from astrofilemanager.ui.BackgroundLoader import BackgroundLoaderBase
-from astrofilemanager.ui.generated.CoordinatesDialog_ui import Ui_CoordinatesDialog
+from photonfinder.core import ApplicationContext
+from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
+from photonfinder.ui.generated.CoordinatesDialog_ui import Ui_CoordinatesDialog
 
 
 class CoordinateLookupLoader(BackgroundLoaderBase):

@@ -1,10 +1,10 @@
 import logging
 from typing import Iterable
 
-from astrofilemanager.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_dict
-from astrofilemanager.models import LibraryRoot, File, Image, FitsHeader
-from astrofilemanager.filesystem import update_fits_header_cache, check_missing_header_cache
-from astrofilemanager.fits_handlers import normalize_fits_header, NINAHandler
+from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_dict
+from photonfinder.models import LibraryRoot, File, Image, FitsHeader
+from photonfinder.filesystem import update_fits_header_cache, check_missing_header_cache
+from photonfinder.fits_handlers import normalize_fits_header, NINAHandler
 from tests.utils import fix_embedded_header
 
 NUM_FILES = 6  # 8 images, 2 bad, 1 csv ignored
@@ -76,7 +76,7 @@ class TestImporter:
 
     def test_update_fits_header_cache(self, filesystem, database, app_context, mocker):
         from .sample_headers import header_apt
-        mocker.patch('astrofilemanager.filesystem.read_fits_header',
+        mocker.patch('photonfinder.filesystem.read_fits_header',
                      return_value=fix_embedded_header(header_apt))
         change_lists = self.setup(app_context)
         for change_list in change_lists:

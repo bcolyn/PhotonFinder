@@ -8,8 +8,8 @@ from PySide6.QtCore import *
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
-from astrofilemanager.core import ApplicationContext
-from astrofilemanager.models import SearchCriteria, CORE_MODELS, Image, RootAndPath
+from photonfinder.core import ApplicationContext
+from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader
 from .DateRangeDialog import DateRangeDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode

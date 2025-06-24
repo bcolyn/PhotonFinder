@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QDialog
 
-from astrofilemanager.core import ApplicationContext
-from astrofilemanager.ui.generated.TemperatureDialog_ui import Ui_TemperatureDialog
+from photonfinder.core import ApplicationContext
+from photonfinder.ui.generated.TemperatureDialog_ui import Ui_TemperatureDialog
 
 
 class TemperatureDialog(QDialog, Ui_TemperatureDialog):

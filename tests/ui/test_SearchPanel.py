@@ -1,4 +1,4 @@
-from astrofilemanager.ui.SearchPanel import _format_date
+from photonfinder.ui.SearchPanel import _format_date
 
 
 def test__format_date_datetime_utc():

@@ -4,7 +4,7 @@
 block_cipher = None
 
 
-a = Analysis(['astrofilemanager\\main.py'],
+a = Analysis(['photonfinder\\main.py'],
              binaries=[],
              datas=[('icon.png', '.')],
              hiddenimports=[],
@@ -35,7 +35,7 @@ exe = EXE(pyz,
           a.scripts, 
           [],
           exclude_binaries=True,
-          name='astrofilemanager',
+          name='photonfinder',
           debug=False,
           bootloader_ignore_signals=False,
           strip=False,

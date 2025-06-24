@@ -1,6 +1,6 @@
 import pytest
 
-from astrofilemanager.models import *
+from photonfinder.models import *
 
 
 @pytest.mark.usefixtures("app_context")
