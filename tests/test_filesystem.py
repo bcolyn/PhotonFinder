@@ -117,3 +117,11 @@ def test_read_read_xisf_header(global_test_data_dir):
     assert image is not None
     assert image.camera == "Seestar S50"
     assert image.object_name == 'NGC 2174'
+
+    file_path = global_test_data_dir / "linear.xisf"
+    header_bytes, header_dict = read_xisf_header(file_path)
+    header = header_from_dict(header_dict)
+    image = normalize_fits_header(File(), header)
+    assert image is not None
+    assert image.camera == "ZWO ASI183MC Pro"
+    assert image.object_name == 'NGC 3319'
