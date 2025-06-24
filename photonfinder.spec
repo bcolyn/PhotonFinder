@@ -1,12 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import copy_metadata
 
 block_cipher = None
 
+datas = [('icon.png', '.')]
+datas += copy_metadata('xisf')
 
 a = Analysis(['photonfinder\\main.py'],
              binaries=[],
-             datas=[('icon.png', '.')],
+             datas=datas,
              hiddenimports=[],
              hookspath=[],
              hooksconfig={},
