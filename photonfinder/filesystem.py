@@ -306,7 +306,9 @@ class Importer:
                         self._import_file(entry, current_dir, root, result)
                         filtered_files.add(entry.name)
                     else:
-                        self.status.update_status(f"Skipping file: {root.name}/{current_dir}/{entry.name}", bulk=False)
+                        # only log this if it was a file that the user could expect us to handle anyway
+                        if self.is_fits(entry) or self.is_xisf(entry):
+                            self.status.update_status(f"Skipping file: {root.name}/{current_dir}/{entry.name}", bulk=False)
 
             # evict deleted files
             query = File.select(File.rowid, File.name).where(File.root == root, File.path == current_dir)

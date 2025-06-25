@@ -91,7 +91,7 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
             else:
                 # For existing library roots, check if the duplicate is a different record
                 for existing in query:
-                    if existing.id != self.library_root.id:
+                    if existing.rowid != self.library_root.rowid:
                         if existing.name == name:
                             QMessageBox.warning(self, "Validation Error", f"A library root with the name '{name}' already exists.")
                             return

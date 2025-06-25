@@ -231,7 +231,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.data_model.clear()
             self.data_model.setHorizontalHeaderLabels([
                 "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
-                "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified"
+                "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC"
             ])
 
             # Reset total files counter when starting a new search
@@ -270,6 +270,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             telescope_item = QStandardItem("")
             object_item = QStandardItem("")
             date_obs_item = QStandardItem("")
+            ra_item = QStandardItem("")
+            dec_item = QStandardItem("")
             localtime: datetime
             try:
                 if hasattr(file, 'image') and file.image:
@@ -298,6 +300,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                         utctime = file.image.date_obs.replace(tzinfo=timezone.utc)
                         localtime = utctime.astimezone(tz=None)
                         date_obs_item.setText(_format_date(localtime))
+                    if file.image.coord_ra is not None:
+                        ra_item.setText(_format_ra(file.image.coord_ra))
+                    if file.image.coord_dec is not None:
+                        dec_item.setText(_format_dec(file.image.coord_dec))
             except Exception as e:
                 logging.error(f"Error getting image data: {e}")
 
@@ -313,7 +319,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.data_model.appendRow([
                 name_item, type_item, filter_item, exposure_item, gain_item, offset_item,
                 binning_item, set_temp_item, camera_item, telescope_item,
-                object_item, date_obs_item, path_item, size_item, date_item
+                object_item, date_obs_item, path_item, size_item, date_item, ra_item, dec_item
             ])
 
         # Resize columns to content
@@ -896,6 +902,25 @@ def _format_date(value: datetime):
     except Exception as ex:
         logging.exception(f"Error formatting date {ex}", exc_info=ex)
         return None
+
+
+def _format_ra(ra_deg: float):
+    """Format RA from decimal degrees to string format."""
+    total_hours = ra_deg / 15.0
+    hours = int(total_hours)
+    minutes = int((total_hours - hours) * 60)
+    seconds = int(((total_hours - hours) * 60 - minutes) * 60)
+    return f"{hours:02d}h{minutes:02d}'{seconds:02d}\""
+
+def _format_dec(dec_deg: float):
+    """Format DEC from decimal degrees to string format."""
+    sign = "+" if dec_deg >= 0 else "-"
+    abs_deg = abs(dec_deg)
+    degrees = int(abs_deg)
+    minutes = int((abs_deg - degrees) * 60)
+    seconds = int(((abs_deg - degrees) * 60 - minutes) * 60)
+
+    return f"{sign}{degrees:02d}:{minutes:02d}:{seconds:02d}"
 
 
 class FilterButton(QPushButton):

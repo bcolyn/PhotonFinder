@@ -9,7 +9,7 @@ from peewee import JOIN
 from photonfinder.core import ApplicationContext
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria
-from photonfinder.filesystem import parse_FITS_header, Importer
+from photonfinder.filesystem import parse_FITS_header, Importer, header_from_dict
 
 
 class BackgroundLoaderBase(QObject):
@@ -208,7 +208,7 @@ class ImageReindexWorker(BackgroundLoaderBase):
                         if Importer.is_fits_by_name(header_record.file.name):
                             header = parse_FITS_header(header_record.header)
                         elif Importer.is_xisf_by_name(header_record.file.name):
-                            header = json.loads(header_record.header)
+                            header = header_from_dict(json.loads(header_record.header))
 
                         if header is None:
                             continue
@@ -228,8 +228,6 @@ class ImageReindexWorker(BackgroundLoaderBase):
                         if len(new_images) >= batch_size:
                             with self.context.database.atomic():
                                 Image.bulk_create(new_images)
-                            self.context.status_reporter.update_status(
-                                f"Saved {len(new_images)} images to database", True)
                             new_images = []
 
                     except Exception as e:

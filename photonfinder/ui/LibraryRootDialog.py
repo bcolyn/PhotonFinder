@@ -110,7 +110,7 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         if not library_root:
             return
 
-        dialog = LibraryRootEditDialog(parent=self)
+        dialog = LibraryRootEditDialog(parent=self, library_root=library_root)
         if dialog.exec() == QDialog.Accepted:
             self.load_library_roots()
             self.has_changes = True

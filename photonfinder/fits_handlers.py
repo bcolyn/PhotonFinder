@@ -18,11 +18,15 @@ def _upper(value: str):
 
 
 def _int(value):
-    return None if value is None else int(value)
+    try:
+        return None if value is None else int(value)
+    except ValueError: #try it as a float, and round
+        return int(float(value))
 
 
 def _float(value):
     return None if value is None else float(value)
+
 
 def _type(value):
     if value is None:
@@ -30,6 +34,7 @@ def _type(value):
     value = value.upper()
     value = value.replace(' FRAME', '')
     return value
+
 
 def _datetime(value):
     """Convert ISO 8601 formatted date string to datetime object."""

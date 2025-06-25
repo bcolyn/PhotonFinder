@@ -14,7 +14,7 @@ def main():
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     ch.setFormatter(formatter)
     logging.getLogger().addHandler(ch)
-    logging.getLogger().setLevel(logging.DEBUG)
+    logging.getLogger().setLevel(logging.INFO)
 
     # Enable high DPI scaling
     if hasattr(Qt, 'AA_EnableHighDpiScaling'):  # For compatibility with older Qt versions
