@@ -71,7 +71,7 @@ class LibraryRootsLoader(BackgroundLoaderBase):
         """Background task to load library roots."""
         try:
             # Fetch library roots from database
-            library_roots = list(LibraryRoot.select())
+            library_roots = list(LibraryRoot.select().order_by(LibraryRoot.name))
 
             # Emit signal with the results
             self.library_roots_loaded.emit(library_roots)
@@ -189,7 +189,7 @@ class ImageReindexWorker(BackgroundLoaderBase):
             self.context.status_reporter.update_status(f"Processing {total_headers} FITS headers...")
 
             # Process headers in batches
-            batch_size = 100
+            batch_size = 1000
             processed = 0
             new_images = []
 
@@ -220,7 +220,7 @@ class ImageReindexWorker(BackgroundLoaderBase):
 
                         # Update progress periodically
                         processed += 1
-                        if processed % 10 == 0 or processed == total_headers:
+                        if processed % 100 == 0 or processed == total_headers:
                             self.context.status_reporter.update_status(
                                 f"Processed {processed}/{total_headers} headers...", True)
 

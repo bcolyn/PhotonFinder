@@ -264,6 +264,12 @@ END                                                                             
         file = self.create_test_file()
         image = normalize_fits_header(file, header)
         assert image is not None
+        assert image.image_type == "MASTER LIGHT"
+        assert image.exposure == 900
 
-
-
+        header = Header.fromstring(header_app2, "\n")
+        file = self.create_test_file()
+        image = normalize_fits_header(file, header)
+        assert image is not None
+        assert image.image_type == "MASTER FLAT"
+        assert image.filter == "HaOIII"

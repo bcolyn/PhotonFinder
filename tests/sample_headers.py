@@ -317,3 +317,53 @@ refNR-1 = ' 1,06E+00'          / reference noise reduction, channel 1
 refENR-1= ' 1,18E+00'          / effective reference noise reduction, channel 1 
 END                                                                             
 """
+
+header_app2 = """SIMPLE  =                    T / Java FITS: Sat Mar 09 12:54:56 CET 2024        
+BITPIX  =                  -32 / bits per data value                            
+NAXIS   =                    2 / number of axes                                 
+NAXIS1  =                 4144 / size of the n'th axis                          
+NAXIS2  =                 2822 / size of the n'th axis                          
+EXTEND  =                    T / Extensions are permitted                       
+BSCALE  =                  1.0 / scale factor                                   
+BZERO   =                 0.E0 / no offset                                      
+DATE    = '2024-03-09T11:57:12' / creation date of MasterFlat                   
+SOFTWARE= 'Astro Pixel Processor by Aries Productions' / software               
+VERSION = '2.0.0-beta28'       / Astro Pixel Processor version                  
+CALFRAME= 'MasterFlat'         / master flat frame                              
+INSTRUME= 'ZWO ASI294MC Pro'   / instrument name                                
+CFAIMAGE= 'RGGB    '           / Color Filter Array pattern                     
+ROWORDER= 'TOP-DOWN'           / Order of pixel rows stored in the image array  
+NOTE-1  = 'INTEGRATION METADATA'                                                
+EXPTIME =                 1.28 / exposure time (s)                              
+GAIN    =                120.0 / gain or ISO depending on instrument            
+NORMMETH= 'multiply-scale'     / normalization method                           
+NORMSCAL= 'BWMV    '           / normalization scale/dispersion calculation     
+FLATBLUR= 'no blur '           / blur method of masterflat                      
+INT-METH= 'median  '           / integration method                             
+OUTL-REJ= 'adaptive rejection' / outlier rejection filter                       
+OUTL-KL =                7.8E0 / outlier rejection kappa low                    
+OUTL-KH =                3.8E0 / outlier rejection kappa high                   
+LNC-DEG = 'noLNC   '           / Local Normalization Correction not applied     
+AD-PED  =                 0.E0 / adaptive pedestal from data calibration        
+FILTNUM =                    1 / data combined from 1 filter                    
+FILT-1  = 'HaOIII  '           / filter used                                    
+SESSNUM =                    1 / data combined from 1 session                   
+SESS-1  = 'session 1'          / capture session                                
+CALIB-1 =   0.2017456293106079 / calibration value of channel 1                 
+CALIB-2 =   0.5788752734661102 / calibration value of channel 2                 
+CALIB-3 =   0.3124261200428009 / calibration value of channel 3                 
+LOK-R   =      1.8618245423E-1 / lokation of channel-R                          
+LOK-G1  =      5.5874276161E-1 / lokation of channel-G1                         
+LOK-G2  =      5.5874276161E-1 / lokation of channel-G2                         
+LOK-B   =       2.910823524E-1 / lokation of channel-B                          
+SCALE-R =      8.8843654025E-3 / dispersion/scale of channel-R                  
+SCALE-G1=      2.1128164353E-2 / dispersion/scale of channel-G1                 
+SCALE-G2=      2.1128164353E-2 / dispersion/scale of channel-G2                 
+SCALE-B =      1.1176436909E-2 / dispersion/scale of channel-B                  
+NOISE-R =      1.3586640125E-3 / MRS gaussian noise estimate of channel-R       
+NOISE-G1=      2.8296592645E-3 / MRS gaussian noise estimate of channel-G1      
+NOISE-G2=      2.8174801264E-3 / MRS gaussian noise estimate of channel-G2      
+NOISE-B =      1.9723966252E-3 / MRS gaussian noise estimate of channel-B       
+NUMFRAME=                   30 / # number of frames used in MasterFlat creation 
+END                                                                             
+"""

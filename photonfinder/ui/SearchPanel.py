@@ -675,7 +675,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
                 dialog.set_coordinates(ra_str, dec_str, self.search_criteria.coord_radius)
             except Exception as e:
-                print(f"Error setting coordinates from selected image: {str(e)}")
+                logging.error(f"Error setting coordinates from selected image: {str(e)}")
         elif self.search_criteria.coord_ra and self.search_criteria.coord_dec:
             # Use the existing search criteria
             dialog.set_coordinates(

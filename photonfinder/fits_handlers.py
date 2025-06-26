@@ -1,4 +1,5 @@
 import logging
+import re
 from logging import log
 from logging import WARN
 from datetime import datetime
@@ -28,12 +29,13 @@ def _float(value):
     return None if value is None else float(value)
 
 
-def _type(value):
+def _normalize_image_type(value):
     if value is None:
         return None
     value = value.upper()
     value = value.replace(' FRAME', '')
-    return value
+    value = re.sub(r'MASTER(?=\S)', 'MASTER ', value)
+    return value.strip()
 
 
 def _datetime(value):
@@ -132,7 +134,7 @@ class FitsHeaderHandler:
     # For SeeStar - all OK
 
     def _get_image_type(self, header: Header) -> Optional[str]:
-        return _type(header.get('IMAGETYP'))
+        return _normalize_image_type(header.get('IMAGETYP'))
 
     def _get_filter(self, header: Header) -> Optional[str]:
         return header.get('FILTER')
@@ -217,7 +219,7 @@ class FitsHeaderHandler:
 
             return ra_degrees, dec_degrees, int(healpix_index)
         except Exception as e:
-            print(f"Error processing coordinates: {str(e)}")
+            logging.error(f"Error processing coordinates: {str(e)}")
             return None, None, None
 
 
@@ -254,6 +256,29 @@ class NINAHandler(FitsHeaderHandler):
         return software is not None and 'N.I.N.A.' in software
 
 
+class APPHandler(FitsHeaderHandler):
+    """Handler for FITS files created by the Astro Pixel Processor (APP)."""
+
+    def can_handle(self, header: Header) -> bool:
+        software = header.get('SOFTWARE', '')
+        return software is not None and 'Astro Pixel Processor' in software
+
+    def _get_image_type(self, header: Header) -> Optional[str]:
+        image_type = super()._get_image_type(header)
+        if image_type is None:
+            if header.get('INTEGRAT', '') == "Integration":
+                return "MASTER LIGHT"
+            return _normalize_image_type(header.get("CALFRAME", None))
+        else:
+            return image_type
+
+    def _get_exposure(self, header: Header) -> Optional[float]:
+        return _float(header.get('EXPTIME', header.get('EXPOSURE', header.get('EXP'))))
+
+    def _get_filter(self, header: Header) -> Optional[str]:
+        return header.get('FILTER') or header.get('FILT-1') or header.get('FILTER-1')
+
+
 class GenericHandler(FitsHeaderHandler):
     """Generic handler for FITS files from unknown sources."""
 
@@ -262,7 +287,7 @@ class GenericHandler(FitsHeaderHandler):
         return True
 
     def _get_image_type(self, header: Header) -> Optional[str]:
-        return _type(header.get('IMAGETYP', header.get('OBSTYPE')))
+        return _normalize_image_type(header.get('IMAGETYP', header.get('OBSTYPE')))
 
     def _get_filter(self, header: Header) -> Optional[str]:
         return header.get('FILTER', header.get('FILTNAME'))
@@ -309,6 +334,7 @@ def normalize_fits_header(file: File, header: Header, status_reporter: StatusRep
         SharpCapHandler(),
         SGPHandler(),
         NINAHandler(),
+        APPHandler(),
         GenericHandler()  # Fallback handler
     ]
 

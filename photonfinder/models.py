@@ -1,3 +1,4 @@
+import logging
 import os
 import typing
 from dataclasses import dataclass, field
@@ -311,7 +312,7 @@ class Image(Model):
                 if len(pixels) > 0:
                     conditions.append(Image.coord_pix256.in_(pixels.tolist()))
             except Exception as e:
-                print(f"Error applying coordinates filter: {str(e)}")
+                logging.error(f"Error applying coordinates filter: {str(e)}")
 
         # Apply all conditions to the query
         for condition in conditions:

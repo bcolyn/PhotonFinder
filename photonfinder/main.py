@@ -8,19 +8,33 @@ from photonfinder.core import ApplicationContext, Settings
 from photonfinder.ui.MainWindow import MainWindow
 
 
-def main():
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
-    logging.getLogger().addHandler(ch)
-    logging.getLogger().setLevel(logging.INFO)
+LEVEL=logging.INFO
 
-    # Enable high DPI scaling
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):  # For compatibility with older Qt versions
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+def init_logging(path: str = None):
+    logger = logging.getLogger()
+    logger.setLevel(LEVEL)
+
+    # Create file handler
+    file_handler = logging.FileHandler(f"{path}/photonfinder.log")
+    file_handler.setLevel(LEVEL)
+
+    # Create console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(LEVEL)
+
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+
+    # Add handlers to logger
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+
+def main():
+    app_data_path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
+    init_logging(app_data_path)
+
     if hasattr(Qt, 'HighDpiScaleFactorRoundingPolicy'):
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
@@ -48,7 +62,6 @@ def main():
     if settings.get_last_database_path():
         context = ApplicationContext(settings.get_last_database_path(), settings)
     else:
-        app_data_path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
         context = ApplicationContext.create_in_app_data(app_data_path, settings)
 
     with context:

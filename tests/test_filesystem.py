@@ -4,7 +4,7 @@ from typing import Iterable
 from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_dict
 from photonfinder.models import LibraryRoot, File, Image, FitsHeader
 from photonfinder.filesystem import update_fits_header_cache, check_missing_header_cache
-from photonfinder.fits_handlers import normalize_fits_header, NINAHandler
+from photonfinder.fits_handlers import normalize_fits_header, NINAHandler, _normalize_image_type
 from tests.utils import fix_embedded_header
 
 NUM_FILES = 6  # 8 images, 2 bad, 1 csv ignored
@@ -125,3 +125,10 @@ def test_read_read_xisf_header(global_test_data_dir):
     assert image is not None
     assert image.camera == "ZWO ASI183MC Pro"
     assert image.object_name == 'NGC 3319'
+
+def test_type_normalization():
+    assert _normalize_image_type("Dark Frame") == "DARK"
+    assert _normalize_image_type("Light") == "LIGHT"
+    assert _normalize_image_type("MasterLight") == "MASTER LIGHT"
+    assert _normalize_image_type("Master Light Frame") == "MASTER LIGHT"
+    assert _normalize_image_type("FLAT") == "FLAT"
