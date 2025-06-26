@@ -317,11 +317,51 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def on_tab_switch(self):
         self.enable_actions_for_current_tab()
 
+    def open_selected_file(self):
+        """Open the selected file using the associated application."""
+        current_panel = self.getCurrentSearchPanel()
+        if not current_panel:
+            return
+        # Get the selected row
+        selected_rows = current_panel.dataView.selectionModel().selectedRows()
+        if not selected_rows:
+            return
+        # Open the file at the selected row
+        current_panel.open_file(selected_rows[0])
+
+    def show_file_location(self):
+        """Open the file explorer showing the directory containing the selected file."""
+        current_panel = self.getCurrentSearchPanel()
+        if not current_panel:
+            return
+        # Get the selected row
+        selected_rows = current_panel.dataView.selectionModel().selectedRows()
+        if not selected_rows:
+            return
+        # Show the file location
+        current_panel.show_file_location(selected_rows[0])
+
+    def select_path_in_tree(self):
+        """Select the path of the selected file in the tree view."""
+        current_panel = self.getCurrentSearchPanel()
+        if not current_panel:
+            return
+        # Get the selected row
+        selected_rows = current_panel.dataView.selectionModel().selectedRows()
+        if not selected_rows:
+            return
+        # Select the path in the tree
+        current_panel.select_path_in_tree(selected_rows[0])
+
     def enable_actions_for_current_tab(self):
         current_panel = self.getCurrentSearchPanel()
         if not current_panel:
             return
         selected_image = current_panel.get_selected_image()
+        has_selection = selected_image is not None
+        self.actionOpen_File.setEnabled(has_selection)
+        self.actionShow_location.setEnabled(has_selection)
+        self.actionSelect_path.setEnabled(has_selection)
         if selected_image:
             current_type =  selected_image.image_type
             self.actionFind_matching_darks.setEnabled(current_type == "LIGHT" or current_type == "FLAT")

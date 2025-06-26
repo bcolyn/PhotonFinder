@@ -9,7 +9,7 @@ from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext
-from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath
+from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader
 from .DateRangeDialog import DateRangeDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
@@ -92,13 +92,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             if len(missing_roots) > 0:
                 return  # wait until we have all roots necessary
 
-            self.update_in_progress = True
             # now apply pending selections
             self.filesystemTreeView.selectionModel().clearSelection()
             for pending_selection in self.pending_selections:
                 self._find_and_select_node(pending_selection)
             self.pending_selections.clear()
-            self.update_in_progress = False
 
     def on_tree_selection_changed(self, selected, deselected):
         # Get the current selection
@@ -142,13 +140,13 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         for index in selected_indexes:
             # Get the Image object from the model
-            image = self.get_image_at_row(index.row())
+            image = self.get_file_at_row(index.row())
             if image:
                 selected_files.append(image)
 
         return selected_files
 
-    def get_image_at_row(self, row):
+    def get_file_at_row(self, row) -> File | None:
         """Get the Image object at the specified row."""
         if row < 0 or row >= self.data_model.rowCount():
             return None
@@ -369,22 +367,42 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Create context menu
         menu = QMenu(self)
-        open_action = menu.addAction("Open")
+        open_action = menu.addAction("Open File")
         show_location_action = menu.addAction("Show location")
         select_path_action = menu.addAction("Select path")
+        menu.addSeparator()
+        export_action = menu.addAction("Export files")
+        menu.addSeparator()
+        find_darks_action = menu.addAction("Find matching darks")
+        find_flats_action = menu.addAction("Find matching flats")
+
+        # enable or disable based on current selection
+        selected_file = self.get_file_at_row(index.row())
+        if selected_file and hasattr(selected_file, 'image'):
+            current_type = selected_file.image.image_type
+            find_darks_action.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
+            find_flats_action.setEnabled(current_type == "LIGHT")
+        else:
+            find_darks_action.setEnabled(False)
+            find_flats_action.setEnabled(False)
 
         # Show the menu and get the selected action
         action = menu.exec(self.dataView.viewport().mapToGlobal(position))
 
         if action == open_action:
-            # Reuse the double-click functionality
             self.open_file(index)
         elif action == show_location_action:
-            # Show the file location in explorer
             self.show_file_location(index)
         elif action == select_path_action:
-            # Select the path in the tree view
             self.select_path_in_tree(index)
+        elif action == export_action:
+            self.export_data()
+        elif action == find_darks_action:
+            if self.mainWindow:
+                self.mainWindow.find_matching_darks()
+        elif action == find_flats_action:
+            if self.mainWindow:
+                self.mainWindow.find_matching_flats()
 
     def open_file(self, index):
         """Open the file at the given index."""
@@ -441,6 +459,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.filesystemTreeView.selectionModel().clearSelection()
             # Find and select the node in the tree
             self._find_and_select_node(root_and_path)
+            self.update_search_criteria()
 
     def _find_and_select_node(self, root_and_path):
         """Find and select a node in the tree view based on RootAndPath."""

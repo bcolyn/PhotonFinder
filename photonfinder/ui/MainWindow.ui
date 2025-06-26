@@ -100,6 +100,10 @@
     <property name="title">
      <string>&amp;Tools</string>
     </property>
+    <addaction name="actionOpen_File"/>
+    <addaction name="actionShow_location"/>
+    <addaction name="actionSelect_path"/>
+    <addaction name="separator"/>
     <addaction name="action_Export_Data"/>
     <addaction name="separator"/>
     <addaction name="actionFind_matching_darks"/>
@@ -225,6 +229,30 @@
    </property>
    <property name="text">
     <string>Find matching flats</string>
+   </property>
+  </action>
+  <action name="actionOpen_File">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Open File</string>
+   </property>
+  </action>
+  <action name="actionShow_location">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Show location</string>
+   </property>
+  </action>
+  <action name="actionSelect_path">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Select path</string>
    </property>
   </action>
  </widget>
@@ -614,6 +642,54 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionOpen_File</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_selected_file()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>actionShow_location</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>show_file_location()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>actionSelect_path</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>select_path_in_tree()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -638,5 +714,8 @@
   <slot>find_matching_darks()</slot>
   <slot>find_matching_flats()</slot>
   <slot>on_tab_switch()</slot>
+  <slot>open_selected_file()</slot>
+  <slot>show_file_location()</slot>
+  <slot>select_path_in_tree()</slot>
  </slots>
 </ui>
