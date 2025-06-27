@@ -5,6 +5,8 @@ pyqt-distutils==0.7.3
 peewee~=3.18.1
 astropy~=7.1.0
 astropy-healpix~=1.1.2
+astroquery~=0.4.10
+photutils~=2.2.0
 xisf~=0.9.5
 
 setuptools~=80.4.0

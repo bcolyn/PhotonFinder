@@ -6,6 +6,13 @@ from PySide6.QtCore import QSettings
 from peewee import Database, SqliteDatabase
 
 
+def get_default_astap_path():
+    if Path("C:/Program Files/astap/astap.exe").exists():
+        return "C:/Program Files/astap/astap.exe"
+    else:  # else, assume it's on the PATH
+        return "astap"
+
+
 class StatusReporter:
     @abstractmethod
     def update_status(self, message: str, bulk=False) -> None:
@@ -78,6 +85,10 @@ class Settings:
         """Initialize default settings if they don't exist."""
         if not self.contains("cache_compressed_headers"):
             self.set_cache_compressed_headers(True)
+        if not self.contains("astap_path"):
+            self.set_astap_path(get_default_astap_path())
+        if not self.contains("astrometry_net_api_key"):
+            self.set_astrometry_net_api_key("")
 
     def contains(self, key):
         """Check if a setting exists."""
@@ -126,6 +137,22 @@ class Settings:
 
     def set_last_database_path(self, value):
         self.settings.setValue("last_database_path", value)
+
+    def get_astap_path(self):
+        """Get the path to the ASTAP executable."""
+        return self.settings.value("astap_path", "", str)
+
+    def set_astap_path(self, value):
+        """Set the path to the ASTAP executable."""
+        self.settings.setValue("astap_path", value)
+
+    def get_astrometry_net_api_key(self):
+        """Get the API key for astrometry.net."""
+        return self.settings.value("astrometry_net_api_key", "", str)
+
+    def set_astrometry_net_api_key(self, value):
+        """Set the API key for astrometry.net."""
+        self.settings.setValue("astrometry_net_api_key", value)
 
     def sync(self):
         """Ensure settings are saved to disk."""

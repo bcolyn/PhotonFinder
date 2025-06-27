@@ -3,37 +3,49 @@ import shutil
 import subprocess
 import tempfile
 import typing
+from abc import ABCMeta, abstractmethod
 from pathlib import Path
 
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.io.fits import Header
+from PIL import Image
+import numpy as np
+from astroquery.astrometry_net import AstrometryNet
 from xisf import XISF
 
+from photonfinder.core import get_default_astap_path
 from photonfinder.filesystem import fopen, Importer, header_from_xisf_dict
 from photonfinder.fits_handlers import hp
 
 
-def get_default_astap_path():
-    if Path("C:/Program Files/astap/astap.exe").exists():
-        return "C:/Program Files/astap/astap.exe"
-    else:  # else, assume it's on the PATH
-        return "astap"
-
-
-class ASTAPSolver:
-    tmp_dir: str | None
-    _exe: str
-    _log: bool
+class SolverBase(metaclass=ABCMeta):
     keep_headers = {
         'CRPIX1', 'CRPIX2', 'CRVAL1', 'CRVAL2', 'CDELT1', 'CDELT2', 'CROTA1', 'CROTA2', 'CD1_1', 'CD1_2',
         'CD2_1', 'CD2_2', 'CUNIT1', 'CUNIT2', 'NAXIS1', 'NAXIS2', 'CTYPE1', 'CTYPE2'
     }
 
-    def __init__(self, exe=get_default_astap_path()):
-        self._exe = exe
-        self._log = True
+    def __init__(self):
         self.tmp_dir = None  # Initialize to None
+
+    def __enter__(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.tmp_dir:
+            shutil.rmtree(self.tmp_dir)
+
+    @abstractmethod
+    def solve(self, image_path):
+        pass
+
+    @staticmethod
+    def extract_wcs_cards(header):
+        cards_filtered = list(filter(lambda card: card.keyword in SolverBase.keep_headers, header.cards))
+        result_header = Header(cards_filtered)
+        result_header['NAXIS'] = 2
+        return result_header
 
     def _create_temp_fits(self, input_image) -> Path:
         temp_image = Path(self.tmp_dir) / (input_image.name + ".fit")
@@ -59,14 +71,26 @@ class ASTAPSolver:
         else:
             raise SolverError("Unknown file type: " + str(input_image) + ". Only FITS and XISF files are supported.")
 
+
+class ASTAPSolver(SolverBase):
+    tmp_dir: str | None
+    _exe: str
+    _log: bool
+
+    def __init__(self, exe=get_default_astap_path()):
+        super().__init__()
+        self._exe = exe
+        self._log = True
+
     def _solve(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None) -> Header:
 
         wcs = tmp_image_file.with_suffix(".wcs")
         ini = tmp_image_file.with_suffix(".ini")
         log = tmp_image_file.with_suffix(".log")
 
-        params = [self._exe, "-f", str(tmp_image_file), "-update", "-platesolve"] # update, since this is a temp copy anyway
-        options = {"-r": "180", "-s": "100", "-z" : "2"}
+        params = [self._exe, "-f", str(tmp_image_file), "-update",
+                  "-platesolve"]  # update, since this is a temp copy anyway
+        options = {"-r": "180", "-s": "100", "-z": "2"}
         if hint is not None:
             options.update(hint)
         params.extend([item for k in options for item in (k, options[k])])
@@ -81,15 +105,8 @@ class ASTAPSolver:
             header = hdul[0].header
             if not header.get('PLTSOLVD'):
                 raise SolverError("Platesolver failed to solve image " + str(tmp_image_file))
-            result_header = ASTAPSolver.extract_wcs_cards(header)
+            result_header = SolverBase.extract_wcs_cards(header)
 
-        return result_header
-
-    @staticmethod
-    def extract_wcs_cards(header):
-        cards_filtered = list(filter(lambda card: card.keyword in ASTAPSolver.keep_headers, header.cards))
-        result_header = Header(cards_filtered)
-        result_header['NAXIS'] = 2
         return result_header
 
     @staticmethod
@@ -106,14 +123,6 @@ class ASTAPSolver:
         temp_image = self._create_temp_fits(image_path)
         hint = ASTAPSolver.extract_hint(fits.getheader(temp_image))
         return self._solve(temp_image, hint)
-
-    def __enter__(self):
-        self.tmp_dir = tempfile.mkdtemp()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if self.tmp_dir:
-            shutil.rmtree(self.tmp_dir)
 
     @staticmethod
     def create_hint(ra, dec, fov=None) -> typing.Dict[str, str]:
@@ -162,6 +171,30 @@ class ASTAPSolver:
             raise SolverFailure("Failed to solve image " + str(image_file), log)
 
 
+class AstrometryNetSolver(SolverBase):
+
+    def __init__(self, api_key: str):
+        super().__init__()
+        if not api_key:
+            raise FileNotFoundError("API key not found")
+        self.api_key = api_key
+        self.ast = AstrometryNet()
+        self.ast.api_key = api_key
+
+    def solve(self, image_path):
+        if not image_path.is_file():
+            raise FileNotFoundError(f"Image file not found: {image_path}")
+        if not self.tmp_dir:
+            raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
+        temp_image = self._create_temp_fits(image_path)
+        wcs_header: Header = self.ast.solve_from_image(temp_image, verbose=False, crpix_center=True)
+        result = SolverBase.extract_wcs_cards(wcs_header)
+        original_header = fits.getheader(temp_image)
+        result['NAXIS1'] = original_header['NAXIS1']
+        result['NAXIS2'] = original_header['NAXIS2']
+        return result
+
+
 class SolverError(Exception):
     pass
 
@@ -174,6 +207,7 @@ class SolverFailure(Exception):
     def __str__(self) -> str:
         return self.message
 
+
 def get_image_center_coords(header):
     assert has_minimal_wcs(header)
     import astropy.units as u
@@ -182,11 +216,6 @@ def get_image_center_coords(header):
     coords = SkyCoord(ra, dec, unit=(u.deg, u.deg), frame='icrs')
     healpix_index = int(hp.skycoord_to_healpix(coords))
     return ra, dec, healpix_index
-
-def solve_image_astap(image_path) -> str:
-    with ASTAPSolver() as solver:
-        header = solver.solve(image_path)
-    return header.tostring()
 
 
 def has_been_plate_solved(header):
@@ -212,3 +241,79 @@ def has_rotation(header):
     if all(k in header for k in ['CROTA1', 'CROTA2']):
         return header['CROTA1'] != 0 and header['CROTA2'] != 0
     return False
+
+
+def _create_temp_jpeg(input_image, output_dir: Path) -> Path:
+    """
+    Creates a JPEG file from a XISF or FITS file.
+
+    Args:
+        input_image: Path to the XISF or FITS file
+        output_dir: Directory where the JPEG file will be saved
+
+    Returns:
+        Path to the created JPEG file
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    jpeg_path = output_dir / (Path(input_image).stem + ".jpg")
+
+    if Importer.is_fits_by_name(str(input_image)):
+        with fopen(input_image) as source_file:
+            with fits.open(source_file) as hdul:
+                image_data = hdul[0].data
+                # Convert to 8-bit for JPEG
+                if image_data.dtype != np.uint8:
+                    # Normalize to 0-255 range
+                    image_data = image_data.astype(np.float32)
+                    if image_data.min() != image_data.max():  # Avoid division by zero
+                        image_data = 255 * (image_data - image_data.min()) / (image_data.max() - image_data.min())
+                    image_data = image_data.astype(np.uint8)
+
+                # Handle different dimensions
+                if len(image_data.shape) == 2:  # Grayscale
+                    img = Image.fromarray(image_data, mode='L')
+                elif len(image_data.shape) == 3 and image_data.shape[0] == 3:  # RGB with channels first
+                    img = Image.fromarray(np.transpose(image_data, (1, 2, 0)), mode='RGB')
+                elif len(image_data.shape) == 3 and image_data.shape[2] == 3:  # RGB with channels last
+                    img = Image.fromarray(image_data, mode='RGB')
+                else:
+                    raise SolverError(f"Unsupported image data shape: {image_data.shape}")
+
+                img.save(jpeg_path, format='JPEG', quality=95)
+
+    elif Importer.is_xisf_by_name(str(input_image)):
+        xisf = XISF(input_image)
+        metas = xisf.get_images_metadata()
+        for i, meta in enumerate(metas):
+            if "FITSKeywords" in meta:
+                main_image_data = xisf.read_image(i, 'channels_first')
+
+                # Convert to 8-bit for JPEG
+                if main_image_data.dtype != np.uint8:
+                    # Normalize to 0-255 range
+                    main_image_data = main_image_data.astype(np.float32)
+                    if main_image_data.min() != main_image_data.max():  # Avoid division by zero
+                        main_image_data = 255 * (main_image_data - main_image_data.min()) / (
+                                main_image_data.max() - main_image_data.min())
+                    main_image_data = main_image_data.astype(np.uint8)
+
+                # Handle different dimensions
+                if len(main_image_data.shape) == 2:  # Grayscale
+                    img = Image.fromarray(main_image_data, mode='L')
+                elif len(main_image_data.shape) == 3 and main_image_data.shape[0] == 3:  # RGB with channels first
+                    img = Image.fromarray(np.transpose(main_image_data, (1, 2, 0)), mode='RGB')
+                elif len(main_image_data.shape) == 3 and main_image_data.shape[2] == 3:  # RGB with channels last
+                    img = Image.fromarray(main_image_data, mode='RGB')
+                else:
+                    raise SolverError(f"Unsupported image data shape: {main_image_data.shape}")
+
+                img.save(jpeg_path, format='JPEG', quality=95)
+                return jpeg_path
+
+        raise SolverError("No suitable image with FITS keywords found in XISF file: " + str(input_image))
+    else:
+        raise SolverError("Unknown file type: " + str(input_image) + ". Only FITS and XISF files are supported.")
+
+    return jpeg_path
