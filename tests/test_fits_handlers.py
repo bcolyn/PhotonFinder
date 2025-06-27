@@ -24,61 +24,6 @@ class TestNormalizeFitsHeader:
     def test_sgp_header(self):
         file = self.create_test_file()
 
-        sgp_header = """SIMPLE  =                    T / file does conform to FITS standard             
-BITPIX  =                   16 / number of bits per data pixel                  
-NAXIS   =                    2 / number of data axes                            
-NAXIS1  =                 4144 / length of data axis 1                          
-NAXIS2  =                 2822 / length of data axis 2                          
-BZERO   =                32768 / offset and data range to that of unsigned short
-BSCALE  =                    1 / default scaling factor                         
-CRPIX1  =                 2072 / reference spectrum pixel coordinate for axis 1 
-CRPIX2  =                 1411 / reference spectrum pixel coordinate for axis 2 
-CTYPE1  = 'RA---TAN'           / standard system and projection                 
-CTYPE2  = 'DEC--TAN'           / standard system and projection                 
-OBJECT  = 'M57     '           / Object name                                    
-DATE-LOC= '2020-05-30T02:22:49.0968820' / Local observation date                
-DATE-OBS= '2020-05-30T00:22:49.0968820' / UTC observation date                  
-IMAGETYP= 'LIGHT   '           / Type of frame                                  
-CREATOR = 'Sequence Generator Pro v3.1.0.479' / Capture software                
-INSTRUME= 'ZWO ASI294MC Pro'   / Instrument name                                
-OBSERVER= 'Benny   '           / Observer name                                  
-SITENAME= 'Ghent   '           / Observatory name                               
-SITEELEV=                   10 / Elevation of the imaging site in meters        
-SITELAT = '51 3 0.000'         / Latitude of the imaging site in degrees        
-SITELONG= '3 43 0.000'         / Longitude of the imaging site in degrees       
-FOCUSER = 'ASCOM Driver for SestoSenso' / Focuser name                          
-FOCPOS  =               827840 / Absolute focuser position                      
-FOCTEMP =               14.162 / Focuser temperature                            
-FWHEEL  = 'Manual Filter Wheel' / Filter Wheel name                             
-FILTER  = 'HaOIII  '           / Filter name                                    
-EXPOSURE=                   30 / Exposure time in seconds                       
-CCD-TEMP=                -17.5 / Camera cooler temperature                      
-SET-TEMP=                  -18 / Camera cooler target temperature               
-XBINNING=                    1 / Camera X Bin                                   
-CCDXBIN =                    1 / Camera X Bin                                   
-YBINNING=                    1 / Camera Y Bin                                   
-CCDYBIN =                    1 / Camera Y Bin                                   
-TELESCOP= 'EQMOD ASCOM HEQ5/6' / Telescope name                                 
-RA      =     283.395539831101 / Object Right Ascension in degrees              
-DEC     =           33.0340625 / Object Declination in degrees                  
-CRVAL1  =     283.395539831101 / RA at image center in degrees                  
-CRVAL2  =           33.0340625 / DEC at image center in degrees                 
-OBJCTRA = '18 53 34.930'       / Object Right Ascension in hms                  
-OBJCTDEC= '+33 02 02.625'      / Object Declination in degrees                  
-AIRMASS =      1.1136910218553 / Average airmass                                
-OBJCTALT=     63.9199101820811 / Altitude of the object                         
-CENTALT =     63.9199101820811 / Altitude of the object                         
-FOCALLEN=                 1480 / The focal length of the telescope in mm        
-FLIPPED =                    F / Is image flipped                               
-ANGLE   =               258.37 / Image angle                                    
-SCALE   =              0.65415 / Image scale (arcsec / pixel)                   
-PIXSCALE=              0.65415 / Image scale (arcsec / pixel)                   
-POSANGLE=     258.369995117188 / Camera rotator postion angle (degrees)         
-GAIN    =                  120 / Camera gain                                    
-EGAIN   =     3.99000000953674 / Electrons Per ADU                              
-OFFSET  =                   30 / Camera offset                                  
-END""".replace('\r\n', '\n')
-
         # Process the header
         header_bytes = fix_embedded_header(sgp_header)
         # Test header round-tripping

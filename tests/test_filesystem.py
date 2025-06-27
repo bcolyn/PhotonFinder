@@ -1,7 +1,7 @@
 import logging
 from typing import Iterable
 
-from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_dict
+from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_xisf_dict
 from photonfinder.models import LibraryRoot, File, Image, FitsHeader
 from photonfinder.filesystem import update_fits_header_cache, check_missing_header_cache
 from photonfinder.fits_handlers import normalize_fits_header, NINAHandler, _normalize_image_type
@@ -101,7 +101,7 @@ def test_read_read_xisf_header(global_test_data_dir):
     header_bytes, header_dict = read_xisf_header(file_path)
     assert header_dict is not None
     assert header_bytes is not None
-    header = header_from_dict(header_dict)
+    header = header_from_xisf_dict(header_dict)
     assert NINAHandler().can_handle(header)
     image = normalize_fits_header(File(), header)
     assert image is not None
@@ -112,7 +112,7 @@ def test_read_read_xisf_header(global_test_data_dir):
 
     file_path = global_test_data_dir / "masterLight_BIN-1_1080x1920_EXPOSURE-10.00s_FILTER-LP_RGB.xisf"
     header_bytes, header_dict = read_xisf_header(file_path)
-    header = header_from_dict(header_dict)
+    header = header_from_xisf_dict(header_dict)
     image = normalize_fits_header(File(), header)
     assert image is not None
     assert image.camera == "Seestar S50"
@@ -120,7 +120,7 @@ def test_read_read_xisf_header(global_test_data_dir):
 
     file_path = global_test_data_dir / "linear.xisf"
     header_bytes, header_dict = read_xisf_header(file_path)
-    header = header_from_dict(header_dict)
+    header = header_from_xisf_dict(header_dict)
     image = normalize_fits_header(File(), header)
     assert image is not None
     assert image.camera == "ZWO ASI183MC Pro"

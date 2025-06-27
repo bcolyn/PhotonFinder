@@ -356,4 +356,10 @@ class FitsHeader(Model):
         )
 
 
-CORE_MODELS = [LibraryRoot, File, Image, FitsHeader]
+class FileWCS(Model):
+    rowid = RowIDField()
+    file = ForeignKeyField(File, on_delete='CASCADE', unique=True)
+    wcs = TextField()
+
+
+CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS]

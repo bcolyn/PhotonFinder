@@ -158,14 +158,14 @@ def _handle_file_metadata(file, status_reporter):
         header_bytes, header_dict = read_xisf_header(file.full_filename(), status_reporter)
         if header_bytes:
             FitsHeader(file=file, header=header_bytes).save()
-            header = header_from_dict(header_dict)
+            header = header_from_xisf_dict(header_dict)
     if header is not None:
         image = normalize_fits_header(file, header, status_reporter)
         if image is not None:
             Image.insert(image.__data__).on_conflict_replace().execute()
 
 
-def header_from_dict(header_dict: dict[str, list]):
+def header_from_xisf_dict(header_dict: dict[str, list]):
     result = Header()
     for key, values in header_dict.items():
         for value_dict in values:
