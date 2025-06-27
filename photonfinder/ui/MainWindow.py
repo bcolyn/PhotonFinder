@@ -15,6 +15,8 @@ from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
 from .generated.MainWindow_ui import Ui_MainWindow
 import photonfinder.ui.generated.resources_rc
+from ..platesolver import SolverType
+
 
 class UIStatusReporter(StatusReporter, QObject):
     on_message = Signal(str)
@@ -354,6 +356,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def plate_solve_files(self):
         self.getCurrentSearchPanel().plate_solve_files()
+
+    def plate_solve_files_astrometry(self):
+        self.getCurrentSearchPanel().plate_solve_files(SolverType.ASTROMETRY_NET)
 
     def enable_actions_for_current_tab(self):
         current_panel = self.getCurrentSearchPanel()

@@ -106,6 +106,7 @@
     <addaction name="separator"/>
     <addaction name="action_Export_Data"/>
     <addaction name="actionPlate_solve_files"/>
+    <addaction name="actionPlate_Solve_Astrometry_net"/>
     <addaction name="separator"/>
     <addaction name="actionFind_matching_darks"/>
     <addaction name="actionFind_matching_flats"/>
@@ -193,7 +194,7 @@
   </action>
   <action name="action_Export_Data">
    <property name="text">
-    <string>Export files</string>
+    <string>Export files as FITS</string>
    </property>
   </action>
   <action name="action_Create_Backup">
@@ -258,7 +259,12 @@
   </action>
   <action name="actionPlate_solve_files">
    <property name="text">
-    <string>Plate solve files</string>
+    <string>Plate solve (ASTAP)</string>
+   </property>
+  </action>
+  <action name="actionPlate_Solve_Astrometry_net">
+   <property name="text">
+    <string>Plate Solve (Astrometry.net)</string>
    </property>
   </action>
  </widget>
@@ -712,6 +718,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionPlate_Solve_Astrometry_net</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>plate_solve_files_astrometry()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -740,5 +762,6 @@
   <slot>show_file_location()</slot>
   <slot>select_path_in_tree()</slot>
   <slot>plate_solve_files()</slot>
+  <slot>plate_solve_files_astrometry()</slot>
  </slots>
 </ui>

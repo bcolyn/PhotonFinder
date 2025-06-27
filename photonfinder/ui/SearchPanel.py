@@ -14,6 +14,7 @@ from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSo
 from .DateRangeDialog import DateRangeDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .generated.SearchPanel_ui import Ui_SearchPanel
+from photonfinder.platesolver import SolverType
 
 EMPTY_LABEL = "<empty>"
 RESET_LABEL = "<any>"
@@ -232,7 +233,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.data_model.clear()
             self.data_model.setHorizontalHeaderLabels([
                 "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
-                "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC"
+                "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved"
             ])
 
             # Reset total files counter when starting a new search
@@ -273,6 +274,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             date_obs_item = QStandardItem("")
             ra_item = QStandardItem("")
             dec_item = QStandardItem("")
+            solved_item = QStandardItem("True" if hasattr(file, 'has_wcs') and file.has_wcs else "False")
+
             localtime: datetime
             try:
                 if hasattr(file, 'image') and file.image:
@@ -320,7 +323,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.data_model.appendRow([
                 name_item, type_item, filter_item, exposure_item, gain_item, offset_item,
                 binning_item, set_temp_item, camera_item, telescope_item,
-                object_item, date_obs_item, path_item, size_item, date_item, ra_item, dec_item
+                object_item, date_obs_item, path_item, size_item, date_item, ra_item, dec_item, solved_item
             ])
 
         # Resize columns to content
@@ -896,7 +899,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button.on_remove_filter.connect(self.reset_date_criteria)
             self.add_filter_button_control(filter_button)
 
-    def plate_solve_files(self):
+    def plate_solve_files(self, solver_type: SolverType = SolverType.ASTAP):
         selected_files = self.get_selected_files()
         # If no files are selected, use the search criteria
         if not selected_files:
@@ -915,7 +918,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # Pass the search criteria instead of loading all files
         from .ProgressDialog import ProgressDialog
         task = PlateSolveTask(context=self.context, search_criteria=self.search_criteria,
-                              files=selected_files if selected_files else None)
+                              files=selected_files if selected_files else None, solver_type=solver_type)
         dialog = ProgressDialog("Loading", "Plate solving", task, parent=self)
         dialog.show()
         task.finished.connect(self.refresh_data_grid)

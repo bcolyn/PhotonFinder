@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import typing
 from abc import ABCMeta, abstractmethod
+from enum import Enum
 from pathlib import Path
 
 from astropy.coordinates import SkyCoord
@@ -17,6 +18,11 @@ from xisf import XISF
 from photonfinder.core import get_default_astap_path
 from photonfinder.filesystem import fopen, Importer, header_from_xisf_dict
 from photonfinder.fits_handlers import hp
+
+
+class SolverType(Enum):
+    ASTAP = 1
+    ASTROMETRY_NET = 2
 
 
 class SolverBase(metaclass=ABCMeta):
@@ -51,8 +57,15 @@ class SolverBase(metaclass=ABCMeta):
         temp_image = Path(self.tmp_dir) / (input_image.name + ".fit")
         if Importer.is_fits_by_name(str(input_image)):
             with fopen(input_image) as source_file:
-                with open(temp_image, "wb") as destination_file:
-                    shutil.copyfileobj(source_file, destination_file)
+                with fits.open(source_file) as source_hdu:
+                    main_image_data = source_hdu[0].data
+                    main_header = source_hdu[0].header
+                    data2d = select_first_channel(main_image_data)
+                    header2d = Header(main_header.cards, copy=True)
+                    header2d['NAXIS'] = 2
+                    header2d.remove('NAXIS3', ignore_missing=True)
+                    hdu = fits.PrimaryHDU(data=data2d, header=header2d)
+                    hdu.writeto(temp_image, overwrite=False)
             return temp_image
         elif Importer.is_xisf_by_name(str(input_image)):
             xisf = XISF(input_image)
@@ -62,7 +75,9 @@ class SolverBase(metaclass=ABCMeta):
                     main_header = header_from_xisf_dict(meta["FITSKeywords"])
                     main_header.remove("COMMENT", ignore_missing=True, remove_all=True)
                     main_header.remove("HISTORY", ignore_missing=True, remove_all=True)
-                    main_image_data = xisf.read_image(i, 'channels_first')
+                    main_header['NAXIS'] = 2
+                    main_header.remove('NAXIS3', ignore_missing=True)
+                    main_image_data = select_first_channel(xisf.read_image(i, 'channels_first'))
                     hdu = fits.PrimaryHDU(data=main_image_data, header=main_header)
                     hdu.writeto(temp_image, overwrite=False)
                     return temp_image
@@ -241,6 +256,33 @@ def has_rotation(header):
     if all(k in header for k in ['CROTA1', 'CROTA2']):
         return header['CROTA1'] != 0 and header['CROTA2'] != 0
     return False
+
+
+def select_first_channel(data):
+    """
+    Reduce a 3D ndarray to 2D by selecting the first channel.
+    Handles both 'channels_first' (Z, X, Y) and 'channels_last' (X, Y, Z) formats.
+
+    Args:
+        data: numpy ndarray of shape (X, Y, Z), (Z, X, Y), or (X, Y)
+
+    Returns:
+        numpy ndarray of shape (X, Y)
+    """
+    if len(data.shape) == 2:
+        # Already 2D, return as is
+        return data
+    elif len(data.shape) == 3:
+        # Determine if it's channels_first or channels_last
+        # Assume channels_first if the first dimension is smaller (common for RGB = 3 channels)
+        if data.shape[0] <= data.shape[2]:
+            # Channels first format (Z, X, Y) -> select first channel
+            return data[0, :, :]
+        else:
+            # Channels last format (X, Y, Z) -> select first channel
+            return data[:, :, 0]
+    else:
+        raise ValueError(f"Unsupported array shape: {data.shape}. Expected 2D or 3D array.")
 
 
 def _create_temp_jpeg(input_image, output_dir: Path) -> Path:

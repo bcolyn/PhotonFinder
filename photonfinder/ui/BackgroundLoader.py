@@ -7,11 +7,12 @@ from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
 from peewee import JOIN
 
+from conftest import settings
 from photonfinder.core import ApplicationContext
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
-from photonfinder.platesolver import ASTAPSolver, get_image_center_coords
+from photonfinder.platesolver import ASTAPSolver, get_image_center_coords, SolverType, AstrometryNetSolver
 
 
 class BackgroundLoaderBase(QObject):
@@ -138,8 +139,9 @@ class SearchResultsLoader(BackgroundLoaderBase):
         try:
             # Start building the query
             query = (File
-                     .select(File, Image)
-                     .join(Image, JOIN.LEFT_OUTER)
+                     .select(File, Image, FileWCS.wcs.is_null(False).alias('has_wcs'))
+                     .join_from(File, Image, JOIN.LEFT_OUTER)
+                     .join_from(File, FileWCS, JOIN.LEFT_OUTER)
                      .order_by(File.root, File.path, File.name))
 
             # Apply search criteria to the query
@@ -322,9 +324,15 @@ class FileProcessingTask(ProgressBackgroundTask):
 
 
 class PlateSolveTask(FileProcessingTask):
-    def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File]):
+    def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File],
+                 solver_type: SolverType):
         super().__init__(context, search_criteria, files)
-        self.solver = ASTAPSolver()
+        settings = self.context.settings
+        match solver_type:
+            case SolverType.ASTAP:
+                self.solver = ASTAPSolver(exe=settings.get_astap_path())
+            case SolverType.ASTROMETRY_NET:
+                self.solver = AstrometryNetSolver(api_key=settings.get_astrometry_net_api_key())
 
     def create_query(self):
         query = super().create_query()
@@ -343,6 +351,7 @@ class PlateSolveTask(FileProcessingTask):
             with (self.solver):
                 solution = self.solver.solve(Path(file.full_filename()))
                 if solution:
+                    self.context.status_reporter.update_status(f"Solved file {file.full_filename()}")
                     FileWCS(file=file, wcs=solution.tostring()).save()
                     ra, dec, healpix = get_image_center_coords(solution)
                     Image.update(coord_ra=ra, coord_dec=dec, coord_pix256=healpix
