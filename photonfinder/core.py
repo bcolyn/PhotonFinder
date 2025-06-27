@@ -83,8 +83,6 @@ class Settings:
 
     def _initialize_defaults(self):
         """Initialize default settings if they don't exist."""
-        if not self.contains("cache_compressed_headers"):
-            self.set_cache_compressed_headers(True)
         if not self.contains("astap_path"):
             self.set_astap_path(get_default_astap_path())
         if not self.contains("astrometry_net_api_key"):
@@ -93,14 +91,6 @@ class Settings:
     def contains(self, key):
         """Check if a setting exists."""
         return self.settings.contains(key)
-
-    def get_cache_compressed_headers(self):
-        """Get the 'cache compressed headers' setting."""
-        return self.settings.value("cache_compressed_headers", True, bool)
-
-    def set_cache_compressed_headers(self, value):
-        """Set the 'cache compressed headers' setting."""
-        self.settings.setValue("cache_compressed_headers", value)
 
     def get_last_export_path(self):
         """Get the last export path."""

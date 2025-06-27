@@ -10,13 +10,11 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
     """
     Dialog for managing application settings.
     """
+
     def __init__(self, context: ApplicationContext, parent=None):
         super(SettingsDialog, self).__init__(parent)
         self.setupUi(self)
         self.context = context
-
-        # Initialize settings
-        self.cache_headers_checkbox.setChecked(self.context.settings.get_cache_compressed_headers())
 
         # Initialize plate solving settings
         self.astap_path_edit.setText(self.context.settings.get_astap_path())
@@ -39,8 +37,8 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         start_dir = os.path.dirname(current_path) if current_path else os.path.expanduser("~")
 
         file_path, _ = QFileDialog.getOpenFileName(
-            self, 
-            "Select ASTAP Executable", 
+            self,
+            "Select ASTAP Executable",
             start_dir,
             file_filter
         )
@@ -50,8 +48,6 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
 
     def accept(self):
         """Save settings when OK is clicked."""
-        # Save the "cache compressed headers" setting
-        self.context.settings.set_cache_compressed_headers(self.cache_headers_checkbox.isChecked())
 
         # Save plate solving settings
         self.context.settings.set_astap_path(self.astap_path_edit.text())
