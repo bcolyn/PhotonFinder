@@ -3,7 +3,7 @@ from astropy.coordinates import SkyCoord
 from astropy.io.fits import Header
 from astropy.wcs import WCS
 
-from photonfinder.platesolver import solve_image_astap, has_been_plate_solved, ASTAPSolver
+from photonfinder.platesolver import solve_image_astap, has_been_plate_solved, ASTAPSolver, get_image_center_coords
 from tests.sample_headers import *
 
 
@@ -15,6 +15,9 @@ def test_solve_image_wcs(global_test_data_dir):
     assert wcs.has_celestial
     assert wcs.array_shape == (3672, 5496)
     assert wcs.footprint_contains(sky_coord)
+
+    ra, dec, healpix = get_image_center_coords(Header.fromstring(wcs_str))
+    assert healpix == 175647
 
 
 def test_solve_image_xisf(global_test_data_dir):

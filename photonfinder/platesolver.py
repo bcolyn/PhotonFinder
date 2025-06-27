@@ -5,11 +5,13 @@ import tempfile
 import typing
 from pathlib import Path
 
+from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.io.fits import Header
 from xisf import XISF
 
 from photonfinder.filesystem import fopen, Importer, header_from_xisf_dict
+from photonfinder.fits_handlers import hp
 
 
 def get_default_astap_path():
@@ -64,7 +66,7 @@ class ASTAPSolver:
         log = tmp_image_file.with_suffix(".log")
 
         params = [self._exe, "-f", str(tmp_image_file), "-update", "-platesolve"] # update, since this is a temp copy anyway
-        options = {"-r": "180", "-s": "100"}
+        options = {"-r": "180", "-s": "100", "-z" : "2"}
         if hint is not None:
             options.update(hint)
         params.extend([item for k in options for item in (k, options[k])])
@@ -99,7 +101,8 @@ class ASTAPSolver:
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self._exe:
             raise FileNotFoundError("ASTAP executable not found")
-
+        if not self.tmp_dir:
+            raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
         temp_image = self._create_temp_fits(image_path)
         hint = ASTAPSolver.extract_hint(fits.getheader(temp_image))
         return self._solve(temp_image, hint)
@@ -171,6 +174,14 @@ class SolverFailure(Exception):
     def __str__(self) -> str:
         return self.message
 
+def get_image_center_coords(header):
+    assert has_minimal_wcs(header)
+    import astropy.units as u
+    ra = header.get("CRVAL1")
+    dec = header.get("CRVAL2")
+    coords = SkyCoord(ra, dec, unit=(u.deg, u.deg), frame='icrs')
+    healpix_index = int(hp.skycoord_to_healpix(coords))
+    return ra, dec, healpix_index
 
 def solve_image_astap(image_path) -> str:
     with ASTAPSolver() as solver:

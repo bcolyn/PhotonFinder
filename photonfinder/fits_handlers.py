@@ -13,6 +13,8 @@ from astropy_healpix import HEALPix
 from photonfinder.models import File, Image
 from photonfinder.core import StatusReporter
 
+# Calculate HEALPix value with nside=256
+hp = HEALPix(nside=256, order='nested', frame='icrs')
 
 def _upper(value: str):
     return None if value is None else value.upper()
@@ -213,8 +215,6 @@ class FitsHeaderHandler:
             if ra_degrees == 0.0 and dec_degrees == 0.0:
                 return None, None, None
 
-            # Calculate HEALPix value with nside=256
-            hp = HEALPix(nside=256, order='nested', frame='icrs')
             healpix_index = hp.skycoord_to_healpix(coords)
 
             return ra_degrees, dec_degrees, int(healpix_index)

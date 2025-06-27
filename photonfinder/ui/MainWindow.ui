@@ -105,6 +105,7 @@
     <addaction name="actionSelect_path"/>
     <addaction name="separator"/>
     <addaction name="action_Export_Data"/>
+    <addaction name="actionPlate_solve_files"/>
     <addaction name="separator"/>
     <addaction name="actionFind_matching_darks"/>
     <addaction name="actionFind_matching_flats"/>
@@ -253,6 +254,11 @@
    </property>
    <property name="text">
     <string>Select path</string>
+   </property>
+  </action>
+  <action name="actionPlate_solve_files">
+   <property name="text">
+    <string>Plate solve files</string>
    </property>
   </action>
  </widget>
@@ -690,6 +696,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionPlate_solve_files</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>plate_solve_files()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -717,5 +739,6 @@
   <slot>open_selected_file()</slot>
   <slot>show_file_location()</slot>
   <slot>select_path_in_tree()</slot>
+  <slot>plate_solve_files()</slot>
  </slots>
 </ui>

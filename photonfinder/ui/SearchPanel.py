@@ -10,7 +10,7 @@ from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File
-from .BackgroundLoader import SearchResultsLoader, GenericControlLoader
+from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask
 from .DateRangeDialog import DateRangeDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .generated.SearchPanel_ui import Ui_SearchPanel
@@ -78,6 +78,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.filter_name_text.textChanged.connect(self.update_search_criteria)
         self.filter_fname_text.textChanged.connect(self.update_search_criteria)
         self.checkBox.toggled.connect(self.update_search_criteria)
+
+    def showEvent(self, event, /):
+        super().showEvent(event)
+        if self.data_model.rowCount() == 0:
+            self.refresh_data_grid()
 
     def on_library_tree_ready(self):
         all_libraries_index = self.library_tree_model.index(0, 0, QModelIndex())
@@ -204,8 +209,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         target.setCurrentText(current_text)
         self.update_in_progress = False
-
-        self.refresh_data_grid()
 
     def on_data_selection_changed(self, selected, deselected):
         """Handle selection changes in the data grid."""
@@ -893,6 +896,31 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button.on_remove_filter.connect(self.reset_date_criteria)
             self.add_filter_button_control(filter_button)
 
+    def plate_solve_files(self):
+        selected_files = self.get_selected_files()
+        # If no files are selected, use the search criteria
+        if not selected_files:
+            # Get the total number of files matching the current filters
+            # If there are too many files, ask for confirmation
+            if self.total_files > 100:
+                response = QMessageBox.question(
+                    self,
+                    "Plate solving confirmation",
+                    f"No files are selected. Are you sure you want to plate solve all files matching the current filters?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if response == QMessageBox.No:
+                    return
+
+        # Pass the search criteria instead of loading all files
+        from .ProgressDialog import ProgressDialog
+        task = PlateSolveTask(context=self.context, search_criteria=self.search_criteria,
+                              files=selected_files if selected_files else None)
+        dialog = ProgressDialog("Loading", "Plate solving", task, parent=self)
+        dialog.show()
+        task.finished.connect(self.refresh_data_grid)
+        task.start()
+
 
 def _get_combo_value(combo: QComboBox) -> str | None:
     if combo.currentText() == RESET_LABEL:
@@ -930,6 +958,7 @@ def _format_ra(ra_deg: float):
     minutes = int((total_hours - hours) * 60)
     seconds = int(((total_hours - hours) * 60 - minutes) * 60)
     return f"{hours:02d}h{minutes:02d}'{seconds:02d}\""
+
 
 def _format_dec(dec_deg: float):
     """Format DEC from decimal degrees to string format."""

@@ -1,5 +1,6 @@
 import json
 import logging
+from pathlib import Path
 from typing import Callable, List
 
 from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
@@ -8,8 +9,9 @@ from peewee import JOIN
 
 from photonfinder.core import ApplicationContext
 from photonfinder.fits_handlers import normalize_fits_header
-from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria
+from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
+from photonfinder.platesolver import ASTAPSolver, get_image_center_coords
 
 
 class BackgroundLoaderBase(QObject):
@@ -196,8 +198,9 @@ class ImageReindexWorker(BackgroundLoaderBase):
             with self.context.database.bind_ctx([FitsHeader, File, Image]):
                 # Query all headers with their associated files
                 query = (FitsHeader
-                         .select(FitsHeader, File)
-                         .join(File))
+                         .select(FitsHeader, File, FileWCS)
+                         .join(File)
+                         .join(FileWCS, JOIN.LEFT_OUTER))
 
                 # Process each header
                 for header_record in query:
@@ -216,6 +219,13 @@ class ImageReindexWorker(BackgroundLoaderBase):
                         # Process the header
                         image = normalize_fits_header(header_record.file, header, self.context.status_reporter)
                         if image:
+                            if hasattr(header_record.file, 'filewcs'):
+                                wcs_str = header_record.file.filewcs.wcs
+                                wcs_header = Header.fromstring(wcs_str)
+                                ra, dec, healpix = get_image_center_coords(wcs_header)
+                                image.coord_ra = ra
+                                image.coord_dec = dec
+                                image.coord_pix256 = healpix
                             new_images.append(image)
 
                         # Update progress periodically
@@ -231,6 +241,7 @@ class ImageReindexWorker(BackgroundLoaderBase):
                             new_images = []
 
                     except Exception as e:
+                        logging.error(f"Error processing header: {e}", exc_info=True)
                         self.context.status_reporter.update_status(f"Error processing header: {str(e)}")
 
                 # Save any remaining images
@@ -246,3 +257,97 @@ class ImageReindexWorker(BackgroundLoaderBase):
 
         # Signal that we're done
         self.finished.emit()
+
+
+class ProgressBackgroundTask(BackgroundLoaderBase):
+    progress = Signal(int)
+    finished = Signal()
+    error = Signal(str)
+    message = Signal(str)
+    total_found = Signal(int)
+
+    def __init__(self, context: ApplicationContext):
+        super().__init__(context)
+        self.total = 0
+        self.context = context
+        self.cancelled = False
+
+    def cancel(self):
+        self.cancelled = True
+
+
+class FileProcessingTask(ProgressBackgroundTask):
+    def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File]):
+        super().__init__(context)
+        self.search_criteria = search_criteria
+        self.files = files
+
+    def start(self):
+        self.run_in_thread(self._process_files)
+
+    def _process_files(self):
+        try:
+            if self.files is not None and len(self.files) > 0:
+                self.total = len(self.files)
+                self.total_found.emit(self.total)
+                for i, file in enumerate(self.files):
+                    if self.cancelled:
+                        break
+                    self._process_file(file, i)
+            else:
+                with self.context.database.bind_ctx([File, Image]):
+                    query = self.create_query()
+                    self.total = query.count()
+                    self.total_found.emit(self.total)
+                    for i, file in enumerate(query):
+                        if self.cancelled:
+                            break
+                        self._process_file(file, i)
+
+            self.finished.emit()
+        except Exception as e:
+            logging.error(f"Error processing files: {e}", exc_info=True)
+            self.error.emit(str(e))
+
+    def create_query(self):
+        query = (File
+                 .select(File, Image)
+                 .join(Image, JOIN.LEFT_OUTER)
+                 .order_by(File.root, File.path, File.name))
+        query = Image.apply_search_criteria(query, self.search_criteria)
+        return query
+
+    def _process_file(self, file, index):
+        self.progress.emit(index)
+
+
+class PlateSolveTask(FileProcessingTask):
+    def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File]):
+        super().__init__(context, search_criteria, files)
+        self.solver = ASTAPSolver()
+
+    def create_query(self):
+        query = super().create_query()
+        query = (query
+                 .where((Image.image_type == "LIGHT") | (Image.image_type == "MASTER LIGHT") |
+                        (Image.image_type.is_null()))
+                 .join_from(File, FileWCS, JOIN.LEFT_OUTER)
+                 .where(FileWCS.wcs.is_null()))
+        return query
+
+    def _process_file(self, file, index):
+        super()._process_file(file, index)
+        self.message.emit(f"Processing file {index + 1}/{self.total}:\n {file.full_filename()}")
+
+        try:
+            with (self.solver):
+                solution = self.solver.solve(Path(file.full_filename()))
+                if solution:
+                    FileWCS(file=file, wcs=solution.tostring()).save()
+                    ra, dec, healpix = get_image_center_coords(solution)
+                    Image.update(coord_ra=ra, coord_dec=dec, coord_pix256=healpix
+                                 ).where(Image.file == file).execute()
+        except Exception as e:
+            logging.error(f"Error solving file {file.full_filename()}: {e}", exc_info=True)
+            self.context.status_reporter.update_status(f"Error solving file {file.full_filename()}: {e}")
+            return

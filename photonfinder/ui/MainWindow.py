@@ -302,7 +302,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         panel.apply_search_criteria(dark_criteria)
         self.tabWidget.setCurrentIndex(tab)
 
-
     def find_matching_flats(self):
         current_panel = self.getCurrentSearchPanel()
         selected_image = current_panel.get_selected_image()
@@ -353,6 +352,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Select the path in the tree
         current_panel.select_path_in_tree(selected_rows[0])
 
+    def plate_solve_files(self):
+        self.getCurrentSearchPanel().plate_solve_files()
+
     def enable_actions_for_current_tab(self):
         current_panel = self.getCurrentSearchPanel()
         if not current_panel:
@@ -363,6 +365,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionShow_location.setEnabled(has_selection)
         self.actionSelect_path.setEnabled(has_selection)
         if selected_image:
-            current_type =  selected_image.image_type
+            current_type = selected_image.image_type
             self.actionFind_matching_darks.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
             self.actionFind_matching_flats.setEnabled(current_type == "LIGHT")

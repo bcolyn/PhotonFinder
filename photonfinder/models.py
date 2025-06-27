@@ -358,8 +358,8 @@ class FitsHeader(Model):
 
 class FileWCS(Model):
     rowid = RowIDField()
-    file = ForeignKeyField(File, on_delete='CASCADE', unique=True)
-    wcs = TextField()
+    file = ForeignKeyField(File, on_delete='CASCADE', unique=True, backref='wcs')
+    wcs = TextField(null=False)
 
 
 CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS]
