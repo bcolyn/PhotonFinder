@@ -360,6 +360,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def plate_solve_files_astrometry(self):
         self.getCurrentSearchPanel().plate_solve_files(SolverType.ASTROMETRY_NET)
 
+    def report_list_files(self):
+        """
+        Show a file save dialog to select an output filename (.txt|.lst),
+        then create a FileListTask to generate a list of files matching the current search criteria.
+        """
+        self.getCurrentSearchPanel().report_list_files()
+
     def enable_actions_for_current_tab(self):
         current_panel = self.getCurrentSearchPanel()
         if not current_panel:

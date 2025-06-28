@@ -111,9 +111,16 @@
     <addaction name="actionFind_matching_darks"/>
     <addaction name="actionFind_matching_flats"/>
    </widget>
+   <widget class="QMenu" name="menuReport">
+    <property name="title">
+     <string>Report</string>
+    </property>
+    <addaction name="actionList_Files"/>
+   </widget>
    <addaction name="menu_File"/>
    <addaction name="menuFilter"/>
    <addaction name="menu_Tools"/>
+   <addaction name="menuReport"/>
    <addaction name="menu_Help"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
@@ -265,6 +272,11 @@
   <action name="actionPlate_Solve_Astrometry_net">
    <property name="text">
     <string>Plate Solve (Astrometry.net)</string>
+   </property>
+  </action>
+  <action name="actionList_Files">
+   <property name="text">
+    <string>List Files</string>
    </property>
   </action>
  </widget>
@@ -734,6 +746,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionList_Files</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>report_list_files()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -763,5 +791,6 @@
   <slot>select_path_in_tree()</slot>
   <slot>plate_solve_files()</slot>
   <slot>plate_solve_files_astrometry()</slot>
+  <slot>report_list_files()</slot>
  </slots>
 </ui>

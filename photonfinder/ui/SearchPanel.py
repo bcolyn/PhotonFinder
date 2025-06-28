@@ -10,8 +10,9 @@ from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File
-from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask
+from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
 from .DateRangeDialog import DateRangeDialog
+from .ProgressDialog import ProgressDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .generated.SearchPanel_ui import Ui_SearchPanel
 from photonfinder.platesolver import SolverType
@@ -916,13 +917,38 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                     return
 
         # Pass the search criteria instead of loading all files
-        from .ProgressDialog import ProgressDialog
         task = PlateSolveTask(context=self.context, search_criteria=self.search_criteria,
                               files=selected_files if selected_files else None, solver_type=solver_type)
         dialog = ProgressDialog("Loading", "Plate solving", task, parent=self)
         dialog.show()
         task.finished.connect(self.refresh_data_grid)
         task.start()
+
+    def report_list_files(self):
+        selected_files = self.get_selected_files()
+        # Show file save dialog
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save File List",
+            "",
+            "Text Files (*.txt);;List Files (*.lst);;All Files (*)"
+        )
+
+        if not file_path:
+            return  # User cancelled
+
+        try:
+            task = FileListTask(context=self.context, search_criteria=self.search_criteria,
+                                files=selected_files if selected_files else None)
+            dialog = ProgressDialog("Creating file list", "File List", task, parent=self)
+            dialog.show()
+            task.start(file_path)
+
+        except Exception as e:
+            error_msg = f"Failed to create file list: {str(e)}"
+            logging.error(error_msg)
+            self.context.status_reporter.update_status(error_msg)
+            QMessageBox.critical(self, "File List Creation Failed", error_msg)
 
 
 def _get_combo_value(combo: QComboBox) -> str | None:

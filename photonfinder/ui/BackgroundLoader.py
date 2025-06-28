@@ -359,3 +359,26 @@ class PlateSolveTask(FileProcessingTask):
             logging.error(f"Error solving file {file.full_filename()}: {e}", exc_info=True)
             self.context.status_reporter.update_status(f"Error solving file {file.full_filename()}: {e}")
             return
+
+
+
+class FileListTask(FileProcessingTask):
+    def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File]):
+        super().__init__(context, search_criteria, files)
+        self.output_filename = None
+
+    def start(self, output_filename: str = None):
+        self.output_filename = output_filename
+        super().start()
+
+    def _process_files(self):
+        if self.output_filename is None:
+            return
+        with open(self.output_filename, 'w') as fd:
+            self.fd = fd
+            super()._process_files()
+
+    def _process_file(self, file, index):
+        self.message.emit(f"Processing file {index + 1}/{self.total}:\n {file.full_filename()}")
+        self.fd.write(f"{str(Path(file.full_filename()))}\n")
+        self.progress.emit(index)
