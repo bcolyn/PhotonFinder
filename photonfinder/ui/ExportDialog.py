@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QDialogButtonBo
 from astropy.io import fits
 from peewee import JOIN
 
-from photonfinder.core import ApplicationContext, Settings
+from photonfinder.core import ApplicationContext, Settings, decompress
 from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict
 from photonfinder.models import Image, File, SearchCriteria, FileWCS
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
@@ -208,7 +208,7 @@ class ExportWorker(BackgroundLoaderBase):
     def _copy_wcs(self, file: File, header):
         # Get plate solving headers
         if self.override_platesolve and hasattr(file, 'filewcs'):
-            wcs_str = file.filewcs.wcs
+            wcs_str = decompress(file.filewcs.wcs)
             wcs_header = fits.Header.fromstring(wcs_str)
             # Update header with WCS information
             for key in wcs_header:

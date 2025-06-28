@@ -1,5 +1,6 @@
 import pytest
 
+from photonfinder.core import compress
 from photonfinder.models import *
 from .utils import fix_embedded_header
 from .sample_headers import *
@@ -74,6 +75,6 @@ def dark1(file2) -> File:
 
 @pytest.fixture
 def light1_wcs(light1) -> File:
-    wcs = FileWCS(file=light1, wcs=fix_embedded_header(wcs_header_m106))
+    wcs = FileWCS(file=light1, wcs=compress(fix_embedded_header(wcs_header_m106)))
     light1.filewcs = wcs
     return light1

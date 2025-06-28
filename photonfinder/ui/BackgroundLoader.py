@@ -7,7 +7,7 @@ from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
 from peewee import JOIN
 
-from photonfinder.core import ApplicationContext
+from photonfinder.core import ApplicationContext, compress, decompress
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
@@ -210,9 +210,9 @@ class ImageReindexWorker(BackgroundLoaderBase):
                         from astropy.io.fits import Header
                         header = None
                         if Importer.is_fits_by_name(header_record.file.name):
-                            header = parse_FITS_header(header_record.header)
+                            header = parse_FITS_header(decompress(header_record.header))
                         elif Importer.is_xisf_by_name(header_record.file.name):
-                            header = header_from_xisf_dict(json.loads(header_record.header))
+                            header = header_from_xisf_dict(json.loads(decompress(header_record.header)))
 
                         if header is None:
                             continue
@@ -221,7 +221,7 @@ class ImageReindexWorker(BackgroundLoaderBase):
                         image = normalize_fits_header(header_record.file, header, self.context.status_reporter)
                         if image:
                             if hasattr(header_record.file, 'filewcs'):
-                                wcs_str = header_record.file.filewcs.wcs
+                                wcs_str = decompress(header_record.file.filewcs.wcs)
                                 wcs_header = Header.fromstring(wcs_str)
                                 ra, dec, healpix = get_image_center_coords(wcs_header)
                                 image.coord_ra = ra
@@ -351,7 +351,7 @@ class PlateSolveTask(FileProcessingTask):
                 solution = self.solver.solve(Path(file.full_filename()))
                 if solution:
                     self.context.status_reporter.update_status(f"Solved file {file.full_filename()}")
-                    FileWCS(file=file, wcs=solution.tostring()).save()
+                    FileWCS(file=file, wcs=compress(solution.tostring().encode())).save()
                     ra, dec, healpix = get_image_center_coords(solution)
                     Image.update(coord_ra=ra, coord_dec=dec, coord_pix256=healpix
                                  ).where(Image.file == file).execute()

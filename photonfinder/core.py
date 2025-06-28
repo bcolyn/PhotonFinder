@@ -2,6 +2,7 @@ import logging
 from abc import abstractmethod
 from pathlib import Path
 
+import zstd
 from PySide6.QtCore import QSettings
 from peewee import Database, SqliteDatabase
 
@@ -52,6 +53,11 @@ class ApplicationContext:
             'application_id': 0x46495453,  # FITS
             'user_version': 1
         })
+
+        @self.database.func("decompress", 1)
+        def db_decompress(value):
+            return decompress(value)
+
         logging.info("Database opened")
         self.settings.set_last_database_path(str(self.database_path))
         if self.database:
@@ -175,3 +181,11 @@ def backup_database(db: SqliteDatabase, backup_path: str | Path):
     finally:
         target.close()
     logging.info(f"Database backup created at {backup_path}")
+
+
+def compress(value: bytes) -> bytes:
+    return zstd.compress(value)
+
+
+def decompress(value: bytes) -> bytes:
+    return zstd.decompress(value)

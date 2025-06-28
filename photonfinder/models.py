@@ -347,19 +347,13 @@ class FitsHeader(Model):
     """
     rowid = RowIDField()
     file = ForeignKeyField(File, on_delete='CASCADE', unique=True)
-    header = BlobField()  # Caches the raw header as bytes
-
-    class Meta:
-        database = None
-        indexes = (
-            (('file',), True),
-        )
+    header = BlobField(null=False)  # Caches the raw header as bytes
 
 
 class FileWCS(Model):
     rowid = RowIDField()
     file = ForeignKeyField(File, on_delete='CASCADE', unique=True, backref='wcs')
-    wcs = TextField(null=False)
+    wcs = BlobField(null=False)
 
 
 CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS]

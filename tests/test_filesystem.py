@@ -87,6 +87,11 @@ class TestImporter:
         assert Image.select().count() == NUM_FILES
         assert FitsHeader.select().bind(database).count() == NUM_FILES
 
+        # Test the UDF
+        from peewee import fn
+        assert FitsHeader.select().bind(database).where(
+            fn.decompress(FitsHeader.header).contains('SIMPLE')).count() == NUM_FILES
+
 
 def test_read_fits_header(global_test_data_dir):
     file_path = global_test_data_dir / "M106_2020-03-17T024357_60sec_LP__-15C_frame11.fit.xz"
@@ -125,6 +130,7 @@ def test_read_read_xisf_header(global_test_data_dir):
     assert image is not None
     assert image.camera == "ZWO ASI183MC Pro"
     assert image.object_name == 'NGC 3319'
+
 
 def test_type_normalization():
     assert _normalize_image_type("Dark Frame") == "DARK"

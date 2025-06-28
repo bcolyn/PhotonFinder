@@ -6,7 +6,6 @@ import os
 import typing
 from logging import log, INFO, DEBUG, ERROR, WARN
 from pathlib import Path
-from typing import Any
 
 import fs.path
 from astropy.io.fits import Header, Card
@@ -15,7 +14,7 @@ from fs.info import Info
 from peewee import JOIN
 from xisf import XISF
 
-from photonfinder.core import StatusReporter
+from photonfinder.core import StatusReporter, compress
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import File, LibraryRoot, FitsHeader, Image
 
@@ -151,13 +150,13 @@ def _handle_file_metadata(file, status_reporter):
     if Importer.is_fits_by_name(file.name):
         header_bytes = read_fits_header(file.full_filename(), status_reporter)
         if header_bytes:
-            FitsHeader(file=file, header=header_bytes).save()
+            FitsHeader(file=file, header=compress(header_bytes)).save()
             # Normalize the header and create an Image object if possible
             header = parse_FITS_header(header_bytes)
     elif Importer.is_xisf_by_name(file.name):
         header_bytes, header_dict = read_xisf_header(file.full_filename(), status_reporter)
         if header_bytes:
-            FitsHeader(file=file, header=header_bytes).save()
+            FitsHeader(file=file, header=compress(header_bytes)).save()
             header = header_from_xisf_dict(header_dict)
     if header is not None:
         image = normalize_fits_header(file, header, status_reporter)
@@ -173,7 +172,7 @@ def header_from_xisf_dict(header_dict: dict[str, list]):
     return result
 
 
-def parse_FITS_header(header_bytes):
+def parse_FITS_header(header_bytes: bytes) -> Header:
     if b'\x09' in header_bytes:
         log(WARN, f"FITS header contains tab characters: {header_bytes}")
         header_bytes = header_bytes.replace(b'\x09', b' ')

@@ -196,7 +196,7 @@ class AstrometryNetSolver(SolverBase):
         self.ast = AstrometryNet()
         self.ast.api_key = api_key
 
-    def solve(self, image_path):
+    def solve(self, image_path) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self.tmp_dir:
