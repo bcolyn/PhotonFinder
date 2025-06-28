@@ -7,7 +7,6 @@ from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
 from peewee import JOIN
 
-from conftest import settings
 from photonfinder.core import ApplicationContext
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS

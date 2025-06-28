@@ -1,5 +1,6 @@
 import os
 
+import pytest
 from astropy import units as u
 from astropy.wcs import WCS
 
@@ -8,6 +9,7 @@ from photonfinder.platesolver import _create_temp_jpeg
 from tests.sample_headers import *
 
 
+@pytest.mark.slow
 def test_solve_image_wcs(global_test_data_dir):
     sky_coord = SkyCoord(12.3160 * 15 * u.deg, 47.3037 * u.deg, frame='icrs')
     file_path = global_test_data_dir / "M106_2020-03-17T024357_60sec_LP__-15C_frame11.fit.xz"
@@ -20,7 +22,7 @@ def test_solve_image_wcs(global_test_data_dir):
     ra, dec, healpix = get_image_center_coords(Header.fromstring(wcs_str))
     assert healpix == 175647
 
-
+@pytest.mark.internet
 def test_solve_image_astrometry(global_test_data_dir):
     file_path = global_test_data_dir / "M106_2020-03-17T024357_60sec_LP__-15C_frame11.fit.xz"
     wcs_str = solve_image_astrometry_net(file_path)
@@ -29,7 +31,7 @@ def test_solve_image_astrometry(global_test_data_dir):
     assert wcs.array_shape == (3672, 5496)
     assert wcs.footprint_contains(SkyCoord(12.3160 * 15 * u.deg, 47.3037 * u.deg, frame='icrs'))
 
-
+@pytest.mark.slow
 def test_solve_image_xisf(global_test_data_dir):
     file_path = global_test_data_dir / "masterLight_BIN-1_1080x1920_EXPOSURE-10.00s_FILTER-LP_RGB.xisf"
     wcs_str = solve_image_astap(file_path)
