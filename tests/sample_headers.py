@@ -507,3 +507,25 @@ IMAGEW  =                 1080 / Image width,  in pixels.
 IMAGEH  =                 1920 / Image height, in pixels.                       
 END                                                                             
 """
+
+wcs_header_m106="""
+NAXIS   =                    2                                                  
+NAXIS1  =                 5496 / length of data axis 1                          
+NAXIS2  =                 3672 / length of data axis 2                          
+CUNIT1  = 'deg     '           / Unit of coordinates                            
+CRPIX1  =  2.748500000000E+003 / X of reference pixel                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+CRPIX2  =  1.836500000000E+003 / Y of reference pixel                           
+CTYPE1  = 'RA---TAN'           / first parameter RA,    projection TANgential   
+CTYPE2  = 'DEC--TAN'           / second parameter DEC,  projection TANgential   
+CRVAL1  =  1.847357815820E+002 / RA of reference pixel (deg)                    
+CRVAL2  =  4.731358375708E+001 / DEC of reference pixel (deg) 
+CDELT1  = -3.445443565619E-004 / X pixel size (deg)                             
+CDELT2  =  3.445589806224E-004 / Y pixel size (deg)                             
+CROTA1  =  1.786642450287E+002 / Image twist X axis (deg)                       
+CROTA2  =  1.786635472113E+002 / Image twist Y axis (deg) E of N if not flipped
+CD1_1   =  3.444507289798E-004 / CD matrix to convert (x,y) to (Ra, Dec)        
+CD1_2   = -8.031746010254E-006 / CD matrix to convert (x,y) to (Ra, Dec)        
+CD2_1   = -8.036282230522E-006 / CD matrix to convert (x,y) to (Ra, Dec)        
+CD2_2   = -3.444652512162E-004 / CD matrix to convert (x,y) to (Ra, Dec)
+END        
+"""

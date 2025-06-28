@@ -194,7 +194,7 @@
   </action>
   <action name="action_Export_Data">
    <property name="text">
-    <string>Export files as FITS</string>
+    <string>Export file copies</string>
    </property>
   </action>
   <action name="action_Create_Backup">

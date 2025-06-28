@@ -9,12 +9,27 @@ from photonfinder.core import ApplicationContext, Settings, StatusReporter
 from photonfinder.models import CORE_MODELS
 
 
+class DynamicSettings:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._storage = {}
+
+    def __getattr__(self, name):
+        if name.startswith("set_"):
+            key = name[4:]
+            return lambda value: self._storage.__setitem__(key, value)
+        elif name.startswith("get_"):
+            key = name[4:]
+            return lambda: self._storage.get(key)
+        return super().__getattr__(name)
+
+    def sync(self):
+        pass
+
+
 @pytest.fixture(scope="class")
-def settings(class_mocker):
-    mock_settings = class_mocker.Mock()
-    mock_settings.get_last_database_path.return_value = ":memory:"
-    mock_settings.sync = class_mocker.Mock()
-    yield mock_settings
+def settings():
+    yield DynamicSettings()
 
 
 @pytest.fixture(scope="class")

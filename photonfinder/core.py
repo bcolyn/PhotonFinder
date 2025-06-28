@@ -144,6 +144,24 @@ class Settings:
         """Set the API key for astrometry.net."""
         self.settings.setValue("astrometry_net_api_key", value)
 
+    def get_last_export_xisf_as_fits(self):
+        return self.settings.value("last_export_xisf_as_fits", False, bool)
+
+    def get_last_export_override_platesolve(self):
+        return self.settings.value("last_export_override_platesolve", False, bool)
+
+    def get_last_export_custom_headers(self):
+        return self.settings.value("last_export_custom_headers", "", str)
+
+    def set_last_export_xisf_as_fits(self, value: bool):
+        self.settings.setValue("last_export_xisf_as_fits", value)
+
+    def set_last_export_override_platesolve(self, value: bool):
+        self.settings.setValue("last_export_override_platesolve", value)
+
+    def set_last_export_custom_headers(self, value: str):
+        self.settings.setValue("last_export_custom_headers", value)
+
     def sync(self):
         """Ensure settings are saved to disk."""
         self.settings.sync()

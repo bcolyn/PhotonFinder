@@ -5,38 +5,43 @@ import shutil
 import string
 from datetime import timedelta
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QDialogButtonBox
+from astropy.io import fits
 from peewee import JOIN
 
 from photonfinder.core import ApplicationContext, Settings
-from photonfinder.models import Image, File, SearchCriteria
+from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict
+from photonfinder.models import Image, File, SearchCriteria, FileWCS
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
 from photonfinder.ui.generated.ExportDialog_ui import Ui_ExportDialog
-from filesystem import is_compressed, fopen
 
 
 def template_filename_with_ref(file: File, ref: File, template: string.Template, settings: Settings,
-                               decompress=False) -> str:
-    regular_filename = template_filename(file, template, settings, decompress=decompress)
+                               decompress=False, export_xisf_as_fits=False) -> str:
+    regular_filename = template_filename(file, template, settings, decompress, export_xisf_as_fits)
     if ref is None:
         return regular_filename
     else:
-        ref_filename = template_filename(ref, template, settings, decompress=decompress)
+        ref_filename = template_filename(ref, template, settings, decompress, export_xisf_as_fits)
         ref_path = Path(ref_filename).parent
         regular_name = Path(regular_filename).name
         return os.path.join(ref_path, regular_name)
 
 
-def template_filename(file: File, template: string.Template, settings: Settings, decompress=False) -> str:
+def template_filename(file: File, template: string.Template, settings: Settings,
+                      decompress=False, export_xisf_as_fits=False) -> str:
     image = file.image if hasattr(file, 'image') and file.image else None
     file_name = file.name
 
     # drop the last extension for the decompressed file name
     if is_compressed(file_name) and decompress:
         file_name = os.path.splitext(file_name)[0]
+
+    if Importer.is_xisf_by_name(file_name) and export_xisf_as_fits:
+        file_name = str(Path(file_name).with_suffix(".fit"))
 
     mapping = {
         'filename': file_name,
@@ -90,10 +95,14 @@ class ExportWorker(BackgroundLoaderBase):
         self.decompress = False
         self.pattern = None
         self.cancelled = False
+        self.export_xisf_as_fits = False
+        self.override_platesolve = False
+        self.custom_headers = {}
 
     def export_files(self, search_criteria: SearchCriteria,
                      files: Optional[List[File]], output_path: str, decompress: bool,
-                     pattern: str, total_files: int):
+                     pattern: str, total_files: int, export_xisf_as_fits: bool = False,
+                     override_platesolve: bool = False, custom_headers: dict = None):
         """Start the export process in a background thread."""
         self.search_criteria = search_criteria
         self.files = files
@@ -102,6 +111,9 @@ class ExportWorker(BackgroundLoaderBase):
         self.pattern = string.Template(pattern)
         self.cancelled = False
         self.total_files = total_files
+        self.export_xisf_as_fits = export_xisf_as_fits
+        self.override_platesolve = override_platesolve
+        self.custom_headers = custom_headers or {}
         self.run_in_thread(self._export_files_task)
 
     def _export_files_task(self):
@@ -115,8 +127,9 @@ class ExportWorker(BackgroundLoaderBase):
             else:
                 with self.context.database.bind_ctx([File, Image]):
                     query = (File
-                             .select(File, Image)
-                             .join(Image, JOIN.LEFT_OUTER)
+                             .select(File, Image, FileWCS)
+                             .join_from(File, Image, JOIN.LEFT_OUTER)
+                             .join_from(File, FileWCS, JOIN.LEFT_OUTER)
                              .order_by(File.root, File.path, File.name))
                     query = Image.apply_search_criteria(query, self.search_criteria)
                     for i, file in enumerate(query):
@@ -136,7 +149,7 @@ class ExportWorker(BackgroundLoaderBase):
 
         # Create the output filename using the pattern
         output_filename = template_filename_with_ref(file, self.search_criteria.reference_file, self.pattern,
-                                                     self.context.settings)
+                                                     self.context.settings, self.decompress, self.export_xisf_as_fits)
 
         # Create the full output path
         output_file_path = os.path.join(self.output_path, output_filename)
@@ -149,23 +162,91 @@ class ExportWorker(BackgroundLoaderBase):
             logging.info(f"File {output_file_path} already exists, skipping")
         else:
             logging.info(f"Copying {source_path} to {output_file_path}")
-            self.copy_file(source_path, output_file_path)
+            self.copy_file(source_path, output_file_path, file)
 
         # Update progress
         self.progress.emit(int((index + 1) / self.total_files * 100))
 
-    def copy_file(self, source_path, output_file_path):
-        if is_compressed(source_path) and self.decompress:
-            with fopen(source_path) as source_file:
-                with open(output_file_path, "wb") as destination_file:
-                    shutil.copyfileobj(source_file, destination_file)
-            shutil.copystat(source_path, output_file_path)
+    def copy_file(self, source_path: str, output_file_path: str, file: File):
+        # XISF
+        if Importer.is_xisf_by_name(source_path):
+            if self.export_xisf_as_fits:
+                self.copy_xisf_as_fits(source_path, output_file_path, file)
+                shutil.copystat(source_path, output_file_path)
+            else:
+                shutil.copy2(source_path, output_file_path)
+        # FITS
+        elif Importer.is_fits_by_name(source_path):
+            if self.customize_fits_headers() or (is_compressed(source_path) and self.decompress):
+                with fopen(source_path) as source_file:
+                    self.copy_fits_data(source_file, output_file_path, file)
+                # Copy file stats
+                shutil.copystat(source_path, output_file_path)
+            else:
+                shutil.copy2(source_path, output_file_path)
+
+    def copy_fits_data(self, source_fd, output_file_path: str, file: File):
+        if self.customize_fits_headers():
+            with fits.open(source_fd) as hdul:
+                header = hdul[0].header
+                data = hdul[0].data
+
+                # Apply plate solving headers if requested
+                self._copy_wcs(file, header)
+
+                # Apply custom headers
+                for key, value in self.custom_headers.items():
+                    header[key] = value
+
+                # Write FITS file
+                hdu = fits.PrimaryHDU(data=data, header=header)
+                hdu.writeto(output_file_path, overwrite=True)
         else:
-            shutil.copy2(source_path, output_file_path)
+            with open(output_file_path, "wb") as destination_file:
+                shutil.copyfileobj(source_fd, destination_file)
+
+    def _copy_wcs(self, file: File, header):
+        # Get plate solving headers
+        if self.override_platesolve and hasattr(file, 'filewcs'):
+            wcs_str = file.filewcs.wcs
+            wcs_header = fits.Header.fromstring(wcs_str)
+            # Update header with WCS information
+            for key in wcs_header:
+                if not key.startswith('NAXIS'):
+                    header[key] = wcs_header[key]
+
+    def copy_xisf_as_fits(self, source_path: str, output_file_path: str, file: File):
+        from xisf import XISF
+        xisf = XISF(source_path)
+        metas = xisf.get_images_metadata()
+
+        for i, meta in enumerate(metas):
+            if "FITSKeywords" in meta:
+                # Get header and image data
+                header = header_from_xisf_dict(meta["FITSKeywords"])
+                image_data = xisf.read_image(i, 'channels_first')
+
+                # Apply plate solving headers if requested
+                self._copy_wcs(file, header)
+
+                # Apply custom headers
+                for key, value in self.custom_headers.items():
+                    header[key] = value
+
+                # Write FITS file
+                hdu = fits.PrimaryHDU(data=image_data, header=header)
+                hdu.writeto(output_file_path, overwrite=True)
+                return
+
+        # If we get here, no suitable image was found
+        raise Exception(f"No suitable image with FITS keywords found in XISF file: {source_path}")
 
     def cancel(self):
         """Cancel the export process."""
         self.cancelled = True
+
+    def customize_fits_headers(self):
+        return self.override_platesolve or self.custom_headers
 
 
 class ExportDialog(QDialog, Ui_ExportDialog):
@@ -180,7 +261,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.search_criteria = copy.deepcopy(search_criteria)  # make a copy since we may modify it.
         self.files = files if files else None
 
-        if files: # user has a selection made
+        if files:  # user has a selection made
             self.total_files = len(self.files)
             self.first_file = self.files[0]
         else:
@@ -230,6 +311,18 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         decompress = settings.get_last_export_decompress()
         self.decompressCheckBox.setChecked(decompress)
 
+        # Load the export XISF as FITS option
+        export_xisf_as_fits = settings.get_last_export_xisf_as_fits()
+        self.exportXisfAsFitsCheckBox.setChecked(export_xisf_as_fits)
+
+        # Load the override plate solve option
+        override_platesolve = settings.get_last_export_override_platesolve()
+        self.overridePlatesolveCheckBox.setChecked(override_platesolve)
+
+        # Load the custom headers
+        custom_headers = settings.get_last_export_custom_headers()
+        self.customHeadersTextEdit.setPlainText(custom_headers)
+
         # Load the last output patterns
         patterns = settings.get_last_export_patterns()
         self.patternComboBox.clear()
@@ -249,6 +342,18 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         # Save the decompress option
         decompress = self.decompressCheckBox.isChecked()
         settings.set_last_export_decompress(decompress)
+
+        # Save the export XISF as FITS option
+        export_xisf_as_fits = self.exportXisfAsFitsCheckBox.isChecked()
+        settings.set_last_export_xisf_as_fits(export_xisf_as_fits)
+
+        # Save the override plate solve option
+        override_platesolve = self.overridePlatesolveCheckBox.isChecked()
+        settings.set_last_export_override_platesolve(override_platesolve)
+
+        # Save the custom headers
+        custom_headers = self.customHeadersTextEdit.toPlainText()
+        settings.set_last_export_custom_headers(custom_headers)
 
         # Save the output pattern
         pattern = self.patternComboBox.currentText()
@@ -272,6 +377,14 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         if not self.useRefCheckBox.isChecked():
             self.search_criteria.reference_file = None
 
+        # Parse custom headers
+        custom_headers = {}
+        if self.customHeadersTextEdit.toPlainText().strip():
+            for line in self.customHeadersTextEdit.toPlainText().strip().split('\n'):
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    custom_headers[key.strip()] = value.strip()
+
         # Start the export process with either files or search criteria
         self.export_worker.export_files(
             self.search_criteria,
@@ -279,7 +392,10 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             self.outputPathEdit.text(),
             self.decompressCheckBox.isChecked(),
             self.patternComboBox.currentText(),
-            self.total_files
+            self.total_files,
+            self.exportXisfAsFitsCheckBox.isChecked(),
+            self.overridePlatesolveCheckBox.isChecked(),
+            custom_headers
         )
 
         # Connect the Cancel button to cancel the export
@@ -315,5 +431,6 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(tpl.is_valid())
         ref = self.search_criteria.reference_file if self.useRefCheckBox.isChecked() else None
         filename = template_filename_with_ref(self.first_file, ref, tpl, self.context.settings,
-                                              decompress=self.decompressCheckBox.isChecked())
+                                              self.decompressCheckBox.isChecked(),
+                                              self.exportXisfAsFitsCheckBox.isChecked())
         self.outputPreview.setText(filename)
