@@ -4,6 +4,7 @@ from pathlib import Path
 
 import zstd
 from PySide6.QtCore import QSettings
+from astropy.io.fits import Header
 from peewee import Database, SqliteDatabase
 
 
@@ -18,6 +19,16 @@ class StatusReporter:
     @abstractmethod
     def update_status(self, message: str, bulk=False) -> None:
         logging.info(message)
+
+
+def register_udfs(db: SqliteDatabase):
+    @db.func("decompress", 1)
+    def db_decompress(value):
+        return decompress(value)
+
+    @db.func("decompress_header_value", 2)
+    def db_decompress_header_value(value, header_key: str):
+        return Header.fromstring(decompress(value)).get(header_key, None)
 
 
 class ApplicationContext:
@@ -54,9 +65,7 @@ class ApplicationContext:
             'user_version': 1
         })
 
-        @self.database.func("decompress", 1)
-        def db_decompress(value):
-            return decompress(value)
+        register_udfs(self.database)
 
         logging.info("Database opened")
         self.settings.set_last_database_path(str(self.database_path))

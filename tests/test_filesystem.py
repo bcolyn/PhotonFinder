@@ -87,10 +87,15 @@ class TestImporter:
         assert Image.select().count() == NUM_FILES
         assert FitsHeader.select().bind(database).count() == NUM_FILES
 
-        # Test the UDF
+        # Test the UDFs
         from peewee import fn
         assert FitsHeader.select().bind(database).where(
             fn.decompress(FitsHeader.header).contains('SIMPLE')).count() == NUM_FILES
+
+        headers = list(map(lambda x: x[0], FitsHeader.select(fn.decompress_header_value(FitsHeader.header, "SNAPSHOT"))
+                       .bind(database).tuples().execute()))
+
+        assert headers == [1,1,1,1,1,1]
 
 
 def test_read_fits_header(global_test_data_dir):

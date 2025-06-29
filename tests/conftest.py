@@ -5,7 +5,7 @@ from fs.memoryfs import MemoryFS
 from fs.opener import Opener
 from peewee import SqliteDatabase
 
-from photonfinder.core import ApplicationContext, Settings, StatusReporter, decompress
+from photonfinder.core import ApplicationContext, Settings, StatusReporter, decompress, register_udfs
 from photonfinder.models import CORE_MODELS
 
 
@@ -53,9 +53,7 @@ def database():
         'foreign_keys': 1
     })
 
-    @db.func("decompress", 1)
-    def db_decompress(value):
-        return decompress(value)
+    register_udfs(db)
 
     db.bind(CORE_MODELS, bind_refs=False, bind_backrefs=False)
     try:

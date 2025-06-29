@@ -193,6 +193,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def add_coordinates_filter(self):
         self.getCurrentSearchPanel().add_coordinates_filter()
 
+    def add_header_text_filter(self):
+        self.getCurrentSearchPanel().add_header_text_filter()
+
     def view_log(self):
         """
         Open the log window to display log messages.

@@ -41,6 +41,7 @@ class SearchCriteria:
     start_datetime: datetime | None = None
     end_datetime: datetime | None = None
     reference_file: Optional['File'] = None
+    header_text: str = ""
 
     def is_empty(self):
         return self == SearchCriteria()
@@ -51,7 +52,7 @@ class SearchCriteria:
             result += list(map(str, self.paths))
 
         for text in [self.type, self.filter, self.camera, self.file_name, self.object_name, self.exposure,
-                     self.telescope, self.binning, self.gain, self.temperature]:
+                     self.telescope, self.binning, self.gain, self.temperature, self.header_text]:
             if text:
                 result.append(text)
         if self.coord_ra and self.coord_dec:
@@ -313,6 +314,24 @@ class Image(Model):
                     conditions.append(Image.coord_pix256.in_(pixels.tolist()))
             except Exception as e:
                 logging.error(f"Error applying coordinates filter: {str(e)}")
+
+        if criteria.header_text:
+            query = query.join_from(File, FitsHeader, JOIN.LEFT_OUTER)
+            try:
+                if '=' in criteria.header_text:
+                    key, value = criteria.header_text.split('=')
+                    conditions.append(
+                        fn.decompress_header_value(FitsHeader.header, key.strip()) == float(value.strip()))
+                elif '<' in criteria.header_text:
+                    key, value = criteria.header_text.split('<')
+                    conditions.append(fn.decompress_header_value(FitsHeader.header, key.strip()) < float(value.strip()))
+                elif '>' in criteria.header_text:
+                    key, value = criteria.header_text.split('>')
+                    conditions.append(fn.decompress_header_value(FitsHeader.header, key.strip()) > float(value.strip()))
+                else:
+                    conditions.append(fn.decompress(FitsHeader.header).contains(criteria.header_text))
+            except ValueError:
+                conditions.append(fn.decompress(FitsHeader.header).contains(criteria.header_text))
 
         # Apply all conditions to the query
         for condition in conditions:

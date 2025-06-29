@@ -95,6 +95,8 @@
     <addaction name="actionBinning"/>
     <addaction name="actionGain"/>
     <addaction name="actionTemperature"/>
+    <addaction name="separator"/>
+    <addaction name="actionHeader_Text"/>
    </widget>
    <widget class="QMenu" name="menu_Tools">
     <property name="title">
@@ -277,6 +279,11 @@
   <action name="actionList_Files">
    <property name="text">
     <string>List Files</string>
+   </property>
+  </action>
+  <action name="actionHeader_Text">
+   <property name="text">
+    <string>Header Text</string>
    </property>
   </action>
  </widget>
@@ -762,6 +769,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionHeader_Text</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>add_header_text_filter()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -777,6 +800,7 @@
   <slot>add_binning_filter()</slot>
   <slot>add_gain_filter()</slot>
   <slot>add_temperature_filter()</slot>
+  <slot>add_header_text_filter()</slot>
   <slot>view_log()</slot>
   <slot>export_data()</slot>
   <slot>create_backup()</slot>

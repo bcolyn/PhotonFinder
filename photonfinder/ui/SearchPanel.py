@@ -3,6 +3,7 @@ import typing
 from datetime import datetime, timezone
 from enum import Enum
 from logging import DEBUG
+from tkinter import dialog
 
 from PySide6.QtCore import *
 from PySide6.QtGui import *
@@ -652,6 +653,27 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_criteria.gain = ""
         self.search_criteria.offset = None
 
+    def add_header_text_filter(self):
+        from textwrap import dedent
+        header_text, ok = QInputDialog.getText(self, "Add generic header filter",
+                                               dedent("""\
+                                               Search the header cache for any value. 
+                                               Supports finding by value (KEY=VALUE,KEY<VALUE,...) or just free text.
+                                               Beware that this involves decompressing all headers and does not use an index. 
+                                               If there are no other filters to limit results the search will be slow.
+                                               """), text=self.search_criteria.header_text)
+
+        if ok and header_text:
+            text = f"Header: {header_text}"
+            filter_button = FilterButton(self, text, AdvancedFilter.HEADER_TEXT)
+            filter_button.on_remove_filter.connect(self.reset_header_text_criteria)
+            self.add_filter_button_control(filter_button)
+            self.search_criteria.header_text = header_text
+            self.update_search_criteria()
+
+    def reset_header_text_criteria(self):
+        self.search_criteria.header_text = ""
+
     def add_temperature_filter(self):
         from .TemperatureDialog import TemperatureDialog
         dialog = TemperatureDialog(self.context)
@@ -900,6 +922,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button.on_remove_filter.connect(self.reset_date_criteria)
             self.add_filter_button_control(filter_button)
 
+        if criteria.header_text:
+            text = f"Header: {criteria.header_text}"
+            filter_button = FilterButton(self, text, AdvancedFilter.HEADER_TEXT)
+            filter_button.on_remove_filter.connect(self.reset_header_text_criteria)
+            self.add_filter_button_control(filter_button)
+
     def plate_solve_files(self, solver_type: SolverType = SolverType.ASTAP):
         selected_files = self.get_selected_files()
         # If no files are selected, use the search criteria
@@ -1024,3 +1052,4 @@ class AdvancedFilter(Enum):
     GAIN = 5
     TEMPERATURE = 6
     COORDINATES = 7
+    HEADER_TEXT = 8
