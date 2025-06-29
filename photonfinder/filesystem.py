@@ -168,7 +168,13 @@ def header_from_xisf_dict(header_dict: dict[str, list]):
     result = Header()
     for key, values in header_dict.items():
         for value_dict in values:
-            result.append(Card(key, value_dict['value'], value_dict['comment']))
+            # Cards for COMMENT or HISTORY must have their comment in 'value', not comment. Go figure.
+            if key in Card._commentary_keywords:
+                card = Card(key, value_dict['comment'])
+            else:
+                card = Card(key, value_dict['value'], value_dict['comment'])
+            card.verify('fix')
+            result.append(card)
     return result
 
 
@@ -307,7 +313,8 @@ class Importer:
                     else:
                         # only log this if it was a file that the user could expect us to handle anyway
                         if self.is_fits(entry) or self.is_xisf(entry):
-                            self.status.update_status(f"Skipping file: {root.name}/{current_dir}/{entry.name}", bulk=False)
+                            self.status.update_status(f"Skipping file: {root.name}/{current_dir}/{entry.name}",
+                                                      bulk=False)
 
             # evict deleted files
             query = File.select(File.rowid, File.name).where(File.root == root, File.path == current_dir)

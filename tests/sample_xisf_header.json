@@ -1,0 +1,4964 @@
+{
+  "OBSERVER": [
+    {
+      "value": "Benny",
+      "comment": "Observer who acquired the data"
+    }
+  ],
+  "INSTRUME": [
+    {
+      "value": "ZWO ASI183MC Pro",
+      "comment": "Name of instrument"
+    }
+  ],
+  "IMAGETYP": [
+    {
+      "value": "DARK",
+      "comment": "Type of integrated image"
+    }
+  ],
+  "EGAIN": [
+    {
+      "value": "3.62",
+      "comment": "Camera gain in electrons per data number"
+    }
+  ],
+  "XBINNING": [
+    {
+      "value": "1",
+      "comment": "Pixel binning factor, X-axis"
+    }
+  ],
+  "YBINNING": [
+    {
+      "value": "1",
+      "comment": "Pixel binning factor, Y-axis"
+    }
+  ],
+  "OBJECT": [
+    {
+      "value": "D183MC_WB5050",
+      "comment": "Name of observed object"
+    }
+  ],
+  "DATE-OBS": [
+    {
+      "value": "2020-07-04T22:08:40.378",
+      "comment": "Date/time of start of observation (UTC)"
+    }
+  ],
+  "DATE-END": [
+    {
+      "value": "2020-07-05T02:23:58.316",
+      "comment": "Date/time of end of observation (UTC)"
+    }
+  ],
+  "OBSGEO-L": [
+    {
+      "value": "3.716666667",
+      "comment": "Geodetic longitude of observation location (deg)"
+    }
+  ],
+  "LONG-OBS": [
+    {
+      "value": "3.716666667",
+      "comment": "Geodetic longitude (deg) (compatibility)"
+    }
+  ],
+  "OBSGEO-B": [
+    {
+      "value": "51.05",
+      "comment": "Geodetic latitude of observation location (deg)"
+    }
+  ],
+  "LAT-OBS": [
+    {
+      "value": "51.05",
+      "comment": "Geodetic latitude (deg) (compatibility)"
+    }
+  ],
+  "OBSGEO-H": [
+    {
+      "value": "10",
+      "comment": "Geodetic height of observation location (m)"
+    }
+  ],
+  "ALT-OBS": [
+    {
+      "value": "10",
+      "comment": "Geodetic height (m) (compatibility)"
+    }
+  ],
+  "COMMENT": [
+    {
+      "value": "",
+      "comment": "Integration with PixInsight 1.8.8-7"
+    }
+  ],
+  "HISTORY": [
+    {
+      "value": "",
+      "comment": "Integration with ImageIntegration module version 1.2.33"
+    },
+    {
+      "value": "",
+      "comment": "Integration with ImageIntegration process"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.pixelCombination: Average"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.outputNormalization: None"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.weightMode: Don't care"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.scaleEstimator: Biweight midvariance"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.pixelRejection: Linear fit clipping"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectionNormalization: None"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectionClippings: low=no high=yes"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectionParameters: lfit_low=5.000 lfit_high=4.000"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.numberOfImages: 240"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.totalPixels: 548547584"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.outputRangeLow: 9.88072529e-03"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.outputRangeHigh: 9.99526978e-01"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.totalRejectedLow: 0(0.000%)"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.totalRejectedHigh: 1229415(0.025%)"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_0: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_0: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_0: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_0: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_0: 5116"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_1: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_1: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_1: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_1: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_1: 5323"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_2: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_2: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_2: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_2: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_2: 5243"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_3: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_3: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_3: +4.783372e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_3: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_3: 5149"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_4: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_4: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_4: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_4: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_4: 5229"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_5: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_5: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_5: -4.177482e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_5: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_5: 5157"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_6: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_6: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_6: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_6: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_6: 5043"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_7: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_7: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_7: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_7: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_7: 5093"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_8: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_8: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_8: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_8: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_8: 5030"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_9: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_9: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_9: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_9: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_9: 5107"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_10: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_10: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_10: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_10: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_10: 5021"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_11: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_11: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_11: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_11: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_11: 5061"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_12: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_12: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_12: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_12: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_12: 5035"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_13: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_13: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_13: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_13: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_13: 4995"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_14: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_14: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_14: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_14: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_14: 5187"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_15: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_15: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_15: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_15: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_15: 5215"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_16: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_16: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_16: +4.783372e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_16: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_16: 5210"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_17: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_17: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_17: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_17: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_17: 5142"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_18: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_18: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_18: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_18: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_18: 5128"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_19: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_19: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_19: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_19: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_19: 5158"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_20: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_20: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_20: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_20: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_20: 5039"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_21: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_21: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_21: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_21: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_21: 5134"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_22: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_22: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_22: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_22: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_22: 5215"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_23: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_23: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_23: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_23: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_23: 5132"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_24: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_24: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_24: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_24: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_24: 5101"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_25: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_25: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_25: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_25: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_25: 5133"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_26: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_26: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_26: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_26: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_26: 4990"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_27: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_27: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_27: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_27: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_27: 5079"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_28: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_28: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_28: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_28: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_28: 5046"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_29: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_29: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_29: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_29: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_29: 5028"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_30: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_30: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_30: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_30: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_30: 5061"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_31: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_31: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_31: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_31: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_31: 5078"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_32: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_32: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_32: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_32: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_32: 5261"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_33: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_33: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_33: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_33: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_33: 5029"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_34: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_34: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_34: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_34: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_34: 5077"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_35: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_35: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_35: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_35: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_35: 5130"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_36: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_36: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_36: -4.148359e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_36: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_36: 5165"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_37: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_37: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_37: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_37: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_37: 5224"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_38: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_38: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_38: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_38: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_38: 4981"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_39: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_39: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_39: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_39: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_39: 5304"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_40: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_40: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_40: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_40: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_40: 5146"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_41: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_41: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_41: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_41: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_41: 5160"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_42: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_42: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_42: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_42: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_42: 5239"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_43: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_43: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_43: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_43: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_43: 5131"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_44: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_44: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_44: +4.783372e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_44: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_44: 5139"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_45: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_45: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_45: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_45: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_45: 5211"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_46: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_46: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_46: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_46: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_46: 5048"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_47: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_47: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_47: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_47: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_47: 5018"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_48: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_48: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_48: -1.934056e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_48: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_48: 5285"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_49: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_49: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_49: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_49: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_49: 5123"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_50: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_50: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_50: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_50: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_50: 5155"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_51: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_51: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_51: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_51: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_51: 5119"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_52: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_52: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_52: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_52: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_52: 5120"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_53: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_53: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_53: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_53: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_53: 5052"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_54: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_54: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_54: +5.361952e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_54: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_54: 5133"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_55: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_55: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_55: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_55: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_55: 4958"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_56: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_56: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_56: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_56: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_56: 4951"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_57: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_57: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_57: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_57: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_57: 5226"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_58: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_58: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_58: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_58: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_58: 5156"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_59: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_59: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_59: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_59: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_59: 5148"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_60: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_60: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_60: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_60: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_60: 5204"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_61: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_61: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_61: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_61: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_61: 5107"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_62: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_62: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_62: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_62: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_62: 5044"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_63: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_63: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_63: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_63: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_63: 5061"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_64: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_64: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_64: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_64: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_64: 5153"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_65: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_65: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_65: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_65: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_65: 5209"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_66: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_66: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_66: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_66: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_66: 5094"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_67: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_67: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_67: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_67: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_67: 5104"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_68: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_68: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_68: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_68: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_68: 5126"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_69: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_69: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_69: -4.148359e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_69: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_69: 5301"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_70: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_70: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_70: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_70: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_70: 4960"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_71: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_71: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_71: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_71: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_71: 5206"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_72: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_72: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_72: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_72: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_72: 5159"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_73: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_73: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_73: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_73: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_73: 5220"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_74: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_74: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_74: +1.592047e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_74: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_74: 5130"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_75: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_75: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_75: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_75: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_75: 5218"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_76: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_76: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_76: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_76: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_76: 5083"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_77: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_77: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_77: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_77: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_77: 5082"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_78: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_78: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_78: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_78: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_78: 5176"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_79: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_79: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_79: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_79: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_79: 5346"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_80: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_80: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_80: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_80: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_80: 5092"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_81: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_81: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_81: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_81: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_81: 5121"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_82: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_82: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_82: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_82: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_82: 5097"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_83: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_83: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_83: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_83: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_83: 5233"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_84: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_84: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_84: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_84: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_84: 5336"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_85: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_85: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_85: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_85: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_85: 5224"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_86: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_86: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_86: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_86: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_86: 5070"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_87: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_87: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_87: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_87: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_87: 5053"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_88: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_88: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_88: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_88: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_88: 5082"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_89: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_89: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_89: -4.148359e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_89: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_89: 5078"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_90: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_90: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_90: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_90: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_90: 4925"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_91: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_91: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_91: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_91: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_91: 5197"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_92: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_92: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_92: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_92: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_92: 5084"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_93: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_93: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_93: +4.783372e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_93: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_93: 5209"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_94: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_94: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_94: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_94: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_94: 5069"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_95: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_95: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_95: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_95: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_95: 5162"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_96: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_96: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_96: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_96: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_96: 5144"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_97: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_97: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_97: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_97: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_97: 5193"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_98: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_98: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_98: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_98: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_98: 5076"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_99: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_99: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_99: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_99: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_99: 5132"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_100: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_100: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_100: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_100: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_100: 5118"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_101: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_101: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_101: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_101: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_101: 5245"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_102: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_102: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_102: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_102: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_102: 5195"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_103: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_103: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_103: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_103: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_103: 5257"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_104: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_104: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_104: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_104: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_104: 5166"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_105: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_105: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_105: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_105: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_105: 5192"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_106: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_106: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_106: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_106: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_106: 5027"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_107: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_107: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_107: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_107: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_107: 5005"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_108: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_108: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_108: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_108: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_108: 5027"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_109: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_109: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_109: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_109: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_109: 5039"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_110: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_110: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_110: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_110: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_110: 4951"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_111: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_111: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_111: +4.783372e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_111: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_111: 5159"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_112: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_112: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_112: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_112: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_112: 5083"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_113: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_113: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_113: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_113: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_113: 5174"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_114: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_114: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_114: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_114: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_114: 5148"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_115: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_115: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_115: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_115: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_115: 5189"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_116: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_116: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_116: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_116: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_116: 5096"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_117: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_117: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_117: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_117: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_117: 5250"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_118: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_118: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_118: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_118: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_118: 4963"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_119: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_119: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_119: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_119: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_119: 5065"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_120: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_120: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_120: +4.783372e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_120: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_120: 5041"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_121: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_121: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_121: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_121: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_121: 5053"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_122: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_122: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_122: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_122: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_122: 5170"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_123: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_123: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_123: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_123: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_123: 5070"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_124: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_124: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_124: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_124: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_124: 5093"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_125: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_125: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_125: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_125: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_125: 5029"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_126: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_126: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_126: -4.148359e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_126: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_126: 5029"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_127: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_127: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_127: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_127: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_127: 5131"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_128: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_128: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_128: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_128: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_128: 5052"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_129: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_129: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_129: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_129: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_129: 5191"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_130: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_130: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_130: +4.783372e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_130: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_130: 4972"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_131: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_131: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_131: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_131: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_131: 5176"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_132: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_132: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_132: +5.361952e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_132: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_132: 5223"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_133: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_133: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_133: +5.361952e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_133: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_133: 5132"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_134: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_134: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_134: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_134: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_134: 5097"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_135: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_135: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_135: +5.361952e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_135: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_135: 4983"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_136: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_136: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_136: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_136: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_136: 5268"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_137: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_137: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_137: -4.148359e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_137: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_137: 5020"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_138: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_138: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_138: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_138: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_138: 5153"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_139: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_139: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_139: +5.361952e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_139: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_139: 5219"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_140: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_140: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_140: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_140: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_140: 5119"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_141: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_141: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_141: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_141: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_141: 5149"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_142: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_142: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_142: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_142: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_142: 5091"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_143: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_143: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_143: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_143: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_143: 5108"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_144: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_144: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_144: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_144: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_144: 5083"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_145: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_145: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_145: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_145: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_145: 5223"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_146: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_146: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_146: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_146: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_146: 5140"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_147: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_147: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_147: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_147: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_147: 5114"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_148: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_148: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_148: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_148: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_148: 5237"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_149: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_149: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_149: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_149: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_149: 5329"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_150: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_150: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_150: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_150: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_150: 5049"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_151: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_151: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_151: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_151: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_151: 5115"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_152: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_152: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_152: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_152: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_152: 5187"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_153: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_153: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_153: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_153: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_153: 5243"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_154: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_154: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_154: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_154: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_154: 5041"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_155: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_155: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_155: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_155: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_155: 5038"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_156: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_156: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_156: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_156: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_156: 5066"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_157: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_157: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_157: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_157: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_157: 5133"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_158: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_158: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_158: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_158: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_158: 5269"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_159: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_159: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_159: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_159: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_159: 5091"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_160: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_160: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_160: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_160: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_160: 5103"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_161: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_161: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_161: +4.783372e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_161: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_161: 5035"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_162: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_162: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_162: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_162: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_162: 5043"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_163: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_163: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_163: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_163: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_163: 5082"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_164: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_164: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_164: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_164: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_164: 5076"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_165: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_165: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_165: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_165: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_165: 5076"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_166: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_166: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_166: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_166: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_166: 5208"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_167: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_167: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_167: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_167: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_167: 5087"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_168: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_168: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_168: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_168: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_168: 5259"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_169: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_169: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_169: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_169: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_169: 5099"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_170: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_170: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_170: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_170: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_170: 5014"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_171: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_171: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_171: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_171: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_171: 5092"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_172: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_172: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_172: +4.783372e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_172: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_172: 5013"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_173: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_173: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_173: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_173: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_173: 5165"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_174: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_174: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_174: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_174: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_174: 4910"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_175: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_175: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_175: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_175: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_175: 5121"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_176: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_176: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_176: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_176: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_176: 4990"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_177: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_177: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_177: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_177: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_177: 5204"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_178: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_178: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_178: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_178: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_178: 5168"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_179: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_179: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_179: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_179: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_179: 5084"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_180: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_180: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_180: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_180: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_180: 5180"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_181: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_181: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_181: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_181: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_181: 5123"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_182: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_182: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_182: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_182: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_182: 5214"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_183: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_183: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_183: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_183: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_183: 5045"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_184: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_184: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_184: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_184: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_184: 5234"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_185: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_185: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_185: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_185: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_185: 5285"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_186: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_186: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_186: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_186: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_186: 4947"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_187: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_187: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_187: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_187: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_187: 5200"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_188: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_188: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_188: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_188: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_188: 5094"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_189: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_189: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_189: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_189: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_189: 5104"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_190: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_190: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_190: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_190: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_190: 5067"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_191: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_191: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_191: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_191: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_191: 5216"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_192: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_192: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_192: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_192: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_192: 5160"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_193: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_193: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_193: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_193: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_193: 5282"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_194: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_194: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_194: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_194: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_194: 5064"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_195: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_195: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_195: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_195: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_195: 5227"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_196: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_196: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_196: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_196: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_196: 5099"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_197: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_197: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_197: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_197: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_197: 5150"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_198: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_198: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_198: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_198: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_198: 5200"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_199: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_199: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_199: +4.783372e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_199: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_199: 5263"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_200: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_200: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_200: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_200: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_200: 5032"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_201: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_201: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_201: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_201: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_201: 5054"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_202: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_202: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_202: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_202: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_202: 5054"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_203: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_203: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_203: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_203: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_203: 5108"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_204: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_204: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_204: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_204: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_204: 5054"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_205: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_205: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_205: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_205: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_205: 5189"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_206: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_206: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_206: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_206: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_206: 5080"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_207: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_207: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_207: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_207: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_207: 4966"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_208: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_208: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_208: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_208: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_208: 5111"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_209: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_209: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_209: -6.986742e-10"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_209: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_209: 5249"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_210: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_210: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_210: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_210: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_210: 5187"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_211: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_211: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_211: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_211: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_211: 5254"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_212: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_212: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_212: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_212: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_212: 5129"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_213: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_213: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_213: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_213: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_213: 5077"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_214: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_214: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_214: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_214: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_214: 5134"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_215: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_215: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_215: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_215: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_215: 5200"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_216: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_216: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_216: +5.361952e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_216: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_216: 4943"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_217: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_217: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_217: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_217: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_217: 5152"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_218: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_218: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_218: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_218: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_218: 5181"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_219: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_219: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_219: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_219: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_219: 5256"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_220: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_220: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_220: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_220: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_220: 5220"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_221: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_221: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_221: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_221: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_221: 5100"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_222: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_222: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_222: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_222: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_222: 5139"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_223: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_223: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_223: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_223: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_223: 5003"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_224: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_224: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_224: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_224: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_224: 5082"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_225: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_225: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_225: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_225: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_225: 5092"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_226: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_226: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_226: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_226: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_226: 5090"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_227: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_227: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_227: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_227: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_227: 5111"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_228: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_228: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_228: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_228: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_228: 5177"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_229: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_229: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_229: +4.783372e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_229: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_229: 5029"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_230: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_230: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_230: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_230: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_230: 5044"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_231: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_231: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_231: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_231: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_231: 5079"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_232: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_232: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_232: +0.000000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_232: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_232: 5095"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_233: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_233: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_233: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_233: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_233: 5025"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_234: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_234: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_234: +6.941247e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_234: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_234: 4956"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_235: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_235: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_235: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_235: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_235: 4993"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_236: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_236: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_236: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_236: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_236: 5223"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_237: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_237: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_237: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_237: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_237: 5137"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_238: 1.025405e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_238: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_238: +7.366998e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_238: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_238: 5072"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.locationEstimates_239: 1.025406e-02"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.imageWeights_239: 1.00000e+00"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.zeroOffsets_239: -1.382786e-09"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedLow_239: 0"
+    },
+    {
+      "value": "",
+      "comment": "ImageIntegration.rejectedHigh_239: 5152"
+    }
+  ]
+}

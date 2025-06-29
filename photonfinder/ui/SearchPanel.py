@@ -1,3 +1,4 @@
+import json
 import logging
 import typing
 from datetime import datetime, timezone
@@ -9,14 +10,16 @@ from PySide6.QtCore import *
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
-from photonfinder.core import ApplicationContext
-from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File
+from photonfinder.core import ApplicationContext, decompress
+from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
 from .DateRangeDialog import DateRangeDialog
+from .HeaderDialog import HeaderDialog
 from .ProgressDialog import ProgressDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .generated.SearchPanel_ui import Ui_SearchPanel
 from photonfinder.platesolver import SolverType
+from photonfinder.filesystem import Importer, header_from_xisf_dict
 
 EMPTY_LABEL = "<empty>"
 RESET_LABEL = "<any>"
@@ -378,6 +381,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         open_action = menu.addAction("Open File")
         show_location_action = menu.addAction("Show location")
         select_path_action = menu.addAction("Select path")
+        show_header_action = menu.addAction("Show cached header")
         menu.addSeparator()
         export_action = menu.addAction("Export files")
         menu.addSeparator()
@@ -403,6 +407,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.show_file_location(index)
         elif action == select_path_action:
             self.select_path_in_tree(index)
+        elif action == show_header_action:
+            self.show_cached_header(index)
         elif action == export_action:
             self.export_data()
         elif action == find_darks_action:
@@ -468,6 +474,41 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             # Find and select the node in the tree
             self._find_and_select_node(root_and_path)
             self.update_search_criteria()
+
+    def show_cached_header(self, index):
+        """Show the cached FITS header for the selected file."""
+        # Get the name item from the first column
+        name_index = self.data_model.index(index.row(), 0)
+
+        # Get the file object from the name item's data
+        with self.context.database.bind_ctx(CORE_MODELS):
+            file = self.data_model.data(name_index, Qt.UserRole)
+            if not file:
+                QMessageBox.warning(self, "Warning", "No file selected.")
+                return
+
+            try:
+                # Try to get the FitsHeader for this file
+                fits_header = FitsHeader.get(FitsHeader.file == file)
+
+                # Decompress the header data
+                header_bytes = decompress(fits_header.header)
+                if Importer.is_fits_by_name(file.name):
+                    header_text = header_bytes.decode('utf-8')
+                elif Importer.is_xisf_by_name(file.name):
+                    header_dict = json.loads(header_bytes.decode('utf-8'))
+                    header_text = header_from_xisf_dict(header_dict).tostring(sep="\n")
+
+                # Show the header dialog
+                dialog = HeaderDialog(header_text, self)
+                dialog.exec()
+
+            except FitsHeader.DoesNotExist:
+                QMessageBox.information(self, "No Cached Header", 
+                                      f"No cached header found for file: {file.name}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", 
+                                   f"Error reading cached header: {str(e)}")
 
     def _find_and_select_node(self, root_and_path):
         """Find and select a node in the tree view based on RootAndPath."""

@@ -1,5 +1,9 @@
 import logging
+import sys
+from pathlib import Path
 from typing import Iterable
+
+from astropy.io.fits import Header
 
 from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_xisf_dict
 from photonfinder.models import LibraryRoot, File, Image, FitsHeader
@@ -93,9 +97,9 @@ class TestImporter:
             fn.decompress(FitsHeader.header).contains('SIMPLE')).count() == NUM_FILES
 
         headers = list(map(lambda x: x[0], FitsHeader.select(fn.decompress_header_value(FitsHeader.header, "SNAPSHOT"))
-                       .bind(database).tuples().execute()))
+                           .bind(database).tuples().execute()))
 
-        assert headers == [1,1,1,1,1,1]
+        assert headers == [1, 1, 1, 1, 1, 1]
 
 
 def test_read_fits_header(global_test_data_dir):
@@ -143,3 +147,17 @@ def test_type_normalization():
     assert _normalize_image_type("MasterLight") == "MASTER LIGHT"
     assert _normalize_image_type("Master Light Frame") == "MASTER LIGHT"
     assert _normalize_image_type("FLAT") == "FLAT"
+
+
+def test_header_from_xisf_dict():
+    import json
+    json_file = Path(__file__).parent / "sample_xisf_header.json"
+    with open(json_file) as json_file:
+        json_data = json.load(json_file)
+    header = header_from_xisf_dict(json_data)
+    assert len(header.cards) == 1232
+    serialized = header.tostring()
+    reloaded_header = Header.fromstring(serialized)
+    assert reloaded_header.get("OBJECT") == "D183MC_WB5050"
+    for card1, card2 in zip(header.cards, reloaded_header.cards):
+        assert card1.image == card2.image
