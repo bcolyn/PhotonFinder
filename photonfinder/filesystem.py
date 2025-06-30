@@ -280,11 +280,14 @@ class Importer:
         for root in roots:
             self.status.update_status(f"importing library root: {root.name}")
             try:
-                # TODO: check root exists and is non-empty
                 open_fs = fs.open_fs(root.path, writeable=False)
+                ls = open_fs.listdir(".")
+                if len(ls) == 0:
+                    self.status.update_status(f"Skipping empty library: {root.name}")
+                    continue
                 change_list = self.import_files_from(open_fs, root)
                 yield change_list
-            except IOError as err:
+            except Exception as err:
                 self.status.update_status(f"Error importing library: {root.name} - {str(err)}")
         self.status.update_status("done.")
 
