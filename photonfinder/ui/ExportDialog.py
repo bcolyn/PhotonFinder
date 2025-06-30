@@ -7,6 +7,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import List, Optional
 
+import numpy as np
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QDialogButtonBox
 from astropy.io import fits
@@ -232,6 +233,9 @@ class ExportWorker(BackgroundLoaderBase):
                 # Apply custom headers
                 for key, value in self.custom_headers.items():
                     header[key] = value
+
+                # for compatibility reduce a 3d matrix with only 1 element in the 3rd dimension is a 2d matrix
+                image_data = np.squeeze(image_data)
 
                 # Write FITS file
                 hdu = fits.PrimaryHDU(data=image_data, header=header)
