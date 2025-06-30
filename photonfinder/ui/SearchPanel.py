@@ -15,6 +15,7 @@ from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath,
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
 from .DateRangeDialog import DateRangeDialog
 from .HeaderDialog import HeaderDialog
+from .MetadataReportDialog import MetadataReportDialog
 from .ProgressDialog import ProgressDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .generated.SearchPanel_ui import Ui_SearchPanel
@@ -1018,6 +1019,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             logging.error(error_msg)
             self.context.status_reporter.update_status(error_msg)
             QMessageBox.critical(self, "File List Creation Failed", error_msg)
+
+    def report_metadata(self):
+        selected_files = self.get_selected_files()
+        report_dialog = MetadataReportDialog(context=self.context, search_criteria=self.search_criteria,
+                                files=selected_files if selected_files else None, parent=self)
+        report_dialog.show()
 
 
 def _get_combo_value(combo: QComboBox) -> str | None:

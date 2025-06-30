@@ -116,20 +116,21 @@ def read_xisf_header(file: str | Path, status_reporter: StatusReporter = None) -
         return None, None
 
 
-def update_fits_header_cache(change_list, status_reporter=None):
+def update_fits_header_cache(change_list, status_reporter, settings):
     """
     Update the FITS header cache based on the changes in the change_list.
 
     Args:
         change_list: A ChangeList object with new_files, changed_files, and removed_files
-        status_reporter: Optional StatusReporter to update status
+        status_reporter: StatusReporter to update status
+        settings:  Settings object to update known keywords
     """
     if status_reporter:
         status_reporter.update_status("Updating FITS header cache...")
 
     # Process new files
     for file in [*change_list.new_files, *change_list.changed_files]:
-        _handle_file_metadata(file, status_reporter)
+        _handle_file_metadata(file, status_reporter, settings)
 
     # Process removed files
     for file in change_list.removed_files:
@@ -145,7 +146,7 @@ def update_fits_header_cache(change_list, status_reporter=None):
         status_reporter.update_status("FITS header cache updated.")
 
 
-def _handle_file_metadata(file, status_reporter):
+def _handle_file_metadata(file, status_reporter, settings):
     header = None
     if Importer.is_fits_by_name(file.name):
         header_bytes = read_fits_header(file.full_filename(), status_reporter)
@@ -159,6 +160,7 @@ def _handle_file_metadata(file, status_reporter):
             FitsHeader(file=file, header=compress(header_bytes)).save()
             header = header_from_xisf_dict(header_dict)
     if header is not None:
+        settings.add_known_fits_keywords(header.keys())
         image = normalize_fits_header(file, header, status_reporter)
         if image is not None:
             Image.insert(image.__data__).on_conflict_replace().execute()
@@ -185,7 +187,7 @@ def parse_FITS_header(header_bytes: bytes) -> Header:
     return Header.fromstring(header_bytes)
 
 
-def check_missing_header_cache(status_reporter=None):
+def check_missing_header_cache(status_reporter, settings):
     """
     Process any FITS files that don't have a corresponding header entry.
     Also creates Image objects from the FITS headers using the appropriate handler.
@@ -202,7 +204,7 @@ def check_missing_header_cache(status_reporter=None):
 
     # Process these files as new files
     for file in missing_header_files:
-        _handle_file_metadata(file, status_reporter)
+        _handle_file_metadata(file, status_reporter, settings)
 
     if status_reporter:
         status_reporter.update_status("FITS header cache updated.")

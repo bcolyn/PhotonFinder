@@ -217,6 +217,7 @@ class ImageReindexWorker(BackgroundLoaderBase):
                         if header is None:
                             continue
 
+                        self.context.settings.add_known_fits_keywords(header.keys())
                         # Process the header
                         image = normalize_fits_header(header_record.file, header, self.context.status_reporter)
                         if image:
@@ -312,14 +313,18 @@ class FileProcessingTask(ProgressBackgroundTask):
 
     def create_query(self):
         query = (File
-                 .select(File, Image)
-                 .join(Image, JOIN.LEFT_OUTER)
+                 .select(* self.get_tables())
+                 .join_from(File, LibraryRoot)
+                 .join_from(File, Image, JOIN.LEFT_OUTER)
                  .order_by(File.root, File.path, File.name))
         query = Image.apply_search_criteria(query, self.search_criteria)
         return query
 
     def _process_file(self, file, index):
         self.progress.emit(index)
+
+    def get_tables(self) -> List:
+        return [File, Image, LibraryRoot]
 
 
 class PlateSolveTask(FileProcessingTask):
@@ -332,6 +337,11 @@ class PlateSolveTask(FileProcessingTask):
                 self.solver = ASTAPSolver(exe=settings.get_astap_path())
             case SolverType.ASTROMETRY_NET:
                 self.solver = AstrometryNetSolver(api_key=settings.get_astrometry_net_api_key())
+
+    def get_tables(self) -> List:
+        tables = super().get_tables()
+        tables.append(FileWCS)
+        return tables
 
     def create_query(self):
         query = super().create_query()
@@ -361,7 +371,6 @@ class PlateSolveTask(FileProcessingTask):
             return
 
 
-
 class FileListTask(FileProcessingTask):
     def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File]):
         super().__init__(context, search_criteria, files)
@@ -370,6 +379,14 @@ class FileListTask(FileProcessingTask):
     def start(self, output_filename: str = None):
         self.output_filename = output_filename
         super().start()
+
+    def create_query(self):
+        query = (File
+                 .select(File, LibraryRoot)
+                 .join_from(File, LibraryRoot)
+                 .order_by(File.root, File.path, File.name))
+        query = Image.apply_search_criteria(query, self.search_criteria)
+        return query
 
     def _process_files(self):
         if self.output_filename is None:

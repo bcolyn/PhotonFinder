@@ -85,8 +85,8 @@ class TestImporter:
         change_lists = self.setup(app_context)
         for change_list in change_lists:
             change_list.apply_all()
-            update_fits_header_cache(change_list, app_context.status_reporter)
-        check_missing_header_cache(app_context.status_reporter)
+            update_fits_header_cache(change_list, app_context.status_reporter, app_context.settings)
+        check_missing_header_cache(app_context.status_reporter, app_context.settings)
 
         assert Image.select().count() == NUM_FILES
         assert FitsHeader.select().bind(database).count() == NUM_FILES

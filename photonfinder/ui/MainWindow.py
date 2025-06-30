@@ -56,9 +56,9 @@ class LibraryScanWorker(QThread):
         """Run the import process in a background thread."""
         for changes_per_library in self.importer.import_files():
             changes_per_library.apply_all()
-            update_fits_header_cache(changes_per_library, self.context.status_reporter)
+            update_fits_header_cache(changes_per_library, self.context.status_reporter, self.context.settings)
 
-        check_missing_header_cache(self.context.status_reporter)
+        check_missing_header_cache(self.context.status_reporter, self.context.settings)
 
         # Signal that we're done
         self.finished.emit()
@@ -195,6 +195,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def add_header_text_filter(self):
         self.getCurrentSearchPanel().add_header_text_filter()
+
+    def report_metadata(self):
+        self.getCurrentSearchPanel().report_metadata()
 
     def view_log(self):
         """

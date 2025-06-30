@@ -23,6 +23,9 @@ class DynamicSettings:
             return lambda: self._storage.get(key)
         return super().__getattr__(name)
 
+    def add_known_fits_keywords(self, param):
+        pass
+
     def sync(self):
         pass
 

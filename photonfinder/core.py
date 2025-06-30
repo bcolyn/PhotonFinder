@@ -89,12 +89,18 @@ class ApplicationContext:
         self.database_path = database_path
         self.open_database()
 
+    def get_known_fits_keywords(self) -> list[str]:
+        return self.settings.get_known_fits_keywords()
+
 
 class Settings:
 
     def __init__(self, organization_name="AstroFileManager", application_name="AstroFileManager"):
         self.settings = QSettings(organization_name, application_name)
         self._initialize_defaults()
+        self.known_fits_keywords = set()
+        stored_keywords = str(self.settings.value("known_fits_keywords", "", str))
+        self.add_known_fits_keywords(stored_keywords.split("|") if stored_keywords else [])
 
     def _initialize_defaults(self):
         """Initialize default settings if they don't exist."""
@@ -177,8 +183,15 @@ class Settings:
     def set_last_export_custom_headers(self, value: str):
         self.settings.setValue("last_export_custom_headers", value)
 
+    def get_known_fits_keywords(self):
+        return sorted(self.known_fits_keywords)
+
+    def add_known_fits_keywords(self, keywords: list[str]):
+        self.known_fits_keywords.update(keywords)
+
     def sync(self):
         """Ensure settings are saved to disk."""
+        self.settings.setValue("known_fits_keywords", "|".join(self.known_fits_keywords))
         self.settings.sync()
 
 

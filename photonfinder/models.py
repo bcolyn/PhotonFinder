@@ -365,7 +365,7 @@ class FitsHeader(Model):
     This is a cache of the header information from FITS files.
     """
     rowid = RowIDField()
-    file = ForeignKeyField(File, on_delete='CASCADE', unique=True)
+    file = ForeignKeyField(File, on_delete='CASCADE', unique=True, backref='header')
     header = BlobField(null=False)  # Caches the raw header as bytes
 
 
