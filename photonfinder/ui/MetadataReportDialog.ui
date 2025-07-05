@@ -215,6 +215,12 @@
     <layout class="QHBoxLayout" name="bottomLayout">
      <item>
       <widget class="QLabel" name="exportFormatLabel">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
        <property name="text">
         <string>Export format:</string>
        </property>
@@ -222,6 +228,12 @@
      </item>
      <item>
       <widget class="QComboBox" name="exportFormatComboBox">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
        <item>
         <property name="text">
          <string>comma separated values</string>
@@ -235,7 +247,7 @@
       </widget>
      </item>
      <item>
-      <spacer name="bottomSpacer">
+      <spacer name="horizontalSpacer">
        <property name="orientation">
         <enum>Qt::Orientation::Horizontal</enum>
        </property>
@@ -248,14 +260,23 @@
       </spacer>
      </item>
      <item>
-      <widget class="QLabel" name="progressLabel">
-       <property name="text">
-        <string>Progress:</string>
+      <widget class="QProgressBar" name="progressBar">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+         <horstretch>1</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>100</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="value">
+        <number>10</number>
        </property>
       </widget>
-     </item>
-     <item>
-      <widget class="QProgressBar" name="progressBar"/>
      </item>
     </layout>
    </item>

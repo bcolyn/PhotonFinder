@@ -10,7 +10,7 @@ from astropy.io.fits import Header
 from peewee import JOIN
 
 from photonfinder.core import ApplicationContext, decompress
-from photonfinder.filesystem import header_from_xisf_dict, Importer
+from photonfinder.filesystem import header_from_xisf_dict, Importer, parse_FITS_header
 from photonfinder.models import SearchCriteria, File, Image, FitsHeader, FileWCS
 from photonfinder.platesolver import SolverBase
 from photonfinder.ui.BackgroundLoader import FileProcessingTask
@@ -128,7 +128,7 @@ class MetadataReportTask(FileProcessingTask):
                         file.header_obj = header
                     else:
                         header_data = decompress(file.fitsheader.header)
-                        header = Header.fromstring(header_data.decode('utf-8'))
+                        header = parse_FITS_header(header_data)
                         file.header_obj = header
                 else:
                     header = None
@@ -457,7 +457,7 @@ class MetadataReportDialog(QDialog, Ui_MetadataReportDialog):
 
         if not file_path:
             return  # User cancelled
-
+        self.progressBar.setVisible(True)
         self.worker = MetadataReportTask(self.context, self.search_criteria, self.files)
         self.worker.finished.connect(self.accept)
         self.worker.total_found.connect(self.progressBar.setMaximum)

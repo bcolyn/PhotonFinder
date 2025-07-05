@@ -182,7 +182,7 @@ def header_from_xisf_dict(header_dict: dict[str, list]):
 
 def parse_FITS_header(header_bytes: bytes) -> Header:
     if b'\x09' in header_bytes:
-        log(WARN, f"FITS header contains tab characters: {header_bytes}")
+        #log(WARN, f"FITS header contains tab characters: {header_bytes}")
         header_bytes = header_bytes.replace(b'\x09', b' ')
     return Header.fromstring(header_bytes)
 
