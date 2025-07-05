@@ -1026,6 +1026,13 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                                 files=selected_files if selected_files else None, parent=self)
         report_dialog.show()
 
+    def report_telescopius_list(self):
+        selected_files = self.get_selected_files()
+        from .TelescopiusCompareDialog import TelescopiusCompareDialog
+        report_dialog = TelescopiusCompareDialog(context=self.context, search_criteria=self.search_criteria,
+                                files=selected_files if selected_files else None, parent=self)
+        report_dialog.show()
+
 
 def _get_combo_value(combo: QComboBox) -> str | None:
     if combo.currentText() == RESET_LABEL:

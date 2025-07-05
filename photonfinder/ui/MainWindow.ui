@@ -119,6 +119,7 @@
     </property>
     <addaction name="actionList_Files"/>
     <addaction name="actionMetadata_Report"/>
+    <addaction name="actionTelescopius_List"/>
    </widget>
    <addaction name="menu_File"/>
    <addaction name="menuFilter"/>
@@ -290,6 +291,11 @@
   <action name="actionMetadata_Report">
    <property name="text">
     <string>Metadata Report</string>
+   </property>
+  </action>
+  <action name="actionTelescopius_List">
+   <property name="text">
+    <string>Telescopius Target List</string>
    </property>
   </action>
  </widget>
@@ -807,6 +813,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionTelescopius_List</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>report_telescopius_list()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -839,5 +861,6 @@
   <slot>plate_solve_files_astrometry()</slot>
   <slot>report_list_files()</slot>
   <slot>report_metadata()</slot>
+  <slot>report_telescopius_list()</slot>
  </slots>
 </ui>

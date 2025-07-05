@@ -373,6 +373,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """
         self.getCurrentSearchPanel().report_list_files()
 
+    def report_telescopius_list(self):
+        """
+        Show the Telescopius Compare dialog for comparing files with Telescopius data.
+        """
+        self.getCurrentSearchPanel().report_telescopius_list()
+
     def enable_actions_for_current_tab(self):
         current_panel = self.getCurrentSearchPanel()
         if not current_panel:
