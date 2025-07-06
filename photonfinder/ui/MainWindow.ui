@@ -119,6 +119,7 @@
     </property>
     <addaction name="actionList_Files"/>
     <addaction name="actionMetadata_Report"/>
+    <addaction name="actionData_Usage_Reports"/>
     <addaction name="actionTelescopius_List"/>
    </widget>
    <addaction name="menu_File"/>
@@ -296,6 +297,11 @@
   <action name="actionTelescopius_List">
    <property name="text">
     <string>Telescopius Target List</string>
+   </property>
+  </action>
+  <action name="actionData_Usage_Reports">
+   <property name="text">
+    <string>Data Usage Reports</string>
    </property>
   </action>
  </widget>
@@ -829,6 +835,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionData_Usage_Reports</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>report_data_usage()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -862,5 +884,6 @@
   <slot>report_list_files()</slot>
   <slot>report_metadata()</slot>
   <slot>report_telescopius_list()</slot>
+  <slot>report_data_usage()</slot>
  </slots>
 </ui>

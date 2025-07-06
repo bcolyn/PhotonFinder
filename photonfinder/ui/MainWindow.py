@@ -1,5 +1,6 @@
 import logging
 import time
+from typing import List
 
 from PySide6.QtCore import QThread, Signal, QObject
 from PySide6.QtGui import QIcon
@@ -9,6 +10,7 @@ from photonfinder.core import ApplicationContext, StatusReporter, backup_databas
 from photonfinder.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
 from photonfinder.models import SearchCriteria
 from .AboutDialog import AboutDialog
+from .DataReportDialog import DataUsageReportDialog
 from .LibraryRootDialog import LibraryRootDialog
 from .LogWindow import LogWindow
 from .SearchPanel import SearchPanel
@@ -69,6 +71,7 @@ class LibraryScanWorker(QThread):
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
+    tabs_changed = Signal(list)
 
     def __init__(self, app: QApplication, context: ApplicationContext, parent=None):
         super(MainWindow, self).__init__(parent)
@@ -90,6 +93,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
         tab = self.tabWidget.addTab(panel, "Loading")
         self.tabWidget.setCurrentIndex(tab)
+        self.tabs_changed.emit(self.get_search_panels())
 
     def dup_search_tab(self):
         current_index = self.tabWidget.currentIndex()
@@ -102,6 +106,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         tab = self.tabWidget.addTab(panel, "Loading")
         panel.apply_search_criteria(current_criteria)
         self.tabWidget.setCurrentIndex(tab)
+        self.tabs_changed.emit(self.get_search_panels())
 
     def close_current_search_tab(self):
         self.close_search_tab(self.tabWidget.currentIndex())
@@ -111,6 +116,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         assert isinstance(widget, SearchPanel)
         self.tabWidget.removeTab(index)
         widget.destroy()
+        self.tabs_changed.emit(self.get_search_panels())
 
     def manage_library_roots(self):
         """
@@ -173,35 +179,44 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if isinstance(widget, SearchPanel):
                 widget.library_tree_model.reload_library_roots()
 
-    def add_exposure_filter(self):
-        self.getCurrentSearchPanel().add_exposure_filter()
+    def get_search_panels(self) -> list[SearchPanel]:
+        return [self.tabWidget.widget(i) for i in range(self.tabWidget.count())]
 
-    def getCurrentSearchPanel(self) -> SearchPanel:
+    def set_tab_title(self, tab, title: str):
+        tabs: QTabWidget = self.tabWidget
+        my_index = tabs.indexOf(tab)
+        tabs.setTabText(my_index, title)
+        self.tabs_changed.emit(self.get_search_panels())
+
+    def add_exposure_filter(self):
+        self.get_current_search_panel().add_exposure_filter()
+
+    def get_current_search_panel(self) -> SearchPanel:
         return self.tabWidget.currentWidget()
 
     def add_telescope_filter(self):
-        self.getCurrentSearchPanel().add_telescope_filter()
+        self.get_current_search_panel().add_telescope_filter()
 
     def add_binning_filter(self):
-        self.getCurrentSearchPanel().add_binning_filter()
+        self.get_current_search_panel().add_binning_filter()
 
     def add_gain_filter(self):
-        self.getCurrentSearchPanel().add_gain_filter()
+        self.get_current_search_panel().add_gain_filter()
 
     def add_temperature_filter(self):
-        self.getCurrentSearchPanel().add_temperature_filter()
+        self.get_current_search_panel().add_temperature_filter()
 
     def add_datetime_filter(self):
-        self.getCurrentSearchPanel().add_datetime_filter()
+        self.get_current_search_panel().add_datetime_filter()
 
     def add_coordinates_filter(self):
-        self.getCurrentSearchPanel().add_coordinates_filter()
+        self.get_current_search_panel().add_coordinates_filter()
 
     def add_header_text_filter(self):
-        self.getCurrentSearchPanel().add_header_text_filter()
+        self.get_current_search_panel().add_header_text_filter()
 
     def report_metadata(self):
-        self.getCurrentSearchPanel().report_metadata()
+        self.get_current_search_panel().report_metadata()
 
     def view_log(self):
         """
@@ -224,7 +239,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         dialog.exec()
 
     def export_data(self):
-        self.getCurrentSearchPanel().export_data()
+        self.get_current_search_panel().export_data()
 
     def create_backup(self):
         if not self.context.database:
@@ -304,7 +319,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.critical(self, "Database Open Failed", error_msg)
 
     def find_matching_darks(self):
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         selected_image = current_panel.get_selected_image()
         if not selected_image:
             return
@@ -315,7 +330,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tabWidget.setCurrentIndex(tab)
 
     def find_matching_flats(self):
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         selected_image = current_panel.get_selected_image()
         if not selected_image:
             return
@@ -330,7 +345,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def open_selected_file(self):
         """Open the selected file using the associated application."""
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         if not current_panel:
             return
         # Get the selected row
@@ -342,7 +357,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def show_file_location(self):
         """Open the file explorer showing the directory containing the selected file."""
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         if not current_panel:
             return
         # Get the selected row
@@ -354,7 +369,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def select_path_in_tree(self):
         """Select the path of the selected file in the tree view."""
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         if not current_panel:
             return
         # Get the selected row
@@ -365,26 +380,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_panel.select_path_in_tree(selected_rows[0])
 
     def plate_solve_files(self):
-        self.getCurrentSearchPanel().plate_solve_files()
+        self.get_current_search_panel().plate_solve_files()
 
     def plate_solve_files_astrometry(self):
-        self.getCurrentSearchPanel().plate_solve_files(SolverType.ASTROMETRY_NET)
+        self.get_current_search_panel().plate_solve_files(SolverType.ASTROMETRY_NET)
 
     def report_list_files(self):
         """
         Show a file save dialog to select an output filename (.txt|.lst),
         then create a FileListTask to generate a list of files matching the current search criteria.
         """
-        self.getCurrentSearchPanel().report_list_files()
+        self.get_current_search_panel().report_list_files()
 
     def report_telescopius_list(self):
         """
         Show the Telescopius Compare dialog for comparing files with Telescopius data.
         """
-        self.getCurrentSearchPanel().report_telescopius_list()
+        self.get_current_search_panel().report_telescopius_list()
+
+    def report_data_usage(self):
+        dialog = DataUsageReportDialog(parent=self)
+        dialog.show()
 
     def enable_actions_for_current_tab(self):
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         if not current_panel:
             return
         selected_image = current_panel.get_selected_image()

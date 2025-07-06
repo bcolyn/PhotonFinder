@@ -65,3 +65,18 @@ class TestImage:
 
         # Assert that only filters in the specified path are returned
         assert filters == ["Blue", "Green"]
+
+    def test_criteria_serde(self):
+        search_criteria = SearchCriteria(
+            paths=[RootAndPath(1, "dummy", "subdir1")], paths_as_prefix=False, filter="Ha",
+            reference_file=File.get_by_id(1), start_datetime=datetime.now(), end_datetime=datetime.now(),
+        )
+        json_bytes = search_criteria.to_json()
+        print(json_bytes)
+        deser = SearchCriteria.from_json(json_bytes)
+        assert deser == search_criteria
+
+        empty_criteria = SearchCriteria()
+        json_bytes = empty_criteria.to_json()
+        deser = SearchCriteria.from_json(json_bytes)
+        assert deser == empty_criteria

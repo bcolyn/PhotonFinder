@@ -38,6 +38,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         self.context = context
         self.update_in_progress = False
+        self.title = "All files"
         self.mainWindow = mainWindow
         self.search_criteria = SearchCriteria()
         self.advanced_options = dict()
@@ -121,10 +122,14 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.update_search_criteria()
 
     def set_title(self, text: str):
-        pages: QStackedWidget = self.parent()
-        tabs: QTabWidget = pages.parent()
-        my_index = pages.indexOf(self)
-        tabs.setTabText(my_index, text)
+        self.title = text
+        self.mainWindow.set_tab_title(self, text)
+
+    def get_title(self) -> str:
+        return self.title
+
+    def get_search_criteria(self) -> SearchCriteria:
+        return self.search_criteria
 
     def add_filter_button_control(self, button: 'FilterButton'):
         current = self.advanced_options.get(button.filter_type, None)
@@ -505,11 +510,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 dialog.exec()
 
             except FitsHeader.DoesNotExist:
-                QMessageBox.information(self, "No Cached Header", 
-                                      f"No cached header found for file: {file.name}")
+                QMessageBox.information(self, "No Cached Header",
+                                        f"No cached header found for file: {file.name}")
             except Exception as e:
-                QMessageBox.critical(self, "Error", 
-                                   f"Error reading cached header: {str(e)}")
+                QMessageBox.critical(self, "Error",
+                                     f"Error reading cached header: {str(e)}")
 
     def _find_and_select_node(self, root_and_path):
         """Find and select a node in the tree view based on RootAndPath."""
@@ -1023,14 +1028,14 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def report_metadata(self):
         selected_files = self.get_selected_files()
         report_dialog = MetadataReportDialog(context=self.context, search_criteria=self.search_criteria,
-                                files=selected_files if selected_files else None, parent=self)
+                                             files=selected_files if selected_files else None, parent=self)
         report_dialog.show()
 
     def report_telescopius_list(self):
         selected_files = self.get_selected_files()
         from .TelescopiusCompareDialog import TelescopiusCompareDialog
         report_dialog = TelescopiusCompareDialog(context=self.context, search_criteria=self.search_criteria,
-                                files=selected_files if selected_files else None, parent=self)
+                                                 files=selected_files if selected_files else None, parent=self)
         report_dialog.show()
 
 
