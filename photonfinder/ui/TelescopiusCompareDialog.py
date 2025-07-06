@@ -7,6 +7,7 @@ from typing import List, Tuple
 import astropy.units as u
 import requests
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QDoubleValidator, QIntValidator
 from PySide6.QtWidgets import QDialog, QMessageBox, QFileDialog, QDialogButtonBox, QTableWidgetItem
 from astropy.coordinates import SkyCoord, Angle
 from peewee import JOIN
@@ -158,6 +159,7 @@ class TelescopiusCompareDialog(QDialog, Ui_TelescopiusCompareDialog):
 
     def _initialize_dialog(self):
         self.buttonBox.button(QDialogButtonBox.StandardButton.Save).setEnabled(False)
+        self.tolerance_edit.setValidator(QIntValidator(0, 180, self))
 
     def on_error(self, error_message):
         QMessageBox.critical(self, "Error", error_message)
