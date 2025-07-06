@@ -7,10 +7,9 @@ from typing import List, Tuple
 import astropy.units as u
 import requests
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import QDialog, QMessageBox, QFileDialog, QDialogButtonBox, QTableWidgetItem
 from astropy.coordinates import SkyCoord, Angle
-from peewee import JOIN
 
 from photonfinder.core import ApplicationContext
 from photonfinder.models import SearchCriteria, File, Image, LibraryRoot
