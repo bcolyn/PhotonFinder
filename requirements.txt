@@ -1,5 +1,5 @@
 PySide6~=6.8.2.1
-pyinstaller==6.14.1
+pyinstaller~=6.14.1
 pyinstaller-hooks-contrib==2025.5
 pyqt-distutils==0.7.3
 peewee~=3.18.1
@@ -9,7 +9,7 @@ astroquery~=0.4.10
 photutils~=2.2.0
 xisf~=0.9.5
 
-setuptools~=80.4.0
+setuptools~=80.9.0
 fs~=2.4.16
 
 numpy~=2.3.1
