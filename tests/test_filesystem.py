@@ -43,7 +43,12 @@ class TestImporter:
 
     def test_reimport(self, filesystem, database, app_context):
         self.initial_import(app_context)
-        self.importer.import_files_from(filesystem, self.root).apply_all()
+        change_list = self.importer.import_files_from(filesystem, self.root)
+        assert len(change_list.changed_files) == 0
+        assert len(change_list.new_files) == 0
+        assert len(change_list.removed_files) == 0
+        assert len (change_list.changed_ids) == 0
+        change_list.apply_all()
         assert File.select().count() == NUM_FILES
 
     def test_delete_file(self, filesystem, database, app_context):

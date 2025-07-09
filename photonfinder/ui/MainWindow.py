@@ -55,6 +55,10 @@ class LibraryScanWorker(QThread):
     def run(self):
         """Run the import process in a background thread."""
         for changes_per_library in self.importer.import_files():
+            self.context.status_reporter.update_status(
+                f" {changes_per_library.root.name}: Files removed {len(changes_per_library.removed_files)} " +
+                f"added {len(changes_per_library.new_files)} " +
+                f"changed {len(changes_per_library.changed_files)}")
             changes_per_library.apply_all()
             update_fits_header_cache(changes_per_library, self.context.status_reporter, self.context.settings)
 

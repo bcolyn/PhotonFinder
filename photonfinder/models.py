@@ -125,6 +125,16 @@ def auto_str(cls):
     return cls
 
 
+def norm_db_path(rel_path: str | None):
+    if rel_path is None:
+        return None
+    if rel_path == "":
+        return ""
+    rel_path = rel_path.replace("\\", "/")
+    rel_path = rel_path + "/" if rel_path[-1] != "/" else rel_path
+    return rel_path
+
+
 @auto_str
 class LibraryRoot(Model):
     """
@@ -214,16 +224,17 @@ class Image(Model):
                         path_conditions.append(File.root == full_path.root_id)
                     else:  # normal path
                         path_conditions.append(
-                            (File.root == full_path.root_id) & (File.path.startswith(full_path.path)))
+                            (File.root == full_path.root_id) & (File.path.startswith(norm_db_path(full_path.path))))
             else:  # only in exact directory
                 for full_path in criteria.paths:
                     if full_path.root_id is None and full_path.path is None:  # all libraries
                         continue  # nothing can be in the 'all libraries' path, so skip it'
                     elif full_path.path is None:  # a root library is included
-                        path_conditions.append((File.root == full_path.root_id) & (File.path == ""))
+                        path_conditions.append((File.root == full_path.root_id) & (File.path == norm_db_path(".")))
                     else:
                         # Match files exactly in this path
-                        path_conditions.append((File.root == full_path.root_id) & (File.path == full_path.path))
+                        path_conditions.append(
+                            (File.root == full_path.root_id) & (File.path == norm_db_path(full_path.path)))
             if path_conditions:
                 combined = path_conditions[0]
                 for condition in path_conditions[1:]:

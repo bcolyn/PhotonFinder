@@ -65,7 +65,7 @@ class SolverBase(metaclass=ABCMeta):
                     header2d['NAXIS'] = 2
                     header2d.remove('NAXIS3', ignore_missing=True)
                     hdu = fits.PrimaryHDU(data=data2d, header=header2d)
-                    hdu.writeto(temp_image, overwrite=False)
+                    hdu.writeto(temp_image, overwrite=False, output_verify='silentfix')
             return temp_image
         elif Importer.is_xisf_by_name(str(input_image)):
             xisf = XISF(input_image)
@@ -79,7 +79,7 @@ class SolverBase(metaclass=ABCMeta):
                     main_header.remove('NAXIS3', ignore_missing=True)
                     main_image_data = select_first_channel(xisf.read_image(i, 'channels_first'))
                     hdu = fits.PrimaryHDU(data=main_image_data, header=main_header)
-                    hdu.writeto(temp_image, overwrite=False)
+                    hdu.writeto(temp_image, overwrite=False, output_verify='silentfix')
                     return temp_image
 
             raise SolverError("No suitable image with FITS keywords found in XISF file: " + str(input_image))

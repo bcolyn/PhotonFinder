@@ -201,7 +201,7 @@ class ExportWorker(BackgroundLoaderBase):
 
                 # Write FITS file
                 hdu = fits.PrimaryHDU(data=data, header=header)
-                hdu.writeto(output_file_path, overwrite=True)
+                hdu.writeto(output_file_path, overwrite=True, output_verify='silentfix')
         else:
             with open(output_file_path, "wb") as destination_file:
                 shutil.copyfileobj(source_fd, destination_file)
@@ -239,7 +239,7 @@ class ExportWorker(BackgroundLoaderBase):
 
                 # Write FITS file
                 hdu = fits.PrimaryHDU(data=image_data, header=header)
-                hdu.writeto(output_file_path, overwrite=True)
+                hdu.writeto(output_file_path, overwrite=True, output_verify='silentfix')
                 return
 
         # If we get here, no suitable image was found

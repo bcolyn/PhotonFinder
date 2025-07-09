@@ -16,7 +16,7 @@ from xisf import XISF
 
 from photonfinder.core import StatusReporter, compress
 from photonfinder.fits_handlers import normalize_fits_header
-from photonfinder.models import File, LibraryRoot, FitsHeader, Image
+from photonfinder.models import File, LibraryRoot, FitsHeader, Image, norm_db_path
 
 compressed_exts = {
     ".xz": lzma.open,
@@ -211,11 +211,25 @@ def check_missing_header_cache(status_reporter, settings):
 
 
 class ChangeList:
-    def __init__(self):
-        self.new_files: typing.List[File] = list()
-        self.removed_files: typing.List[File] = list()
-        self.changed_ids: typing.List[int] = list()
-        self.changed_files: typing.List[File] = list()
+    def __init__(self, root: typing.Optional[LibraryRoot] = None,
+                 new_files=None,
+                 removed_files=None,
+                 changed_ids=None,
+                 changed_files=None):
+        if changed_files is None:
+            changed_files = list()
+        if changed_ids is None:
+            changed_ids = list()
+        if removed_files is None:
+            removed_files = list()
+        if new_files is None:
+            new_files = list()
+        self.root = root
+        self.new_files = new_files
+        self.removed_files = removed_files
+        self.changed_ids = changed_ids
+        self.changed_files = changed_files
+
 
     def apply_all(self):
         with File._meta.database.atomic():
@@ -295,8 +309,8 @@ class Importer:
 
     def import_files_from(self, root_fs: FS, root: LibraryRoot) -> ChangeList:
         dir_queue: typing.List[str] = ['.']
-        all_dirs = set(dir_queue)
-        result = ChangeList()
+        all_dirs = set(map(norm_db_path, dir_queue))
+        result = ChangeList(root=root)
         while len(dir_queue) > 0:
             current_dir: str = dir_queue.pop()
             self.status.update_status(f"Scanning directory: {root.name}/{current_dir}", bulk=True)
@@ -307,7 +321,7 @@ class Importer:
                     if self._dir_filter(entry):
                         dir_path = fs.path.join(current_dir, entry.name)
                         dir_queue.append(dir_path)
-                        all_dirs.add(dir_path)
+                        all_dirs.add(norm_db_path(dir_path))
                     else:
                         self.status.update_status(f"Skipping directory: {root.name}/{current_dir}/{entry.name}",
                                                   bulk=False)
@@ -322,7 +336,7 @@ class Importer:
                                                       bulk=False)
 
             # evict deleted files
-            query = File.select(File.rowid, File.name).where(File.root == root, File.path == current_dir)
+            query = File.select(File.rowid, File.name).where(File.root == root, File.path == norm_db_path(current_dir))
             for file in query.execute():
                 if file.name not in filtered_files:
                     result.removed_files.append(file)
@@ -339,6 +353,8 @@ class Importer:
 
     def _import_file(self, file: Info, rel_path, root, changelist):
         log(DEBUG, "[root %s] record file stats: %s/%s", root.name, rel_path, file.name)
+
+        rel_path = norm_db_path(rel_path)
 
         mtime_millis = int(file.modified.timestamp() * 1000)
 

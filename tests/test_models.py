@@ -13,10 +13,10 @@ class TestImage:
         root = LibraryRoot.create(name="Test Root", path="C:\\test_path")
 
         # Create files in different paths
-        file1 = File.create(root=root, path="", name="file1.fits", size=1000, mtime_millis=1000)
-        file2 = File.create(root=root, path="subdir1", name="file2.fits", size=2000, mtime_millis=1000)
-        file3 = File.create(root=root, path="subdir1", name="file3.fits", size=2000, mtime_millis=1000)
-        file4 = File.create(root=root, path="subdir2", name="file4.fits", size=1000, mtime_millis=1000)
+        file1 = File.create(root=root, path="./", name="file1.fits", size=1000, mtime_millis=1000)
+        file2 = File.create(root=root, path="subdir1/", name="file2.fits", size=2000, mtime_millis=1000)
+        file3 = File.create(root=root, path="subdir1/", name="file3.fits", size=2000, mtime_millis=1000)
+        file4 = File.create(root=root, path="subdir2/", name="file4.fits", size=1000, mtime_millis=1000)
 
         # Create images with different filters
         Image.create(file=file1, filter="Red", image_type="Light", exposure=10.0, gain=100, binning=1)
