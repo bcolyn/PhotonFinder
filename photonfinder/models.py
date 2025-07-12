@@ -417,6 +417,7 @@ class UsageReport(Model):
     name = CharField(null=False)
     integrations_criteria = BlobField(null=False)
     lights_criteria = BlobField(null=False)
+    coord_tolerance = FloatField(null=False)
     generated_at = DateTimeField(null=True)
 
 

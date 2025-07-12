@@ -52,5 +52,6 @@ class CreateDataReportDialog(QDialog, Ui_CreateReportDialog):
         UsageReport(name=self.name_edit.text(),
                     integrations_criteria=integrations_criteria.to_json(),
                     lights_criteria=lights_criteria.to_json(),
+                    coord_tolerance=self.tolerance_spin.value() / 60.0,
                     ).save()
         super(CreateDataReportDialog, self).accept()
