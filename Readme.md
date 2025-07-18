@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)](https://github.com/your-repo/PhotonFinder)
 
-A powerful desktop application for managing and organizing astronomical image files. PhotonFinder (also known as AstroFileManager) helps astronomers and astrophotographers efficiently search, filter, and manage their astronomical data collections.
+A versatile desktop application for managing and organizing astronomical image files. PhotonFinder helps amateur astrophotographers efficiently search, filter, and manage their astronomical data collections.
 
 ## 🌟 Key Features
 
