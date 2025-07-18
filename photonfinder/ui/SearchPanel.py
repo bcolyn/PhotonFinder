@@ -32,12 +32,16 @@ def _not_empty(current_text):
 
 
 class SearchPanel(QFrame, Ui_SearchPanel):
+
+    search_criteria_changed = Signal()
+
     def __init__(self, context: ApplicationContext, mainWindow: 'MainWindow', parent=None) -> None:
         super(SearchPanel, self).__init__(parent)
         self.setupUi(self)
 
         self.context = context
         self.update_in_progress = False
+        self.title = "All files"
         self.mainWindow = mainWindow
         self.search_criteria = SearchCriteria()
         self.advanced_options = dict()
@@ -121,10 +125,14 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.update_search_criteria()
 
     def set_title(self, text: str):
-        pages: QStackedWidget = self.parent()
-        tabs: QTabWidget = pages.parent()
-        my_index = pages.indexOf(self)
-        tabs.setTabText(my_index, text)
+        self.title = text
+        self.mainWindow.set_tab_title(self, text)
+
+    def get_title(self) -> str:
+        return self.title
+
+    def get_search_criteria(self) -> SearchCriteria:
+        return self.search_criteria
 
     def add_filter_button_control(self, button: 'FilterButton'):
         current = self.advanced_options.get(button.filter_type, None)
@@ -369,6 +377,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.refresh_data_grid()
         # if not self.update_in_progress:
         self.refresh_combo_options()
+        self.search_criteria_changed.emit()
 
     def show_context_menu(self, position):
         """Show context menu for the data view."""
@@ -1033,6 +1042,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                                 files=selected_files if selected_files else None, parent=self)
         report_dialog.show()
 
+    def report_targets(self):
+        from .TargetObjectReportWindow import TargetObjectReportWindow
+        target_report_window = TargetObjectReportWindow(context=self.context, parent=self)
+        target_report_window.show()
 
 def _get_combo_value(combo: QComboBox) -> str | None:
     if combo.currentText() == RESET_LABEL:

@@ -69,6 +69,7 @@ class LibraryScanWorker(QThread):
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
+    tabs_changed = Signal(list)
 
     def __init__(self, app: QApplication, context: ApplicationContext, parent=None):
         super(MainWindow, self).__init__(parent)
@@ -90,6 +91,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
         tab = self.tabWidget.addTab(panel, "Loading")
         self.tabWidget.setCurrentIndex(tab)
+        self.tabs_changed.emit(self.get_search_panels())
 
     def dup_search_tab(self):
         current_index = self.tabWidget.currentIndex()
@@ -102,6 +104,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         tab = self.tabWidget.addTab(panel, "Loading")
         panel.apply_search_criteria(current_criteria)
         self.tabWidget.setCurrentIndex(tab)
+        self.tabs_changed.emit(self.get_search_panels())
 
     def close_current_search_tab(self):
         self.close_search_tab(self.tabWidget.currentIndex())
@@ -111,6 +114,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         assert isinstance(widget, SearchPanel)
         self.tabWidget.removeTab(index)
         widget.destroy()
+        self.tabs_changed.emit(self.get_search_panels())
 
     def manage_library_roots(self):
         """
@@ -172,6 +176,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             widget = self.tabWidget.widget(i)
             if isinstance(widget, SearchPanel):
                 widget.library_tree_model.reload_library_roots()
+
+    def get_search_panels(self) -> list[SearchPanel]:
+        return [self.tabWidget.widget(i) for i in range(self.tabWidget.count())]
+
+    def set_tab_title(self, tab, title: str):
+        tabs: QTabWidget = self.tabWidget
+        my_index = tabs.indexOf(tab)
+        tabs.setTabText(my_index, title)
+        self.tabs_changed.emit(self.get_search_panels())
 
     def add_exposure_filter(self):
         self.getCurrentSearchPanel().add_exposure_filter()
@@ -382,6 +395,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         Show the Telescopius Compare dialog for comparing files with Telescopius data.
         """
         self.getCurrentSearchPanel().report_telescopius_list()
+
+    def report_targets(self):
+        self.getCurrentSearchPanel().report_targets()
+
 
     def enable_actions_for_current_tab(self):
         current_panel = self.getCurrentSearchPanel()

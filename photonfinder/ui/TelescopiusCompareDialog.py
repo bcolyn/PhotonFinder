@@ -124,8 +124,66 @@ class TelescopiusCompareTask(ProgressBackgroundTask):
         self.results = enrich_telescopius_data(targets, self.search_criteria, self.tolerance)
         self.finished.emit()
 
+class TableWidgetMixin:
+    def save_data(self):
+        """Save the data from the tableWidget to a CSV or TSV file."""
+        # Check if there is any data in the tableWidget
+        if self.tableWidget.rowCount() == 0:
+            QMessageBox.information(self, "No Data", "There is no data to save.")
+            return
 
-class TelescopiusCompareDialog(QDialog, Ui_TelescopiusCompareDialog):
+        # Show file save dialog with format options
+        file_dialog = QFileDialog(self)
+        file_dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        file_dialog.setDefaultSuffix("csv")
+        file_dialog.setNameFilters([
+            "Comma Separated Values (*.csv)",
+            "Tab Separated Values (*.tsv)",
+            "All Files (*)"
+        ])
+        file_dialog.setWindowTitle("Save Comparison Data")
+
+        if file_dialog.exec() != QFileDialog.DialogCode.Accepted:
+            return  # User cancelled
+
+        file_path = file_dialog.selectedFiles()[0]
+        selected_filter = file_dialog.selectedNameFilter()
+
+        # Determine format based on selected filter or file extension
+        if "Tab Separated" in selected_filter or file_path.lower().endswith('.tsv'):
+            export_format = 'tsv'
+        else:
+            export_format = 'csv'
+
+        try:
+            self._export_table_data(file_path, export_format)
+            QMessageBox.information(self, "Export Complete", f"Data successfully saved to {file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to save data: {str(e)}")
+
+    def _export_table_data(self, file_path: str, export_format: str):
+        """Export the tableWidget data to a CSV or TSV file."""
+        with open(file_path, 'w', newline='', encoding='utf-8') as f:
+            if export_format == 'tsv':
+                writer = csv.writer(f, dialect=csv.excel_tab)
+            else:
+                writer = csv.writer(f, dialect=csv.excel)
+
+            # Write header row
+            writer.writerow(self.headers)
+
+            # Write data rows
+            for row in range(self.tableWidget.rowCount()):
+                row_data = []
+                for col in range(self.tableWidget.columnCount()):
+                    item = self.tableWidget.item(row, col)
+                    text = item.text() if item else ""
+                    text = text.replace("\n", "|")
+                    row_data.append(text)
+                writer.writerow(row_data)
+
+
+class TelescopiusCompareDialog(QDialog, Ui_TelescopiusCompareDialog, TableWidgetMixin):
     """
     Dialog for comparing files with Telescopius data.
     """
@@ -186,59 +244,4 @@ class TelescopiusCompareDialog(QDialog, Ui_TelescopiusCompareDialog):
         self.tableWidget.resizeColumnsToContents()
         self.tableWidget.resizeRowsToContents()
 
-    def save_data(self):
-        """Save the data from the tableWidget to a CSV or TSV file."""
-        # Check if there is any data in the tableWidget
-        if self.tableWidget.rowCount() == 0:
-            QMessageBox.information(self, "No Data", "There is no data to save.")
-            return
 
-        # Show file save dialog with format options
-        file_dialog = QFileDialog(self)
-        file_dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
-        file_dialog.setDefaultSuffix("csv")
-        file_dialog.setNameFilters([
-            "Comma Separated Values (*.csv)",
-            "Tab Separated Values (*.tsv)",
-            "All Files (*)"
-        ])
-        file_dialog.setWindowTitle("Save Comparison Data")
-
-        if file_dialog.exec() != QFileDialog.DialogCode.Accepted:
-            return  # User cancelled
-
-        file_path = file_dialog.selectedFiles()[0]
-        selected_filter = file_dialog.selectedNameFilter()
-
-        # Determine format based on selected filter or file extension
-        if "Tab Separated" in selected_filter or file_path.lower().endswith('.tsv'):
-            export_format = 'tsv'
-        else:
-            export_format = 'csv'
-
-        try:
-            self._export_table_data(file_path, export_format)
-            QMessageBox.information(self, "Export Complete", f"Data successfully saved to {file_path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"Failed to save data: {str(e)}")
-
-    def _export_table_data(self, file_path: str, export_format: str):
-        """Export the tableWidget data to a CSV or TSV file."""
-        with open(file_path, 'w', newline='', encoding='utf-8') as f:
-            if export_format == 'tsv':
-                writer = csv.writer(f, dialect=csv.excel_tab)
-            else:
-                writer = csv.writer(f, dialect=csv.excel)
-
-            # Write header row
-            writer.writerow(self.headers)
-
-            # Write data rows
-            for row in range(self.tableWidget.rowCount()):
-                row_data = []
-                for col in range(self.tableWidget.columnCount()):
-                    item = self.tableWidget.item(row, col)
-                    text = item.text() if item else ""
-                    text = text.replace("\n", "|")
-                    row_data.append(text)
-                writer.writerow(row_data)
