@@ -35,7 +35,7 @@ A versatile desktop application for managing and organizing astronomical image f
 
 ### Reporting & Analysis
 - **Comprehensive Reports** - Generate metadata reports, file lists, and data usage statistics
-- **Target Lists** - Create Telescopius-compatible target lists
+- **Target Lists** - Compare the database with Telescopius target lists, find which objects have already been imaged.
 - **Usage Analytics** - Track your imaging data and storage usage
 
 ## 🖥️ Platform Support
