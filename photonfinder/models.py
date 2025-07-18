@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import typing
@@ -105,6 +106,31 @@ class SearchCriteria:
         reference_file.image = reference_frame
         criteria.reference_file = reference_file
         return criteria
+
+    @staticmethod
+    def _serialize(value):
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, File):
+            return value.rowid
+        else:
+            return value.__dict__
+
+    def to_json(self):
+        return json.dumps(self.__dict__, default=self._serialize, sort_keys=True, indent=4)
+
+    @classmethod
+    def from_json(cls, json_bytes):
+        data_dict = json.loads(json_bytes)
+        if data_dict.get('reference_file'):  # re-inflate the reference file
+            data_dict['reference_file'] = File.get(File.rowid == data_dict['reference_file'])
+        if data_dict.get('paths', None):
+            data_dict['paths'] = [RootAndPath(**x) for x in data_dict['paths']]
+        if data_dict.get('start_datetime', None):
+            data_dict['start_datetime'] = datetime.fromisoformat(data_dict['start_datetime'])
+        if data_dict.get('end_datetime', None):
+            data_dict['end_datetime'] = datetime.fromisoformat(data_dict['end_datetime'])
+        return SearchCriteria(**data_dict)
 
 
 def auto_str(cls):
