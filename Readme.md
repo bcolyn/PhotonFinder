@@ -69,7 +69,12 @@ cd PhotonFinder
 pip install -r requirements.txt
 ```
 
-3. Run the application:
+3. Build UI files:
+```bash
+python setup.py build_ui
+```
+
+4. Run the application:
 ```bash
 python photonfinder/main.py
 ```
