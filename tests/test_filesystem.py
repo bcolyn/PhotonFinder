@@ -40,6 +40,9 @@ class TestImporter:
     def test_initial_import(self, filesystem, database, app_context):
         self.initial_import(app_context)
         assert File.select().count() == NUM_FILES
+        files = list(File.select().order_by(File.name))
+        for file in files:
+            assert file.path.endswith("/") or not file.path, f"bad path {file.path}"
 
     def test_reimport(self, filesystem, database, app_context):
         self.initial_import(app_context)

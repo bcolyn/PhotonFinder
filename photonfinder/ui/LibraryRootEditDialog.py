@@ -5,7 +5,7 @@ from typing import Optional
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
 
-from photonfinder.models import LibraryRoot
+from photonfinder.models import LibraryRoot, norm_db_path
 from photonfinder.ui.generated.LibraryRootEditDialog_ui import Ui_LibraryRootEditDialog
 
 
@@ -54,7 +54,7 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
         Validate the input and save the library root.
         """
         name = self.nameLineEdit.text().strip()
-        path = self.pathLineEdit.text().strip()
+        path = norm_db_path(self.pathLineEdit.text().strip())
 
         # Validate input
         if not name:

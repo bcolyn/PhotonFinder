@@ -4,7 +4,6 @@ import typing
 from datetime import datetime, timezone
 from enum import Enum
 from logging import DEBUG
-from tkinter import dialog
 
 from PySide6.QtCore import *
 from PySide6.QtGui import *
@@ -19,6 +18,7 @@ from .MetadataReportDialog import MetadataReportDialog
 from .ProgressDialog import ProgressDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .generated.SearchPanel_ui import Ui_SearchPanel
+from .formatting import _format_ra, _format_dec, _format_date, _format_file_size
 from photonfinder.platesolver import SolverType
 from photonfinder.filesystem import Importer, header_from_xisf_dict
 
@@ -32,7 +32,6 @@ def _not_empty(current_text):
 
 
 class SearchPanel(QFrame, Ui_SearchPanel):
-
     search_criteria_changed = Signal()
 
     def __init__(self, context: ApplicationContext, mainWindow: 'MainWindow', parent=None) -> None:
@@ -514,11 +513,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 dialog.exec()
 
             except FitsHeader.DoesNotExist:
-                QMessageBox.information(self, "No Cached Header", 
-                                      f"No cached header found for file: {file.name}")
+                QMessageBox.information(self, "No Cached Header",
+                                        f"No cached header found for file: {file.name}")
             except Exception as e:
-                QMessageBox.critical(self, "Error", 
-                                   f"Error reading cached header: {str(e)}")
+                QMessageBox.critical(self, "Error",
+                                     f"Error reading cached header: {str(e)}")
 
     def _find_and_select_node(self, root_and_path):
         """Find and select a node in the tree view based on RootAndPath."""
@@ -1032,20 +1031,21 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def report_metadata(self):
         selected_files = self.get_selected_files()
         report_dialog = MetadataReportDialog(context=self.context, search_criteria=self.search_criteria,
-                                files=selected_files if selected_files else None, parent=self)
+                                             files=selected_files if selected_files else None, parent=self)
         report_dialog.show()
 
     def report_telescopius_list(self):
         selected_files = self.get_selected_files()
         from .TelescopiusCompareDialog import TelescopiusCompareDialog
         report_dialog = TelescopiusCompareDialog(context=self.context, search_criteria=self.search_criteria,
-                                files=selected_files if selected_files else None, parent=self)
+                                                 files=selected_files if selected_files else None, parent=self)
         report_dialog.show()
 
     def report_targets(self):
         from .TargetObjectReportWindow import TargetObjectReportWindow
         target_report_window = TargetObjectReportWindow(context=self.context, parent=self)
         target_report_window.show()
+
 
 def _get_combo_value(combo: QComboBox) -> str | None:
     if combo.currentText() == RESET_LABEL:
@@ -1054,46 +1054,6 @@ def _get_combo_value(combo: QComboBox) -> str | None:
         return None
     else:
         return combo.currentText()
-
-
-def _format_file_size(size_bytes):
-    """Format file size from bytes to human-readable format."""
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / (1024 * 1024):.1f} MB"
-    else:
-        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
-
-
-def _format_date(value: datetime):
-    try:
-        return value.strftime("%Y-%m-%d %H:%M:%S")
-    except Exception as ex:
-        logging.exception(f"Error formatting date {ex}", exc_info=ex)
-        return None
-
-
-def _format_ra(ra_deg: float):
-    """Format RA from decimal degrees to string format."""
-    total_hours = ra_deg / 15.0
-    hours = int(total_hours)
-    minutes = int((total_hours - hours) * 60)
-    seconds = int(((total_hours - hours) * 60 - minutes) * 60)
-    return f"{hours:02d}h{minutes:02d}'{seconds:02d}\""
-
-
-def _format_dec(dec_deg: float):
-    """Format DEC from decimal degrees to string format."""
-    sign = "+" if dec_deg >= 0 else "-"
-    abs_deg = abs(dec_deg)
-    degrees = int(abs_deg)
-    minutes = int((abs_deg - degrees) * 60)
-    seconds = int(((abs_deg - degrees) * 60 - minutes) * 60)
-
-    return f"{sign}{degrees:02d}:{minutes:02d}:{seconds:02d}"
 
 
 class FilterButton(QPushButton):

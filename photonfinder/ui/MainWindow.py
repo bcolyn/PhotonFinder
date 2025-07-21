@@ -11,6 +11,7 @@ from photonfinder.models import SearchCriteria
 from .AboutDialog import AboutDialog
 from .LibraryRootDialog import LibraryRootDialog
 from .LogWindow import LogWindow
+from .ProjectsWindow import ProjectsWindow
 from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
 from .generated.MainWindow_ui import Ui_MainWindow
@@ -130,6 +131,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                                 QMessageBox.Yes | QMessageBox.No)
                 if response == QMessageBox.Yes:
                     self.scan_libraries()
+
+    def manage_projects(self):
+        window = ProjectsWindow(context=self.context, parent=self)
+        window.show()
 
     def open_settings_dialog(self):
         """
@@ -398,7 +403,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def report_targets(self):
         self.getCurrentSearchPanel().report_targets()
-
 
     def enable_actions_for_current_tab(self):
         current_panel = self.getCurrentSearchPanel()

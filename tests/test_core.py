@@ -16,12 +16,12 @@ def test_print_sql(database):
 def test_create_root(database):
     root = LibraryRoot()
     root.name = "dummy"
-    root.path = r'C:\TEMP'
+    root.path = r'C:/TEMP/'
     root.save()
 
 
 def test_deletes_cascade(database):
-    root = LibraryRoot(name="dummy", path=r'C:\TEMP')
+    root = LibraryRoot(name="dummy", path=r'C:/TEMP/')
     file = File(root=root, path="subdir", name="image01.fits", size=0, mtime_millis=0)
     image = Image(file=file)
     root.save()

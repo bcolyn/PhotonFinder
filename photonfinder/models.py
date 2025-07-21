@@ -154,11 +154,15 @@ def auto_str(cls):
 def norm_db_path(rel_path: str | None):
     if rel_path is None:
         return None
-    if rel_path == "":
+    if rel_path == "" or rel_path == ".":
         return ""
-    rel_path = rel_path.replace("\\", "/")
+    rel_path = norm_db_path_sep(rel_path)
     rel_path = rel_path + "/" if rel_path[-1] != "/" else rel_path
     return rel_path
+
+
+def norm_db_path_sep(rel_path):
+    return rel_path.replace("\\", "/")
 
 
 @auto_str
@@ -210,6 +214,14 @@ class File(Model):
 
     def full_filename(self) -> str:
         return os.path.join(str(self.root.path), str(self.path), str(self.name))
+
+    @classmethod
+    def find_by_filename(cls, full_path: str) -> Optional['File']:
+        normalized_path = norm_db_path_sep(full_path)
+        query = (File.select(File, LibraryRoot)
+                 .join(LibraryRoot)
+                 .where(fn.LOWER(LibraryRoot.path + File.path + File.name) == fn.LOWER(normalized_path)))
+        return query.first()
 
 
 class Image(Model):
@@ -396,6 +408,67 @@ class Image(Model):
         return Image.get_distinct_values_available(search_criteria, Image.camera)
 
 
+class Project(Model):
+    rowid = RowIDField()
+    name = CharField(unique=True)
+
+    @staticmethod
+    def list_projects_with_image_data() -> typing.List['Project']:
+        rn = fn.ROW_NUMBER().over(
+            partition_by=[ProjectFile.project],
+            order_by=[Image.date_obs.desc()]
+        )
+
+        image_coord = (Image.select(Image.coord_ra, Image.coord_dec, ProjectFile.project.alias("project_id"), rn.alias('rn'))
+                       .join(File)
+                       .join(ProjectFile)
+                       .where(Image.coord_ra.is_null(False))
+                       .order_by(Image.date_obs))
+
+        date_obs = (Image
+                    .select(Image.date_obs)
+                    .join_from(Image, File)
+                    .join_from(File, ProjectFile)
+                    .where(ProjectFile.project == Project.rowid)
+                    .where(Image.date_obs.is_null(False))
+                    .order_by(Image.date_obs.desc())
+                    .limit(1))
+
+        file_counts = (ProjectFile.select(fn.COUNT(ProjectFile.rowid))
+                       .where(ProjectFile.project == Project.rowid))
+        query = (Project.select(Project,
+                                date_obs.alias("date_obs"),
+                                file_counts.alias("file_counts"),
+                                image_coord.c.coord_ra.alias("coord_ra"),
+                                image_coord.c.coord_dec.alias("coord_dec"))
+                 .join_from(Project, image_coord, JOIN.LEFT_OUTER,
+                            on=((Project.rowid == image_coord.c.project_id) & (image_coord.c.rn <= 1)))
+                 .order_by(Project.name))
+
+        return list(query)
+
+
+class ProjectFile(Model):
+    rowid = RowIDField()
+    project = ForeignKeyField(Project, on_delete='CASCADE', index=True)
+    file = ForeignKeyField(File, on_delete='CASCADE', index=True)
+
+    @classmethod
+    def find_by_filename(cls, full_path: str, project: Project) -> Optional['ProjectFile']:
+        normalized_path = norm_db_path_sep(full_path)
+        query = (File.select(File, LibraryRoot, ProjectFile)
+                 .join(LibraryRoot)
+                 .join_from(File, ProjectFile, JOIN.LEFT_OUTER,
+                            on=((File.rowid == ProjectFile.file) & (ProjectFile.project == project)))
+                 .where(fn.LOWER(LibraryRoot.path + File.path + File.name) == fn.LOWER(normalized_path)))
+        file = query.first()
+        if not file:
+            return None
+        if hasattr(file, 'projectfile'):
+            return file.projectfile
+        return ProjectFile(project=project, file=file)
+
+
 class FitsHeader(Model):
     """
     Model representing a FITS header.
@@ -412,4 +485,4 @@ class FileWCS(Model):
     wcs = BlobField(null=False)
 
 
-CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS]
+CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS, Project, ProjectFile]

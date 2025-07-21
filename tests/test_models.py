@@ -4,13 +4,13 @@ from photonfinder.models import *
 
 
 @pytest.mark.usefixtures("app_context")
-class TestImage:
+class TestModels:
     # Class-level fixtures
     @pytest.fixture(scope="class", autouse=True)
     def setup_class(self, app_context):
         """Set up test data once for the entire class."""
         # Create a root
-        root = LibraryRoot.create(name="Test Root", path="C:\\test_path")
+        root = LibraryRoot.create(name="Test Root", path="C:/test_path/")
 
         # Create files in different paths
         file1 = File.create(root=root, path="./", name="file1.fits", size=1000, mtime_millis=1000)
@@ -23,6 +23,10 @@ class TestImage:
         Image.create(file=file2, filter="Green", image_type="Dark", exposure=20.0, gain=100, binning=1)
         Image.create(file=file3, filter="Blue", image_type="Light", exposure=20.0, gain=100, binning=1)
         Image.create(file=file4, filter="Luminance", image_type="Light", exposure=10.0, gain=100, binning=1)
+
+        project = Project.create(name="TestProject")
+        ProjectFile.create(project=project, file=file1)
+        ProjectFile.create(project=project, file=file2)
 
         yield app_context
 
@@ -65,6 +69,31 @@ class TestImage:
 
         # Assert that only filters in the specified path are returned
         assert filters == ["Blue", "Green"]
+
+    def test_find_by_filename(self):
+        file = File.find_by_filename("C:/test_path/subdir1/file2.fits")
+        assert file is not None
+        assert file.name == "file2.fits"
+        assert file.root.name == "Test Root"
+
+    def test_find_projectfile_by_filename(self):
+        project_file = ProjectFile.find_by_filename("C:/test_path/subdir1/file2.fits", 1)
+        assert project_file is not None
+        assert project_file.rowid
+        assert project_file.file.name == "file2.fits"
+        assert project_file.file.root.name == "Test Root"
+        assert project_file.project.name == "TestProject"
+
+        project_file = ProjectFile.find_by_filename("C:/test_path/subdir1/file3.fits", 1)
+        assert project_file is not None
+        assert project_file.rowid is None
+        assert project_file.file.name == "file3.fits"
+        assert project_file.file.root.name == "Test Root"
+        assert project_file.project.name == "TestProject"
+
+        project_file = ProjectFile.find_by_filename("does_not_match.fits", 1)
+        assert project_file is None
+
 
     def test_criteria_serde(self):
         search_criteria = SearchCriteria(

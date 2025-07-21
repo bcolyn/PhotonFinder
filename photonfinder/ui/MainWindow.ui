@@ -123,9 +123,16 @@
     <addaction name="actionTelescopius_List"/>
     <addaction name="separator"/>
    </widget>
+   <widget class="QMenu" name="menuProject">
+    <property name="title">
+     <string>Project</string>
+    </property>
+    <addaction name="actionManage_Projects"/>
+   </widget>
    <addaction name="menu_File"/>
    <addaction name="menuFilter"/>
    <addaction name="menu_Tools"/>
+   <addaction name="menuProject"/>
    <addaction name="menuReport"/>
    <addaction name="menu_Help"/>
   </widget>
@@ -303,6 +310,11 @@
   <action name="actionTarget_List_Report">
    <property name="text">
     <string>Target Report</string>
+   </property>
+  </action>
+  <action name="actionManage_Projects">
+   <property name="text">
+    <string>Manage Projects</string>
    </property>
   </action>
  </widget>
@@ -852,6 +864,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionManage_Projects</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>manage_projects()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -886,5 +914,6 @@
   <slot>report_metadata()</slot>
   <slot>report_telescopius_list()</slot>
   <slot>report_targets()</slot>
+  <slot>manage_projects()</slot>
  </slots>
 </ui>
