@@ -85,8 +85,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setWindowIcon(QIcon(":/icon.png"))
 
         text_color = self.palette().color(QPalette.WindowText)
-        self.actionManage_Projects.setIcon(create_colored_svg_icon(":/res/stack.svg", QSize(24, 24), text_color))
-        self.action_New_Tab.setIcon(create_colored_svg_icon(":/res/window-plus.svg", QSize(24, 24), text_color))
+        size = QSize(24, 24)
+        self.actionManage_Projects.setIcon(create_colored_svg_icon(":/res/stack.svg", size, text_color))
+        self.action_New_Tab.setIcon(create_colored_svg_icon(":/res/window-plus.svg", size, text_color))
+        self.action_Manage_Libraries.setIcon(create_colored_svg_icon(":/res/hdd.svg", size, text_color))
+        self.actionOpen_File.setIcon(create_colored_svg_icon(":/res/card-image.svg", size, text_color))
+        self.action_Open_Database.setIcon(create_colored_svg_icon(":/res/database.svg", size, text_color))
+        self.action_Export_Data.setIcon(create_colored_svg_icon(":/res/send-plus.svg", size, text_color))
 
         self.reporter = UIStatusReporter()
         self.reporter.on_message.connect(self.statusBar().showMessage)

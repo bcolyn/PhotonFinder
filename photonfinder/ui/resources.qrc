@@ -2,7 +2,10 @@
   <qresource>
     <file>res/stack.svg</file>
     <file>res/window-plus.svg</file>
-    <file>res/briefcase.svg</file>
+    <file>res/hdd.svg</file>
+    <file>res/card-image.svg</file>
+    <file>res/database.svg</file>
+    <file>res/send-plus.svg</file>
     <file alias="icon.png">../../icon.png</file>
   </qresource>
 </RCC>

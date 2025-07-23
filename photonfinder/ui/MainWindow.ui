@@ -154,6 +154,7 @@
    <addaction name="action_Scan_Libraries"/>
    <addaction name="actionManage_Projects"/>
    <addaction name="actionShow_location"/>
+   <addaction name="action_Export_Data"/>
   </widget>
   <action name="action_View_Log">
    <property name="text">
@@ -240,6 +241,10 @@
    </property>
   </action>
   <action name="action_Export_Data">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/res/send-plus.svg</normaloff>:/res/send-plus.svg</iconset>
+   </property>
    <property name="text">
     <string>Export file copies</string>
    </property>

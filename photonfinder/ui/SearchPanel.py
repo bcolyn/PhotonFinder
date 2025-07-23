@@ -856,7 +856,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 response = QMessageBox.question(
                     self,
                     "Export Confirmation",
-                    f"No files are selected. Do you want to export all files matching the current filters?",
+                    f"No files are selected. Do you want to export all {self.total_files} files matching the current filters?",
                     QMessageBox.Yes | QMessageBox.No
                 )
                 if response == QMessageBox.No:
