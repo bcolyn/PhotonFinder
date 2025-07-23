@@ -1,4 +1,6 @@
 import logging
+import os.path
+from logging.handlers import TimedRotatingFileHandler
 import sys
 
 from PySide6.QtCore import QStandardPaths, Qt, QThreadPool
@@ -15,7 +17,7 @@ def init_logging(path: str = None):
     logger.setLevel(LEVEL)
 
     # Create file handler
-    file_handler = logging.FileHandler(f"{path}/photonfinder.log")
+    file_handler = TimedRotatingFileHandler(f"{path}/photonfinder.log", backupCount=9, when='D')
     file_handler.setLevel(LEVEL)
 
     # Create console handler
@@ -32,7 +34,8 @@ def init_logging(path: str = None):
 
 
 def main():
-    app_data_path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
+    app_data_path = os.path.join(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation), "photonfinder")
+    os.makedirs(app_data_path, exist_ok=True)
     init_logging(app_data_path)
 
     if hasattr(Qt, 'HighDpiScaleFactorRoundingPolicy'):
