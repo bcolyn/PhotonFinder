@@ -86,6 +86,7 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
 
     def delete_selected(self):
         selected = self.get_selected_files()
+        self.links_to_add -= set(selected)
         self.links_to_delete.update(selected)
         self.refresh_table()
 
@@ -113,19 +114,17 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
 
         if not self.name_edit.text():
             name = (Image.select(Image.object_name)
-             .where(Image.file.in_(added_files))
-             .limit(1)).scalar()
+                    .where(Image.file.in_(added_files))
+                    .limit(1)).scalar()
             self.name_edit.setText(name)
 
         self.refresh_table()
 
     def add_file(self, db_file: ProjectFile):
-        if db_file in self.project_files:  # ignore files already present
-            return
+        if db_file not in self.project_files:
+            self.links_to_add.add(db_file)
         if db_file in self.links_to_delete:  # remove deletion marker
             self.links_to_delete.remove(db_file)
-            return
-        self.links_to_add.add(db_file)
 
     def prompt_add_files(self):
         custom_filter = (
