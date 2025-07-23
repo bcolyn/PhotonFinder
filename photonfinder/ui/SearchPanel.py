@@ -10,7 +10,7 @@ from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext, decompress
-from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader
+from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
 from .DateRangeDialog import DateRangeDialog
 from .HeaderDialog import HeaderDialog
@@ -18,7 +18,7 @@ from .MetadataReportDialog import MetadataReportDialog
 from .ProgressDialog import ProgressDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .generated.SearchPanel_ui import Ui_SearchPanel
-from .formatting import _format_ra, _format_dec, _format_date, _format_file_size
+from .formatting import _format_ra, _format_dec, _format_date, _format_file_size, _format_timestamp
 from photonfinder.platesolver import SolverType
 from photonfinder.filesystem import Importer, header_from_xisf_dict
 
@@ -325,9 +325,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 logging.error(f"Error getting image data: {e}")
 
             # Format date from mtime_millis
-            dt = datetime.fromtimestamp(file.mtime_millis / 1000)
-            date_str = _format_date(dt)
-            date_item = QStandardItem(date_str)
+            date_item = QStandardItem(_format_timestamp(file.mtime_millis))
 
             # Store the full filename in the name_item's data
             name_item.setData(file, Qt.UserRole)
@@ -396,6 +394,19 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         menu.addSeparator()
         find_darks_action = menu.addAction("Find matching darks")
         find_flats_action = menu.addAction("Find matching flats")
+        menu.addSeparator()
+        add_to_project_menu = QMenu("Add to Group/Project", self)
+        menu.addMenu(add_to_project_menu)
+        new_project_action = add_to_project_menu.addAction("New Project")
+        new_project_action.setData(Project())
+        recent_projects = Project.find_recent()
+        recent_project_actions = list()
+        if recent_projects:
+            add_to_project_menu.addSeparator()
+            for recent_project in recent_projects:
+                recent_project_action = add_to_project_menu.addAction(recent_project.name)
+                recent_project_action.setData(recent_project)
+                recent_project_actions.append(recent_project_action)
 
         # enable or disable based on current selection
         selected_file = self.get_file_at_row(index.row())
@@ -426,6 +437,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         elif action == find_flats_action:
             if self.mainWindow:
                 self.mainWindow.find_matching_flats()
+        elif action == new_project_action or action in recent_project_actions:
+            project = action.data()
+            self.mainWindow.add_selection_to_project(project)
 
     def open_file(self, index):
         """Open the file at the given index."""

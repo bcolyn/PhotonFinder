@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import astropy.units as u
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QMainWindow, QTableWidgetItem, QDialog, QMessageBox
 from astropy.coordinates import SkyCoord
 
@@ -13,6 +13,7 @@ from .formatting import _format_ra, _format_dec, _format_date
 
 
 class ProjectsWindow(QMainWindow, Ui_ProjectsWindow):
+    closing = Signal()
 
     def __init__(self, context: ApplicationContext, parent=None):
         super(ProjectsWindow, self).__init__(parent)
@@ -52,6 +53,10 @@ class ProjectsWindow(QMainWindow, Ui_ProjectsWindow):
 
         self.tableWidget.resizeColumnsToContents()
         self.enable_disable_actions()
+
+    def closeEvent(self, event, /):
+        self.closing.emit()
+        super().closeEvent(event)
 
     def delete_action(self):
         project_ids = self.get_selected_projects()

@@ -8,10 +8,11 @@ from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext, StatusReporter, backup_database
 from photonfinder.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
-from photonfinder.models import SearchCriteria
+from photonfinder.models import SearchCriteria, Project, File, ProjectFile
 from .AboutDialog import AboutDialog
 from .LibraryRootDialog import LibraryRootDialog
 from .LogWindow import LogWindow
+from .ProjectEditDialog import ProjectEditDialog
 from .ProjectsWindow import ProjectsWindow
 from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
@@ -72,6 +73,7 @@ class LibraryScanWorker(QThread):
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     tabs_changed = Signal(list)
+    projects_window: ProjectsWindow
 
     def __init__(self, app: QApplication, context: ApplicationContext, parent=None):
         super(MainWindow, self).__init__(parent)
@@ -124,7 +126,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         assert isinstance(widget, SearchPanel)
         self.tabWidget.removeTab(index)
         widget.destroy()
-        self.tabs_changed.emit(self.get_search_panels())
+        if self.tabWidget.count() == 0:
+            self.new_search_tab()
+        else:
+            self.tabs_changed.emit(self.get_search_panels())
 
     def manage_library_roots(self):
         """
@@ -143,7 +148,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def manage_projects(self):
         window = ProjectsWindow(context=self.context, parent=self)
+        window.closing.connect(self.clear_projects_window)
+        self.projects_window = window
         window.show()
+
+    def clear_projects_window(self):
+        self.projects_window = None
 
     def open_settings_dialog(self):
         """
@@ -426,6 +436,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             current_type = selected_image.image_type
             self.actionFind_matching_darks.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
             self.actionFind_matching_flats.setEnabled(current_type == "LIGHT")
+
+    def add_selection_to_project(self, project: Project):
+        edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)
+        selection = self.getCurrentSearchPanel().get_selected_files()
+        files_to_add = File.remove_already_mapped(project, selection)
+        for file in files_to_add:
+            edit_dialog.add_file(ProjectFile(project=project, file=file))
+        edit_dialog.refresh_table()
+        edit_dialog.exec()
+        if self.projects_window:
+            self.projects_window.populate_table()
+
 
 def create_colored_svg_icon(svg_path: str, size: QSize, color) -> QIcon:
     renderer = QSvgRenderer(svg_path)

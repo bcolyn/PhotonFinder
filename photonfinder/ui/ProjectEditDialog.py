@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTableWidgetItem, QFile
 
 from photonfinder.core import ApplicationContext
 from photonfinder.models import Project, File, LibraryRoot, ProjectFile, Image
+from photonfinder.ui.formatting import _format_timestamp
 from photonfinder.ui.generated.ProjectEditDialog_ui import Ui_ProjectEditDialog
 
 
@@ -41,6 +42,7 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
             self.tableWidget.setItem(row, 0, first_item)
             self.tableWidget.setItem(row, 1, QTableWidgetItem(project_file.file.path))
             self.tableWidget.setItem(row, 2, QTableWidgetItem(project_file.file.name))
+            self.tableWidget.setItem(row, 3, QTableWidgetItem(_format_timestamp(project_file.file.mtime_millis)))
 
         self.tableWidget.resizeColumnsToContents()
 

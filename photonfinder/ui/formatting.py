@@ -46,3 +46,9 @@ def _format_dec(dec_deg: float):
     seconds = int(((abs_deg - degrees) * 60 - minutes) * 60)
 
     return f"{sign}{degrees:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def _format_timestamp(timestamp_ms: int):
+    dt = datetime.fromtimestamp(timestamp_ms / 1000)
+    date_str = _format_date(dt)
+    return date_str

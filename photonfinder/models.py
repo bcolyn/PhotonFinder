@@ -225,6 +225,21 @@ class File(Model):
                  .where(fn.LOWER(LibraryRoot.path + File.path + File.name) == fn.LOWER(normalized_path)))
         return query.first()
 
+    @staticmethod
+    def remove_already_mapped(project: 'Project', selected_files: typing.List['File']) -> typing.List['File']:
+        selected_file_ids = [file.rowid for file in selected_files]
+        already_linked_file_ids = (
+            ProjectFile
+            .select(ProjectFile.file_id)
+            .where(
+                (ProjectFile.project == project) &
+                (ProjectFile.file_id.in_(selected_file_ids))
+            )
+            .distinct()
+        )
+        already_linked_ids_set = set(row.file_id for row in already_linked_file_ids)
+        return [file for file in selected_files if file.rowid not in already_linked_ids_set]
+
 
 class Image(Model):
     rowid = RowIDField()
@@ -414,6 +429,10 @@ class Project(Model):
     rowid = RowIDField()
     name = CharField(unique=True)
     last_change = DateTimeField(index=True, null=True)
+
+    @staticmethod
+    def find_recent() -> typing.List['Project']:
+        return list(Project.select().order_by(Project.last_change.desc()).limit(10))
 
     @staticmethod
     def list_projects_with_image_data() -> typing.List['Project']:
