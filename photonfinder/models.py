@@ -411,6 +411,7 @@ class Image(Model):
 class Project(Model):
     rowid = RowIDField()
     name = CharField(unique=True)
+    last_change = DateTimeField(index=True, null=True)
 
     @staticmethod
     def list_projects_with_image_data() -> typing.List['Project']:
@@ -419,11 +420,12 @@ class Project(Model):
             order_by=[Image.date_obs.desc()]
         )
 
-        image_coord = (Image.select(Image.coord_ra, Image.coord_dec, ProjectFile.project.alias("project_id"), rn.alias('rn'))
-                       .join(File)
-                       .join(ProjectFile)
-                       .where(Image.coord_ra.is_null(False))
-                       .order_by(Image.date_obs))
+        image_coord = (
+            Image.select(Image.coord_ra, Image.coord_dec, ProjectFile.project.alias("project_id"), rn.alias('rn'))
+            .join(File)
+            .join(ProjectFile)
+            .where(Image.coord_ra.is_null(False))
+            .order_by(Image.date_obs))
 
         date_obs = (Image
                     .select(Image.date_obs)
@@ -452,6 +454,23 @@ class ProjectFile(Model):
     rowid = RowIDField()
     project = ForeignKeyField(Project, on_delete='CASCADE', index=True)
     file = ForeignKeyField(File, on_delete='CASCADE', index=True)
+
+    class Meta:
+        indexes = (
+            (('project', 'file'), True),  # Note the trailing comma!
+        )
+
+    def __eq__(self, other):
+        if self.rowid is not None or other.rowid is not None:
+            return super().__eq__(other)
+        else:
+            return self.project == other.project and self.file == other.file
+
+    def __hash__(self):
+        if self.rowid is not None:
+            return super().__hash__()
+        else:
+            return hash((self.project, self.file))
 
     @classmethod
     def find_by_filename(cls, full_path: str, project: Project) -> Optional['ProjectFile']:

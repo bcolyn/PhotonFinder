@@ -102,6 +102,7 @@ class ProjectsWindow(QMainWindow, Ui_ProjectsWindow):
         to_merge_ids = list(map(lambda p: p.rowid, to_merge))
         with self.context.database.atomic():
             leader.name = ",".join(map(lambda p: p.name, projects))
+            leader.last_change = datetime.now()
             leader.save()
             ProjectFile.update(project=leader).where(ProjectFile.project.in_(to_merge_ids)).execute()
             Project.delete().where(Project.rowid.in_(to_merge_ids)).execute()
