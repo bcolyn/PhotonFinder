@@ -202,7 +202,7 @@ class File(Model):
     rowid = RowIDField()
     root = ForeignKeyField(LibraryRoot, on_delete='CASCADE')
     path = CharField()
-    name = CharField()
+    name = CharField(index=True)
     size = IntegerField()
     mtime_millis = IntegerField()
 
@@ -218,8 +218,10 @@ class File(Model):
     @classmethod
     def find_by_filename(cls, full_path: str) -> Optional['File']:
         normalized_path = norm_db_path_sep(full_path)
+        filename = str(Path(normalized_path).name)
         query = (File.select(File, LibraryRoot)
                  .join(LibraryRoot)
+                 .where(File.name == filename)
                  .where(fn.LOWER(LibraryRoot.path + File.path + File.name) == fn.LOWER(normalized_path)))
         return query.first()
 
@@ -475,10 +477,12 @@ class ProjectFile(Model):
     @classmethod
     def find_by_filename(cls, full_path: str, project: Project) -> Optional['ProjectFile']:
         normalized_path = norm_db_path_sep(full_path)
+        filename = str(Path(normalized_path).name)
         query = (File.select(File, LibraryRoot, ProjectFile)
                  .join(LibraryRoot)
                  .join_from(File, ProjectFile, JOIN.LEFT_OUTER,
                             on=((File.rowid == ProjectFile.file) & (ProjectFile.project == project)))
+                 .where(File.name == filename)
                  .where(fn.LOWER(LibraryRoot.path + File.path + File.name) == fn.LOWER(normalized_path)))
         file = query.first()
         if not file:
