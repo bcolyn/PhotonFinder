@@ -1,6 +1,8 @@
-<!DOCTYPE RCC>
-<RCC version="1.0">
-    <qresource>
-        <file alias="icon.png">../../icon.png</file>
-    </qresource>
+<RCC>
+  <qresource>
+    <file>res/stack.svg</file>
+    <file>res/window-plus.svg</file>
+    <file>res/briefcase.svg</file>
+    <file alias="icon.png">../../icon.png</file>
+  </qresource>
 </RCC>

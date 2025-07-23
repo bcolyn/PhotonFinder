@@ -1,8 +1,9 @@
 import logging
 import time
 
-from PySide6.QtCore import QThread, Signal, QObject
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QThread, Signal, QObject, QSize
+from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter, QPalette
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext, StatusReporter, backup_database
@@ -81,8 +82,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.new_search_tab()
 
         # Set the window icon from the resource file
-        icon = QIcon(":/icon.png")
-        self.setWindowIcon(icon)
+        self.setWindowIcon(QIcon(":/icon.png"))
+
+        text_color = self.palette().color(QPalette.WindowText)
+        self.actionManage_Projects.setIcon(create_colored_svg_icon(":/res/stack.svg", QSize(24, 24), text_color))
+        self.action_New_Tab.setIcon(create_colored_svg_icon(":/res/window-plus.svg", QSize(24, 24), text_color))
 
         self.reporter = UIStatusReporter()
         self.reporter.on_message.connect(self.statusBar().showMessage)
@@ -417,3 +421,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             current_type = selected_image.image_type
             self.actionFind_matching_darks.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
             self.actionFind_matching_flats.setEnabled(current_type == "LIGHT")
+
+def create_colored_svg_icon(svg_path: str, size: QSize, color) -> QIcon:
+    renderer = QSvgRenderer(svg_path)
+    pixmap = QPixmap(size)
+    pixmap.fill(Qt.transparent)
+
+    painter = QPainter(pixmap)
+    renderer.render(painter)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(pixmap.rect(), color)
+    painter.end()
+
+    return QIcon(pixmap)
