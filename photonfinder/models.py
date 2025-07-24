@@ -269,6 +269,10 @@ class Image(Model):
     class Meta:
         database = None
 
+    def get_sky_coord(self) -> SkyCoord | None:
+        return SkyCoord(self.coord_ra, self.coord_dec, unit=u.deg,
+                        frame='icrs') if self.coord_ra and self.coord_dec else None
+
     @staticmethod
     def apply_search_criteria(query, criteria, exclude_ref=None):
         """Apply search criteria to the query."""
@@ -459,7 +463,7 @@ class Project(Model):
                                                                image_coord.c.rn == 1))))
 
         def dist(project: Project):
-            return coord.separation(SkyCoord(project.image.coord_ra * u.deg, project.image.coord_dec * u.deg))
+            return coord.separation(project.image.get_sky_coord())
 
         raw_list.sort(key=cmp_to_key(lambda p1, p2: dist(p1) - dist(p2)))
         return raw_list[:9]

@@ -26,6 +26,10 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
                               .join(LibraryRoot)
                               .where(ProjectFile.project == self.project.rowid)
                               .order_by(LibraryRoot.name, File.path, File.name))
+        if not project.rowid:
+            self.setWindowTitle("Create Project")
+        else:
+            self.setWindowTitle(f"Edit Project {project.name}")
         self.connect_signals()
         self.reload_data()
         self.enable_disable_actions()

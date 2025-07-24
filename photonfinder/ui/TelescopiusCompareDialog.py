@@ -79,7 +79,7 @@ def enrich_telescopius_data(targets: List[TelescopiusTarget],
     results = []
     for target in targets:
         try:
-            query = (File.select(File, Image)
+            query = (File.select(File, Image, LibraryRoot)
                      .join_from(File, Image)
                      .join_from(File, LibraryRoot))
             full_criteria = deepcopy(search_criteria)
@@ -91,7 +91,7 @@ def enrich_telescopius_data(targets: List[TelescopiusTarget],
             paths = set()
             for file in files:
                 image = file.image
-                img_coord = SkyCoord(image.coord_ra, image.coord_dec, unit=(u.deg, u.deg), frame='icrs')
+                img_coord = image.get_sky_coord()
                 # check distance to target
                 if img_coord.separation(target.coord()).deg < tolerance:
                     paths.add(file.root.name + ":" + file.path)

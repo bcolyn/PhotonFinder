@@ -154,16 +154,16 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         button.hide()
         button.destroy()
 
-    def get_selected_files(self):
+    def get_selected_files(self) -> typing.List[File]:
         """Get the currently selected files in the data grid."""
         selected_indexes = self.dataView.selectionModel().selectedRows()
         selected_files = []
 
         for index in selected_indexes:
             # Get the Image object from the model
-            image = self.get_file_at_row(index.row())
-            if image:
-                selected_files.append(image)
+            file = self.get_file_at_row(index.row())
+            if file:
+                selected_files.append(file)
 
         return selected_files
 
@@ -422,7 +422,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             find_darks_action.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
             find_flats_action.setEnabled(current_type == "LIGHT")
             if selected_image.coord_pix256:
-                coord = SkyCoord(selected_image.coord_ra, selected_image.coord_dec, unit=(u.deg, u.deg), frame='icrs')
+                coord = selected_image.get_sky_coord()
                 nearby_projects = Project.find_nearby(coord)
                 if nearby_projects:
                     add_to_nearby_project_menu = QMenu("Add to Nearby Project", self)
@@ -796,7 +796,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
             try:
                 # Create SkyCoord from the image's coordinates
-                coords = SkyCoord(selected_image.coord_ra, selected_image.coord_dec, unit=u.deg, frame='icrs')
+                coords = selected_image.get_sky_coord()
 
                 # Format RA as hours and DEC as degrees
                 ra_str = coords.ra.to_string(unit=u.hour, sep=':', precision=2)

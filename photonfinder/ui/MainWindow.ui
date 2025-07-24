@@ -127,7 +127,23 @@
     <property name="title">
      <string>Project</string>
     </property>
+    <widget class="QMenu" name="menuAddToRecentProject">
+     <property name="title">
+      <string>Add Selection to Recent Project</string>
+     </property>
+     <addaction name="placeholderNoRecentProject"/>
+    </widget>
+    <widget class="QMenu" name="menuAddToNearbyProject">
+     <property name="title">
+      <string>Add Selection to Nearby Project</string>
+     </property>
+     <addaction name="placeholderNoNearbyProject"/>
+    </widget>
     <addaction name="actionManage_Projects"/>
+    <addaction name="separator"/>
+    <addaction name="actionAddToNewProject"/>
+    <addaction name="menuAddToRecentProject"/>
+    <addaction name="menuAddToNearbyProject"/>
    </widget>
    <addaction name="menu_File"/>
    <addaction name="menuFilter"/>
@@ -357,6 +373,21 @@
    </property>
    <property name="text">
     <string>Manage Projects</string>
+   </property>
+  </action>
+  <action name="placeholderNoRecentProject">
+   <property name="text">
+    <string>No Recent Project</string>
+   </property>
+  </action>
+  <action name="actionAddToNewProject">
+   <property name="text">
+    <string>Add Selection to New Project</string>
+   </property>
+  </action>
+  <action name="placeholderNoNearbyProject">
+   <property name="text">
+    <string>No Nearby Project</string>
    </property>
   </action>
  </widget>
@@ -924,6 +955,70 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>menuAddToNearbyProject</sender>
+   <signal>aboutToShow()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>populate_nearby_projects()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>78</x>
+     <y>38</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>menuAddToRecentProject</sender>
+   <signal>aboutToShow()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>populate_recent_projects()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>77</x>
+     <y>38</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>menuProject</sender>
+   <signal>aboutToShow()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>on_show_project_menu()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>120</x>
+     <y>77</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>actionAddToNewProject</sender>
+   <signal>triggered()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>on_add_to_project_action()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -959,5 +1054,9 @@
   <slot>report_telescopius_list()</slot>
   <slot>report_targets()</slot>
   <slot>manage_projects()</slot>
+  <slot>populate_recent_projects()</slot>
+  <slot>populate_nearby_projects()</slot>
+  <slot>on_show_project_menu()</slot>
+  <slot>on_add_to_project_action()</slot>
  </slots>
 </ui>

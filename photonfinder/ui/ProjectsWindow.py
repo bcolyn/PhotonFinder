@@ -1,9 +1,7 @@
 from datetime import datetime
 
-import astropy.units as u
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QMainWindow, QTableWidgetItem, QDialog, QMessageBox
-from astropy.coordinates import SkyCoord
 
 from photonfinder.core import ApplicationContext
 from photonfinder.models import Project, ProjectFile
@@ -48,7 +46,7 @@ class ProjectsWindow(QMainWindow, Ui_ProjectsWindow):
                 image = project.image
                 self.tableWidget.setItem(row, 3, QTableWidgetItem(_format_ra(image.coord_ra)))
                 self.tableWidget.setItem(row, 4, QTableWidgetItem(_format_dec(image.coord_dec)))
-                coord = SkyCoord(image.coord_ra * u.deg, image.coord_dec * u.deg)
+                coord = image.get_sky_coord()
                 self.tableWidget.setItem(row, 5, QTableWidgetItem(coord.get_constellation()))
 
         self.tableWidget.resizeColumnsToContents()
@@ -86,7 +84,6 @@ class ProjectsWindow(QMainWindow, Ui_ProjectsWindow):
     def create_action(self):
         project = Project()
         dialog = ProjectEditDialog(context=self.context, parent=self, project=project)
-        dialog.setWindowTitle("Create Project")
         if dialog.exec() == QDialog.Accepted:
             self.populate_table()
 
@@ -95,7 +92,6 @@ class ProjectsWindow(QMainWindow, Ui_ProjectsWindow):
         assert len(project_ids) == 1
         project = Project.get_by_id(project_ids[0])
         dialog = ProjectEditDialog(context=self.context, parent=self, project=project)
-        dialog.setWindowTitle(f"Edit Project {project.name}")
         if dialog.exec() == QDialog.Accepted:
             self.populate_table()
 

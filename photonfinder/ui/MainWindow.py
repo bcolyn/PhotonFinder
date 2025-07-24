@@ -2,7 +2,7 @@ import logging
 import time
 
 from PySide6.QtCore import QThread, Signal, QObject, QSize
-from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter, QPalette
+from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter, QPalette, QAction
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import *
 
@@ -212,34 +212,34 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tabs_changed.emit(self.get_search_panels())
 
     def add_exposure_filter(self):
-        self.getCurrentSearchPanel().add_exposure_filter()
+        self.get_current_search_panel().add_exposure_filter()
 
-    def getCurrentSearchPanel(self) -> SearchPanel:
+    def get_current_search_panel(self) -> SearchPanel:
         return self.tabWidget.currentWidget()
 
     def add_telescope_filter(self):
-        self.getCurrentSearchPanel().add_telescope_filter()
+        self.get_current_search_panel().add_telescope_filter()
 
     def add_binning_filter(self):
-        self.getCurrentSearchPanel().add_binning_filter()
+        self.get_current_search_panel().add_binning_filter()
 
     def add_gain_filter(self):
-        self.getCurrentSearchPanel().add_gain_filter()
+        self.get_current_search_panel().add_gain_filter()
 
     def add_temperature_filter(self):
-        self.getCurrentSearchPanel().add_temperature_filter()
+        self.get_current_search_panel().add_temperature_filter()
 
     def add_datetime_filter(self):
-        self.getCurrentSearchPanel().add_datetime_filter()
+        self.get_current_search_panel().add_datetime_filter()
 
     def add_coordinates_filter(self):
-        self.getCurrentSearchPanel().add_coordinates_filter()
+        self.get_current_search_panel().add_coordinates_filter()
 
     def add_header_text_filter(self):
-        self.getCurrentSearchPanel().add_header_text_filter()
+        self.get_current_search_panel().add_header_text_filter()
 
     def report_metadata(self):
-        self.getCurrentSearchPanel().report_metadata()
+        self.get_current_search_panel().report_metadata()
 
     def view_log(self):
         """
@@ -262,7 +262,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         dialog.exec()
 
     def export_data(self):
-        self.getCurrentSearchPanel().export_data()
+        self.get_current_search_panel().export_data()
 
     def create_backup(self):
         if not self.context.database:
@@ -342,7 +342,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.critical(self, "Database Open Failed", error_msg)
 
     def find_matching_darks(self):
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         selected_image = current_panel.get_selected_image()
         if not selected_image:
             return
@@ -353,7 +353,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tabWidget.setCurrentIndex(tab)
 
     def find_matching_flats(self):
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         selected_image = current_panel.get_selected_image()
         if not selected_image:
             return
@@ -368,7 +368,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def open_selected_file(self):
         """Open the selected file using the associated application."""
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         if not current_panel:
             return
         # Get the selected row
@@ -380,7 +380,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def show_file_location(self):
         """Open the file explorer showing the directory containing the selected file."""
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         if not current_panel:
             return
         # Get the selected row
@@ -392,7 +392,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def select_path_in_tree(self):
         """Select the path of the selected file in the tree view."""
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         if not current_panel:
             return
         # Get the selected row
@@ -403,29 +403,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_panel.select_path_in_tree(selected_rows[0])
 
     def plate_solve_files(self):
-        self.getCurrentSearchPanel().plate_solve_files()
+        self.get_current_search_panel().plate_solve_files()
 
     def plate_solve_files_astrometry(self):
-        self.getCurrentSearchPanel().plate_solve_files(SolverType.ASTROMETRY_NET)
+        self.get_current_search_panel().plate_solve_files(SolverType.ASTROMETRY_NET)
 
     def report_list_files(self):
         """
         Show a file save dialog to select an output filename (.txt|.lst),
         then create a FileListTask to generate a list of files matching the current search criteria.
         """
-        self.getCurrentSearchPanel().report_list_files()
+        self.get_current_search_panel().report_list_files()
 
     def report_telescopius_list(self):
         """
         Show the Telescopius Compare dialog for comparing files with Telescopius data.
         """
-        self.getCurrentSearchPanel().report_telescopius_list()
+        self.get_current_search_panel().report_telescopius_list()
 
     def report_targets(self):
-        self.getCurrentSearchPanel().report_targets()
+        self.get_current_search_panel().report_targets()
 
     def enable_actions_for_current_tab(self):
-        current_panel = self.getCurrentSearchPanel()
+        current_panel = self.get_current_search_panel()
         if not current_panel:
             return
         selected_image = current_panel.get_selected_image()
@@ -440,7 +440,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def add_selection_to_project(self, project: Project):
         edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)
-        selection = self.getCurrentSearchPanel().get_selected_files()
+        selection = self.get_current_search_panel().get_selected_files()
         files_to_add = File.remove_already_mapped(project, selection)
         for file in files_to_add:
             edit_dialog.add_file(ProjectFile(project=project, file=file))
@@ -448,6 +448,46 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         edit_dialog.exec()
         if self.projects_window:
             self.projects_window.populate_table()
+
+    def populate_recent_projects(self):
+        self.menuAddToRecentProject.clear()
+        projects = Project.find_recent()
+        if projects:
+            for project in projects:
+                project_action = self.menuAddToRecentProject.addAction(project.name)
+                project_action.setData(project)
+                project_action.triggered.connect(self.on_add_to_project_action)
+        else:
+            self.menuAddToRecentProject.addAction(self.placeholderNoRecentProject)
+
+    def populate_nearby_projects(self):
+        self.menuAddToNearbyProject.clear()
+        files =  self.get_current_search_panel().get_selected_files()
+        coord = next((coord for f in files if hasattr(f, 'image') and
+                                 f.image and (coord := f.image.get_sky_coord()) is not None), None)
+        projects = Project.find_nearby(coord)
+        if projects:
+            for project in projects:
+                project_action = self.menuAddToNearbyProject.addAction(project.name)
+                project_action.setData(project)
+                project_action.triggered.connect(self.on_add_to_project_action)
+        else:
+            self.menuAddToNearbyProject.addAction(self.placeholderNoNearbyProject)
+
+    def on_add_to_project_action(self):
+        action: QAction = self.sender()
+        project = action.data() if action.data() else Project()
+        self.add_selection_to_project(project)
+
+    def on_show_project_menu(self):
+        current_panel = self.get_current_search_panel()
+        files = current_panel.get_selected_files()
+        has_selection = files is not None and len(files) > 0
+        self.menuAddToRecentProject.setEnabled(has_selection)
+        self.actionAddToNewProject.setEnabled(has_selection)
+        selection_coord = next((coord for f in files if hasattr(f, 'image') and
+                                 f.image and (coord := f.image.get_sky_coord()) is not None), None)
+        self.menuAddToNearbyProject.setEnabled(has_selection and selection_coord is not None)
 
 
 def create_colored_svg_icon(svg_path: str, size: QSize, color) -> QIcon:
