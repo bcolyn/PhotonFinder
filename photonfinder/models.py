@@ -4,11 +4,18 @@ import os
 import typing
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import cmp_to_key
 from pathlib import Path
 from typing import Optional
 
+import astropy.units as u
+from astropy.coordinates import SkyCoord
+from astropy_healpix import HEALPix
 from peewee import *
 from playhouse.sqlite_ext import RowIDField
+
+# Create HEALPix object with the same parameters as used in fits_handlers.py
+hp = HEALPix(nside=256, order='nested', frame='icrs')
 
 
 @dataclass
@@ -361,16 +368,8 @@ class Image(Model):
         # Filter by coordinates
         if criteria.coord_ra and criteria.coord_dec and exclude_ref is not Image.coord_pix256:
             try:
-                from astropy.coordinates import SkyCoord
-                import astropy.units as u
-                from astropy_healpix import HEALPix
-
                 # Parse RA and DEC from strings to SkyCoord
                 coords = SkyCoord(criteria.coord_ra, criteria.coord_dec, unit=(u.hourangle, u.deg), frame='icrs')
-
-                # Create HEALPix object with the same parameters as used in fits_handlers.py
-                hp = HEALPix(nside=256, order='nested', frame='icrs')
-
                 # Get pixels in the cone
                 radius = criteria.coord_radius * u.deg
                 pixels = hp.cone_search_skycoord(coords, radius)
@@ -433,6 +432,37 @@ class Project(Model):
     @staticmethod
     def find_recent() -> typing.List['Project']:
         return list(Project.select().order_by(Project.last_change.desc()).limit(10))
+
+    @staticmethod
+    def find_nearby(coord: SkyCoord) -> typing.List['Project']:
+        radius = 1 * u.deg
+        pixels = list(hp.cone_search_skycoord(coord, radius))
+
+        rn = fn.ROW_NUMBER().over(
+            partition_by=[ProjectFile.project],
+            order_by=[Image.date_obs.desc()]
+        )
+
+        image_coord = (
+            Image.select(Image.coord_ra, Image.coord_dec, Image.coord_pix256, ProjectFile.project.alias("project_id"),
+                         rn.alias('rn'))
+            .join(File)
+            .join(ProjectFile)
+            .where(Image.coord_pix256.in_(pixels))
+            .order_by(Image.date_obs))
+
+        raw_list = list(Project.select(Project,
+                                       image_coord.c.coord_ra.alias("coord_ra"),
+                                       image_coord.c.coord_dec.alias("coord_dec")
+                                       ).join_from(Project, image_coord,
+                                                   on=((Project.rowid == image_coord.c.project_id) & (
+                                                               image_coord.c.rn == 1))))
+
+        def dist(project: Project):
+            return coord.separation(SkyCoord(project.image.coord_ra * u.deg, project.image.coord_dec * u.deg))
+
+        raw_list.sort(key=cmp_to_key(lambda p1, p2: dist(p1) - dist(p2)))
+        return raw_list[:9]
 
     @staticmethod
     def list_projects_with_image_data() -> typing.List['Project']:

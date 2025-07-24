@@ -5,22 +5,24 @@ from datetime import datetime, timezone
 from enum import Enum
 from logging import DEBUG
 
+import astropy.units as u
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
+from astropy.coordinates import SkyCoord
 
 from photonfinder.core import ApplicationContext, decompress
+from photonfinder.filesystem import Importer, header_from_xisf_dict
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project
+from photonfinder.platesolver import SolverType
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
 from .DateRangeDialog import DateRangeDialog
 from .HeaderDialog import HeaderDialog
+from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .MetadataReportDialog import MetadataReportDialog
 from .ProgressDialog import ProgressDialog
-from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
-from .generated.SearchPanel_ui import Ui_SearchPanel
 from .formatting import _format_ra, _format_dec, _format_date, _format_file_size, _format_timestamp
-from photonfinder.platesolver import SolverType
-from photonfinder.filesystem import Importer, header_from_xisf_dict
+from .generated.SearchPanel_ui import Ui_SearchPanel
 
 EMPTY_LABEL = "<empty>"
 RESET_LABEL = "<any>"
@@ -395,25 +397,40 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         find_darks_action = menu.addAction("Find matching darks")
         find_flats_action = menu.addAction("Find matching flats")
         menu.addSeparator()
-        add_to_project_menu = QMenu("Add to Group/Project", self)
-        menu.addMenu(add_to_project_menu)
-        new_project_action = add_to_project_menu.addAction("New Project")
+
+        new_project_action = menu.addAction("Add to New Project")
         new_project_action.setData(Project())
+
+        add_to_recent_project_menu = QMenu("Add to Recent Project", self)
+        menu.addMenu(add_to_recent_project_menu)
         recent_projects = Project.find_recent()
-        recent_project_actions = list()
+        project_actions = list([new_project_action])
+
+
         if recent_projects:
-            add_to_project_menu.addSeparator()
+            add_to_recent_project_menu.addSeparator()
             for recent_project in recent_projects:
-                recent_project_action = add_to_project_menu.addAction(recent_project.name)
+                recent_project_action = add_to_recent_project_menu.addAction(recent_project.name)
                 recent_project_action.setData(recent_project)
-                recent_project_actions.append(recent_project_action)
+                project_actions.append(recent_project_action)
 
         # enable or disable based on current selection
         selected_file = self.get_file_at_row(index.row())
         if selected_file and hasattr(selected_file, 'image'):
-            current_type = selected_file.image.image_type
+            selected_image = selected_file.image
+            current_type = selected_image.image_type
             find_darks_action.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
             find_flats_action.setEnabled(current_type == "LIGHT")
+            if selected_image.coord_pix256:
+                coord = SkyCoord(selected_image.coord_ra, selected_image.coord_dec, unit=(u.deg, u.deg), frame='icrs')
+                nearby_projects = Project.find_nearby(coord)
+                if nearby_projects:
+                    add_to_nearby_project_menu = QMenu("Add to Nearby Project", self)
+                    menu.addMenu(add_to_nearby_project_menu)
+                    for nearby_project in nearby_projects:
+                        nearby_project_action = add_to_nearby_project_menu.addAction(nearby_project.name)
+                        nearby_project_action.setData(nearby_project)
+                        project_actions.append(nearby_project_action)
         else:
             find_darks_action.setEnabled(False)
             find_flats_action.setEnabled(False)
@@ -437,7 +454,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         elif action == find_flats_action:
             if self.mainWindow:
                 self.mainWindow.find_matching_flats()
-        elif action == new_project_action or action in recent_project_actions:
+        elif action in project_actions:
             project = action.data()
             self.mainWindow.add_selection_to_project(project)
 
