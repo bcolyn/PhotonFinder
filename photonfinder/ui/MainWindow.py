@@ -81,6 +81,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.context = context
         self.app = app
         self.scan_worker = None  # Initialize scan_worker attribute
+        self.projects_window = None
         self.new_search_tab()
 
         # Set the window icon from the resource file
