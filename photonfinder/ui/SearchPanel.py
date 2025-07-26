@@ -13,7 +13,7 @@ from astropy.coordinates import SkyCoord
 
 from photonfinder.core import ApplicationContext, decompress
 from photonfinder.filesystem import Importer, header_from_xisf_dict
-from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project
+from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT
 from photonfinder.platesolver import SolverType
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
 from .DateRangeDialog import DateRangeDialog
@@ -1084,6 +1084,15 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         from .TargetObjectReportWindow import TargetObjectReportWindow
         target_report_window = TargetObjectReportWindow(context=self.context, parent=self)
         target_report_window.show()
+
+    def add_no_project_filter(self):
+        project = NO_PROJECT
+        text = f"Project: {project.name}"
+        filter_button = FilterButton(self, text, AdvancedFilter.PROJECT)
+        filter_button.on_remove_filter.connect(self.reset_project_criteria)
+        self.add_filter_button_control(filter_button)
+        self.search_criteria.project = project
+        self.update_search_criteria()
 
 
 def _get_combo_value(combo: QComboBox) -> str | None:

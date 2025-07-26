@@ -136,9 +136,12 @@ class SearchCriteria:
         data_dict = json.loads(json_bytes)
         if data_dict.get('reference_file'):  # re-inflate the reference file
             data_dict['reference_file'] = File.get(File.rowid == data_dict['reference_file'])
-        if data_dict.get('project'):
-            # re-inflate the project
-            data_dict['project'] = Project.get(Project.rowid == data_dict['project'])
+        if data_dict.get('project'):  # re-inflate the project
+            project_id = int(data_dict.get('project'))
+            if project_id > 0:
+                data_dict['project'] = Project.get(Project.rowid == data_dict['project'])
+            else:
+                data_dict['project'] = NO_PROJECT
         if data_dict.get('paths', None):
             data_dict['paths'] = [RootAndPath(**x) for x in data_dict['paths']]
         if data_dict.get('start_datetime', None):
@@ -411,8 +414,12 @@ class Image(Model):
                 conditions.append(fn.decompress(FitsHeader.header).contains(criteria.header_text))
 
         if criteria.project:
-            query = query.join_from(File, ProjectFile)
-            conditions.append(ProjectFile.project == criteria.project)
+            if criteria.project.rowid > 0:
+                query = query.join_from(File, ProjectFile)
+                conditions.append(ProjectFile.project == criteria.project)
+            else:
+                query = query.join_from(File, ProjectFile, JOIN.LEFT_OUTER)
+                conditions.append(ProjectFile.project.is_null(True))
 
         # Apply all conditions to the query
         for condition in conditions:
@@ -516,6 +523,7 @@ class Project(Model):
 
         return list(query)
 
+NO_PROJECT = Project(rowid=-1, name="No Project")
 
 class ProjectFile(Model):
     rowid = RowIDField()

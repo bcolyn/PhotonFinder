@@ -252,6 +252,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def add_header_text_filter(self):
         self.get_current_search_panel().add_header_text_filter()
 
+    def add_no_project_filter(self):
+        self.get_current_search_panel().add_no_project_filter()
+
     def report_metadata(self):
         self.get_current_search_panel().report_metadata()
 
