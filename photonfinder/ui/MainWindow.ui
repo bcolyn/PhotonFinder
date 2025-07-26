@@ -172,6 +172,27 @@
    <addaction name="actionShow_location"/>
    <addaction name="action_Export_Data"/>
   </widget>
+  <widget class="QDockWidget" name="dockWidget">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="minimumSize">
+    <size>
+     <width>200</width>
+     <height>40</height>
+    </size>
+   </property>
+   <property name="allowedAreas">
+    <set>Qt::DockWidgetArea::LeftDockWidgetArea|Qt::DockWidgetArea::RightDockWidgetArea</set>
+   </property>
+   <property name="windowTitle">
+    <string>Projects</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>2</number>
+   </attribute>
+   <widget class="QWidget" name="dockWidgetContents"/>
+  </widget>
   <action name="action_View_Log">
    <property name="text">
     <string>View &amp;Log</string>
@@ -367,6 +388,9 @@
    </property>
   </action>
   <action name="actionManage_Projects">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="icon">
     <iconset resource="resources.qrc">
      <normaloff>:/res/stack.svg</normaloff>:/res/stack.svg</iconset>
@@ -943,7 +967,7 @@
    <sender>actionManage_Projects</sender>
    <signal>triggered()</signal>
    <receiver>MainWindow</receiver>
-   <slot>manage_projects()</slot>
+   <slot>show_projects_window(bool)</slot>
    <hints>
     <hint type="sourcelabel">
      <x>-1</x>
@@ -1019,6 +1043,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>dockWidget</sender>
+   <signal>visibilityChanged(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>show_projects_window(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>699</x>
+     <y>332</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>399</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>close_search_tab(int)</slot>
@@ -1053,7 +1093,7 @@
   <slot>report_metadata()</slot>
   <slot>report_telescopius_list()</slot>
   <slot>report_targets()</slot>
-  <slot>manage_projects()</slot>
+  <slot>show_projects_window(bool)</slot>
   <slot>populate_recent_projects()</slot>
   <slot>populate_nearby_projects()</slot>
   <slot>on_show_project_menu()</slot>

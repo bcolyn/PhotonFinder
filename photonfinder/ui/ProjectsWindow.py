@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QMainWindow, QTableWidgetItem, QDialog, QMessageBox
+from PySide6.QtWidgets import QTableWidgetItem, QDialog, QMessageBox, QWidget
 
 from photonfinder.core import ApplicationContext
 from photonfinder.models import Project, ProjectFile
@@ -10,7 +10,7 @@ from .ProjectEditDialog import ProjectEditDialog
 from .formatting import _format_ra, _format_dec, _format_date
 
 
-class ProjectsWindow(QMainWindow, Ui_ProjectsWindow):
+class ProjectsWindow(QWidget, Ui_ProjectsWindow):
     closing = Signal()
 
     def __init__(self, context: ApplicationContext, parent=None):

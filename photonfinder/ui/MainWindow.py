@@ -73,7 +73,7 @@ class LibraryScanWorker(QThread):
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     tabs_changed = Signal(list)
-    projects_window: ProjectsWindow
+    projects_window: ProjectsWindow | None
 
     def __init__(self, app: QApplication, context: ApplicationContext, parent=None):
         super(MainWindow, self).__init__(parent)
@@ -95,6 +95,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionOpen_File.setIcon(create_colored_svg_icon(":/res/card-image.svg", size, text_color))
         self.action_Open_Database.setIcon(create_colored_svg_icon(":/res/database.svg", size, text_color))
         self.action_Export_Data.setIcon(create_colored_svg_icon(":/res/send-plus.svg", size, text_color))
+
+        # hide the dock initially
+        self.dockWidget.hide()
 
         self.reporter = UIStatusReporter()
         self.reporter.on_message.connect(self.statusBar().showMessage)
@@ -147,11 +150,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 if response == QMessageBox.Yes:
                     self.scan_libraries()
 
-    def manage_projects(self):
-        window = ProjectsWindow(context=self.context, parent=self)
-        window.closing.connect(self.clear_projects_window)
-        self.projects_window = window
-        window.show()
+    def show_projects_window(self, checked):
+        if checked:
+            if not self.projects_window:
+                widget = ProjectsWindow(context=self.context, parent=self)
+                self.projects_window = widget
+                self.dockWidget.setWidget(widget)
+            self.actionManage_Projects.setChecked(True)
+            self.dockWidget.show()
+        else:
+            if self.projects_window:
+                self.projects_window.destroy()
+                self.projects_window = None
+                self.dockWidget.setWidget(self.dockWidgetContents)
+            self.actionManage_Projects.setChecked(False)
+            self.dockWidget.hide()
 
     def clear_projects_window(self):
         self.projects_window = None
@@ -462,9 +475,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def populate_nearby_projects(self):
         self.menuAddToNearbyProject.clear()
-        files =  self.get_current_search_panel().get_selected_files()
+        files = self.get_current_search_panel().get_selected_files()
         coord = next((coord for f in files if hasattr(f, 'image') and
-                                 f.image and (coord := f.image.get_sky_coord()) is not None), None)
+                      f.image and (coord := f.image.get_sky_coord()) is not None), None)
         projects = Project.find_nearby(coord)
         if projects:
             for project in projects:
@@ -486,7 +499,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.menuAddToRecentProject.setEnabled(has_selection)
         self.actionAddToNewProject.setEnabled(has_selection)
         selection_coord = next((coord for f in files if hasattr(f, 'image') and
-                                 f.image and (coord := f.image.get_sky_coord()) is not None), None)
+                                f.image and (coord := f.image.get_sky_coord()) is not None), None)
         self.menuAddToNearbyProject.setEnabled(has_selection and selection_coord is not None)
 
 
