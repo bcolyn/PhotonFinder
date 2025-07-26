@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTableWidgetItem, QFile
 
 from photonfinder.core import ApplicationContext
 from photonfinder.models import Project, File, LibraryRoot, ProjectFile, Image
-from photonfinder.ui.formatting import _format_timestamp
+from photonfinder.ui.common import _format_timestamp
 from photonfinder.ui.generated.ProjectEditDialog_ui import Ui_ProjectEditDialog
 
 

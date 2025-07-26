@@ -6,6 +6,7 @@
     <file>res/card-image.svg</file>
     <file>res/database.svg</file>
     <file>res/send-plus.svg</file>
+    <file>res/funnel.svg</file>
     <file alias="icon.png">../../icon.png</file>
   </qresource>
 </RCC>

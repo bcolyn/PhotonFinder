@@ -39,6 +39,7 @@
      <addaction name="actionEdit"/>
      <addaction name="actionDelete"/>
      <addaction name="actionMerge"/>
+     <addaction name="actionUseAsFilter"/>
     </widget>
    </item>
    <item>
@@ -129,7 +130,24 @@
     <enum>QAction::MenuRole::NoRole</enum>
    </property>
   </action>
+  <action name="actionUseAsFilter">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/res/funnel.svg</normaloff>:/res/funnel.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Use As Filter</string>
+   </property>
+   <property name="toolTip">
+    <string>Filter Files</string>
+   </property>
+   <property name="menuRole">
+    <enum>QAction::MenuRole::NoRole</enum>
+   </property>
+  </action>
  </widget>
- <resources/>
+ <resources>
+  <include location="resources.qrc"/>
+ </resources>
  <connections/>
 </ui>

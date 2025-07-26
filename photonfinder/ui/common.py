@@ -1,6 +1,10 @@
 import logging
 from datetime import datetime
 
+from PySide6.QtCore import QSize
+from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter
+from PySide6.QtSvg import QSvgRenderer
+
 
 def _format_file_size(size_bytes):
     """Format file size from bytes to human-readable format."""
@@ -52,3 +56,16 @@ def _format_timestamp(timestamp_ms: int):
     dt = datetime.fromtimestamp(timestamp_ms / 1000)
     date_str = _format_date(dt)
     return date_str
+
+def create_colored_svg_icon(svg_path: str, size: QSize, color) -> QIcon:
+    renderer = QSvgRenderer(svg_path)
+    pixmap = QPixmap(size)
+    pixmap.fill(Qt.transparent)
+
+    painter = QPainter(pixmap)
+    renderer.render(painter)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(pixmap.rect(), color)
+    painter.end()
+
+    return QIcon(pixmap)

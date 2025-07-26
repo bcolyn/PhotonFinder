@@ -1,30 +1,38 @@
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QTableWidgetItem, QDialog, QMessageBox, QWidget
 
 from photonfinder.core import ApplicationContext
 from photonfinder.models import Project, ProjectFile
 from photonfinder.ui.generated.ProjectsWindow_ui import Ui_ProjectsWindow
 from .ProjectEditDialog import ProjectEditDialog
-from .formatting import _format_ra, _format_dec, _format_date
+from .common import _format_ra, _format_dec, _format_date, create_colored_svg_icon
 
 
 class ProjectsWindow(QWidget, Ui_ProjectsWindow):
+    main_window: "MainWindow"
     closing = Signal()
 
-    def __init__(self, context: ApplicationContext, parent=None):
+    def __init__(self, context: ApplicationContext, main_window, parent=None):
         super(ProjectsWindow, self).__init__(parent)
         self.setupUi(self)
         self.context = context
         self.connect_signals()
         self.populate_table()
+        self.main_window = main_window
+
+        text_color = self.palette().color(QPalette.WindowText)
+        size = QSize(24, 24)
+        self.actionUseAsFilter.setIcon(create_colored_svg_icon(":/res/funnel.svg", size, text_color))
 
     def connect_signals(self):
         self.actionCreate.triggered.connect(self.create_action)
         self.actionEdit.triggered.connect(self.edit_action)
         self.actionDelete.triggered.connect(self.delete_action)
         self.actionMerge.triggered.connect(self.merge_action)
+        self.actionUseAsFilter.triggered.connect(self.use_as_filter_action)
         self.tableWidget.itemSelectionChanged.connect(self.enable_disable_actions)
 
     def populate_table(self):
@@ -109,12 +117,28 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
             Project.delete().where(Project.rowid.in_(to_merge_ids)).execute()
         self.populate_table()
 
+    def use_as_filter_action(self):
+        from photonfinder.ui.SearchPanel import FilterButton, AdvancedFilter
+        search_panel = self.main_window.get_current_search_panel()
+        project_ids = self.get_selected_projects()
+        assert len(project_ids) == 1
+        project = Project.get_by_id(project_ids[0])
+
+        text = f"Project: {project.name}"
+        filter_button = FilterButton(search_panel, text, AdvancedFilter.PROJECT)
+        filter_button.on_remove_filter.connect(search_panel.reset_project_criteria)
+        search_panel.add_filter_button_control(filter_button)
+        search_panel.search_criteria.project = project
+        search_panel.update_search_criteria()
+
+
     def enable_disable_actions(self):
         project_ids = self.get_selected_projects()
         self.actionDelete.setEnabled(self.tableWidget.rowCount() >= 1)
         self.actionMerge.setEnabled(len(project_ids) >= 2)
         self.actionDelete.setEnabled(len(project_ids) >= 1)
         self.actionEdit.setEnabled(len(project_ids) == 1)
+        self.actionUseAsFilter.setEnabled(len(project_ids) == 1)
 
     def get_selected_projects(self):
         return [x.data(Qt.UserRole) for x in self.tableWidget.selectedItems() if x.data(Qt.UserRole)]

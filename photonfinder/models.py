@@ -50,6 +50,7 @@ class SearchCriteria:
     end_datetime: datetime | None = None
     reference_file: Optional['File'] = None
     header_text: str = ""
+    project: 'Project' = None
 
     def is_empty(self):
         return self == SearchCriteria()
@@ -63,6 +64,8 @@ class SearchCriteria:
                      self.telescope, self.binning, self.gain, self.temperature, self.header_text]:
             if text:
                 result.append(text)
+        if self.project:
+            result.append(self.project.name)
         if self.coord_ra and self.coord_dec:
             result.append(f"({self.coord_ra}{self.coord_dec})+-{self.coord_radius}d")
         if self.start_datetime and self.end_datetime:
@@ -120,6 +123,8 @@ class SearchCriteria:
             return value.isoformat()
         if isinstance(value, File):
             return value.rowid
+        if isinstance(value, Project):
+            return value.rowid
         else:
             return value.__dict__
 
@@ -131,6 +136,9 @@ class SearchCriteria:
         data_dict = json.loads(json_bytes)
         if data_dict.get('reference_file'):  # re-inflate the reference file
             data_dict['reference_file'] = File.get(File.rowid == data_dict['reference_file'])
+        if data_dict.get('project'):
+            # re-inflate the project
+            data_dict['project'] = Project.get(Project.rowid == data_dict['project'])
         if data_dict.get('paths', None):
             data_dict['paths'] = [RootAndPath(**x) for x in data_dict['paths']]
         if data_dict.get('start_datetime', None):
@@ -401,6 +409,10 @@ class Image(Model):
                     conditions.append(fn.decompress(FitsHeader.header).contains(criteria.header_text))
             except ValueError:
                 conditions.append(fn.decompress(FitsHeader.header).contains(criteria.header_text))
+
+        if criteria.project:
+            query = query.join_from(File, ProjectFile)
+            conditions.append(ProjectFile.project == criteria.project)
 
         # Apply all conditions to the query
         for condition in conditions:

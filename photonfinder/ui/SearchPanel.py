@@ -21,7 +21,7 @@ from .HeaderDialog import HeaderDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .MetadataReportDialog import MetadataReportDialog
 from .ProgressDialog import ProgressDialog
-from .formatting import _format_ra, _format_dec, _format_date, _format_file_size, _format_timestamp
+from .common import _format_ra, _format_dec, _format_date, _format_file_size, _format_timestamp
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
 EMPTY_LABEL = "<empty>"
@@ -848,6 +848,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 return file.image
 
         return None
+    def reset_project_criteria(self):
+        self.search_criteria.project = None
 
     def add_datetime_filter(self):
         dialog = DateRangeDialog(self.context)
@@ -1009,6 +1011,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button.on_remove_filter.connect(self.reset_header_text_criteria)
             self.add_filter_button_control(filter_button)
 
+        if criteria.project:
+            text = f"Project: {criteria.project.name}"
+            filter_button = FilterButton(self, text, AdvancedFilter.PROJECT)
+            filter_button.on_remove_filter.connect(self.reset_project_criteria)
+            self.add_filter_button_control(filter_button)
+
     def plate_solve_files(self, solver_type: SolverType = SolverType.ASTAP):
         selected_files = self.get_selected_files()
         # If no files are selected, use the search criteria
@@ -1112,3 +1120,4 @@ class AdvancedFilter(Enum):
     TEMPERATURE = 6
     COORDINATES = 7
     HEADER_TEXT = 8
+    PROJECT = 9

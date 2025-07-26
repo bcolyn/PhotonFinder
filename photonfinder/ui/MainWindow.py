@@ -16,6 +16,7 @@ from .ProjectEditDialog import ProjectEditDialog
 from .ProjectsWindow import ProjectsWindow
 from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
+from .common import create_colored_svg_icon
 from .generated.MainWindow_ui import Ui_MainWindow
 import photonfinder.ui.generated.resources_rc
 from ..platesolver import SolverType
@@ -153,7 +154,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def show_projects_window(self, checked):
         if checked:
             if not self.projects_window:
-                widget = ProjectsWindow(context=self.context, parent=self)
+                widget = ProjectsWindow(context=self.context, main_window=self, parent=self)
                 self.projects_window = widget
                 self.dockWidget.setWidget(widget)
             self.actionManage_Projects.setChecked(True)
@@ -501,17 +502,3 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         selection_coord = next((coord for f in files if hasattr(f, 'image') and
                                 f.image and (coord := f.image.get_sky_coord()) is not None), None)
         self.menuAddToNearbyProject.setEnabled(has_selection and selection_coord is not None)
-
-
-def create_colored_svg_icon(svg_path: str, size: QSize, color) -> QIcon:
-    renderer = QSvgRenderer(svg_path)
-    pixmap = QPixmap(size)
-    pixmap.fill(Qt.transparent)
-
-    painter = QPainter(pixmap)
-    renderer.render(painter)
-    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
-    painter.fillRect(pixmap.rect(), color)
-    painter.end()
-
-    return QIcon(pixmap)
