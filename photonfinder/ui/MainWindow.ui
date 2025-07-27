@@ -244,36 +244,64 @@
    </property>
   </action>
   <action name="actionExposure">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/res/clock.svg</normaloff>:/res/clock.svg</iconset>
+   </property>
    <property name="text">
     <string>Exposure</string>
    </property>
   </action>
   <action name="actionCoordinates">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/res/rulers.svg</normaloff>:/res/rulers.svg</iconset>
+   </property>
    <property name="text">
     <string>Coordinates</string>
    </property>
   </action>
   <action name="actionDate">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/res/calendar3.svg</normaloff>:/res/calendar3.svg</iconset>
+   </property>
    <property name="text">
     <string>Date</string>
    </property>
   </action>
   <action name="actionTelescope">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/res/telescope-icon-original.svg</normaloff>:/res/telescope-icon-original.svg</iconset>
+   </property>
    <property name="text">
     <string>Telescope</string>
    </property>
   </action>
   <action name="actionBinning">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/res/border-outer.svg</normaloff>:/res/border-outer.svg</iconset>
+   </property>
    <property name="text">
     <string>Binning</string>
    </property>
   </action>
   <action name="actionGain">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/res/exposure.svg</normaloff>:/res/exposure.svg</iconset>
+   </property>
    <property name="text">
     <string>Gain</string>
    </property>
   </action>
   <action name="actionTemperature">
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/res/thermometer-half.svg</normaloff>:/res/thermometer-half.svg</iconset>
+   </property>
    <property name="text">
     <string>Temperature</string>
    </property>

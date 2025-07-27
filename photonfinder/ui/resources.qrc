@@ -7,6 +7,13 @@
     <file>res/database.svg</file>
     <file>res/send-plus.svg</file>
     <file>res/funnel.svg</file>
+    <file>res/calendar3.svg</file>
+    <file>res/clock.svg</file>
+    <file>res/rulers.svg</file>
+    <file>res/thermometer-half.svg</file>
+    <file>res/exposure.svg</file>
+    <file>res/telescope-icon-original.svg</file>
+    <file>res/border-outer.svg</file>
     <file alias="icon.png">../../icon.png</file>
   </qresource>
 </RCC>

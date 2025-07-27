@@ -97,6 +97,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.action_Open_Database.setIcon(create_colored_svg_icon(":/res/database.svg", size, text_color))
         self.action_Export_Data.setIcon(create_colored_svg_icon(":/res/send-plus.svg", size, text_color))
 
+        self.actionExposure.setIcon(create_colored_svg_icon(":/res/clock.svg", size, text_color))
+        self.actionCoordinates.setIcon(create_colored_svg_icon(":/res/rulers.svg", size, text_color))
+        self.actionDate.setIcon(create_colored_svg_icon(":/res/calendar3.svg", size, text_color))
+        self.actionTelescope.setIcon(create_colored_svg_icon(":/res/telescope-icon-original.svg", size, text_color))
+        self.actionBinning.setIcon(create_colored_svg_icon(":/res/border-outer.svg", size, text_color))
+        self.actionGain.setIcon(create_colored_svg_icon(":/res/exposure.svg", size, text_color))
+        self.actionTemperature.setIcon(create_colored_svg_icon(":/res/thermometer-half.svg", size, text_color))
+
+
         # hide the dock initially
         self.dockWidget.hide()
 
