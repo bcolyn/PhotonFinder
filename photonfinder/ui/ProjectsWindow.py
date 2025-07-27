@@ -34,6 +34,7 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
         self.actionMerge.triggered.connect(self.merge_action)
         self.actionUseAsFilter.triggered.connect(self.use_as_filter_action)
         self.tableWidget.itemSelectionChanged.connect(self.enable_disable_actions)
+        self.tableWidget.doubleClicked.connect(self.edit_action)
 
     def populate_table(self):
         projects = Project.list_projects_with_image_data()
