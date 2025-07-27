@@ -20,6 +20,10 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.astap_path_edit.setText(self.context.settings.get_astap_path())
         self.astrometry_api_key_edit.setText(self.context.settings.get_astrometry_net_api_key())
 
+        # Initialize file settings
+        self.file_ignore_edit.setText(self.context.settings.get_bad_file_patterns())
+        self.folder_ignore_edit.setText(self.context.settings.get_bad_dir_patterns())
+
         # Connect signals
         self.astap_browse_button.clicked.connect(self.browse_astap_executable)
 
@@ -52,6 +56,10 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         # Save plate solving settings
         self.context.settings.set_astap_path(self.astap_path_edit.text())
         self.context.settings.set_astrometry_net_api_key(self.astrometry_api_key_edit.text())
+
+        # Save file settings
+        self.context.settings.set_bad_file_patterns(self.file_ignore_edit.text())
+        self.context.settings.set_bad_dir_patterns(self.folder_ignore_edit.text())
 
         # Sync settings to ensure they are saved
         self.context.settings.sync()

@@ -1,4 +1,5 @@
 import bz2
+import fnmatch
 import gzip
 import json
 import lzma
@@ -182,7 +183,7 @@ def header_from_xisf_dict(header_dict: dict[str, list]):
 
 def parse_FITS_header(header_bytes: bytes) -> Header:
     if b'\x09' in header_bytes:
-        #log(WARN, f"FITS header contains tab characters: {header_bytes}")
+        # log(WARN, f"FITS header contains tab characters: {header_bytes}")
         header_bytes = header_bytes.replace(b'\x09', b' ')
     return Header.fromstring(header_bytes)
 
@@ -230,7 +231,6 @@ class ChangeList:
         self.changed_ids = changed_ids
         self.changed_files = changed_files
 
-
     def apply_all(self):
         with File._meta.database.atomic():
             # note that bulk_create does not assign the rowid, and we need this later on, hence the loop.
@@ -247,15 +247,21 @@ class ChangeList:
 class Importer:
     status: StatusReporter
 
-    def __init__(self, context):
+    def __init__(self, context, bad_file_patterns: str = "bad*", bad_dir_patterns: str = "bad*"):
         super().__init__()
         self.status = context.status_reporter
+        self.bad_file_patterns = bad_file_patterns.split("|")
+        self.bad_dir_patterns = bad_dir_patterns.split("|")
 
-    @staticmethod
-    def marked_bad(f: Info) -> bool:
+    def marked_bad(self, f: Info) -> bool:
         """" skips over files that are marked bad """
-        filename = f.name
-        return filename.lower().startswith("bad")
+        lc_filename = f.name.lower()
+        if f.is_file:
+            return any(fnmatch.fnmatch(lc_filename, pattern) for pattern in self.bad_file_patterns)
+        elif f.is_dir:
+            return any(fnmatch.fnmatch(lc_filename, pattern) for pattern in self.bad_dir_patterns)
+        else:
+            return False
 
     @staticmethod
     def is_fits_by_name(filename: str) -> bool:
@@ -282,13 +288,11 @@ class Importer:
         filename = f.name
         return is_compressed(filename)
 
-    @staticmethod
-    def _file_filter(x: Info):
-        return (Importer.is_fits(x) or Importer.is_xisf(x)) and not Importer.marked_bad(x)
+    def _file_filter(self, x: Info):
+        return (Importer.is_fits(x) or Importer.is_xisf(x)) and not self.marked_bad(x)
 
-    @staticmethod
-    def _dir_filter(x: Info):
-        return not Importer.marked_bad(x)
+    def _dir_filter(self, x: Info):
+        return not self.marked_bad(x)
 
     def import_files(self) -> typing.Iterable[ChangeList]:
         roots: typing.Sequence[LibraryRoot] = list(LibraryRoot.select().execute())

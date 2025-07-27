@@ -191,6 +191,18 @@ class Settings:
     def set_last_export_custom_headers(self, value: str):
         self.settings.setValue("last_export_custom_headers", value)
 
+    def get_bad_file_patterns(self):
+        return self.settings.value("bad_file_patterns", "bad*", str)
+
+    def get_bad_dir_patterns(self):
+        return self.settings.value("bad_dir_patterns", "bad*", str)
+
+    def set_bad_file_patterns(self, value) -> str:
+        self.settings.setValue("bad_file_patterns", value)
+
+    def set_bad_dir_patterns(self, value) -> str:
+        self.settings.setValue("bad_dir_patterns", value)
+
     def get_known_fits_keywords(self):
         return sorted(self.known_fits_keywords)
 

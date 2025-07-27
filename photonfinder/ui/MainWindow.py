@@ -54,7 +54,9 @@ class LibraryScanWorker(QThread):
     def __init__(self, context):
         super().__init__()
         self.context = context
-        self.importer = Importer(context)
+        self.importer = Importer(context,
+                                 context.settings.get_bad_file_patterns(),
+                                 context.settings.get_bad_dir_patterns())
 
     def run(self):
         """Run the import process in a background thread."""
