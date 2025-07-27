@@ -28,16 +28,9 @@
      <property name="frameShadow">
       <enum>QFrame::Shadow::Raised</enum>
      </property>
-     <layout class="QVBoxLayout" name="verticalLayout_filters">
-      <item>
+     <layout class="QGridLayout" name="gridLayout">
+      <item row="0" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_search">
-        <item>
-         <widget class="QLabel" name="label">
-          <property name="text">
-           <string>Search by</string>
-          </property>
-         </widget>
-        </item>
         <item>
          <widget class="QFrame" name="filter_fname_frame">
           <property name="frameShape">
@@ -210,8 +203,15 @@
         </item>
        </layout>
       </item>
-      <item>
+      <item row="1" column="1">
        <layout class="QHBoxLayout" name="filter_layout">
+        <item>
+         <widget class="QLabel" name="label_2">
+          <property name="text">
+           <string>More:</string>
+          </property>
+         </widget>
+        </item>
         <item>
          <spacer name="horizontalSpacer_2">
           <property name="orientation">
@@ -226,6 +226,13 @@
          </spacer>
         </item>
        </layout>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>Search by: </string>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>

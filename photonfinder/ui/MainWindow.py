@@ -2,8 +2,7 @@ import logging
 import time
 
 from PySide6.QtCore import QThread, Signal, QObject, QSize
-from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter, QPalette, QAction
-from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtGui import QIcon, QPalette, QAction
 from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext, StatusReporter, backup_database
@@ -14,7 +13,7 @@ from .LibraryRootDialog import LibraryRootDialog
 from .LogWindow import LogWindow
 from .ProjectEditDialog import ProjectEditDialog
 from .ProjectsWindow import ProjectsWindow
-from .SearchPanel import SearchPanel
+from .SearchPanel import SearchPanel, AdvancedFilter
 from .SettingsDialog import SettingsDialog
 from .common import create_colored_svg_icon
 from .generated.MainWindow_ui import Ui_MainWindow
@@ -112,6 +111,50 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.reporter = UIStatusReporter()
         self.reporter.on_message.connect(self.statusBar().showMessage)
         context.set_status_reporter(self.reporter)
+        self.connect_signals()
+
+    def connect_signals(self):
+        self.tabWidget.tabCloseRequested.connect(self.close_search_tab)
+        self.action_Export_Data.triggered.connect(self.export_data)
+        self.action_New_Tab.triggered.connect(self.new_search_tab)
+        self.action_Close_Tab.triggered.connect(self.close_current_search_tab)
+        self.action_Exit.triggered.connect(self.close)
+        self.action_Manage_Libraries.triggered.connect(self.manage_library_roots)
+        self.action_Settings.triggered.connect(self.open_settings_dialog)
+        self.action_Scan_Libraries.triggered.connect(self.scan_libraries)
+        self.actionExposure.triggered.connect(self.add_exposure_filter)
+        self.actionDate.triggered.connect(self.add_datetime_filter)
+        self.action_View_Log.triggered.connect(self.view_log)
+        self.actionCoordinates.triggered.connect(self.add_coordinates_filter)
+        self.actionTelescope.triggered.connect(self.add_telescope_filter)
+        self.actionBinning.triggered.connect(self.add_binning_filter)
+        self.actionGain.triggered.connect(self.add_gain_filter)
+        self.actionTemperature.triggered.connect(self.add_temperature_filter)
+        self.action_Create_Backup.triggered.connect(self.create_backup)
+        self.action_Create_Database.triggered.connect(self.create_database)
+        self.action_Open_Database.triggered.connect(self.open_database)
+        self.actionDuplicate_Tab.triggered.connect(self.dup_search_tab)
+        self.actionFind_matching_darks.triggered.connect(self.find_matching_darks)
+        self.actionFind_matching_flats.triggered.connect(self.find_matching_flats)
+        self.action_About.triggered.connect(self.show_about_dialog)
+        self.tabWidget.currentChanged.connect(self.on_tab_switch)
+        self.actionOpen_File.triggered.connect(self.open_selected_file)
+        self.actionShow_location.triggered.connect(self.show_file_location)
+        self.actionSelect_path.triggered.connect(self.select_path_in_tree)
+        self.actionPlate_solve_files.triggered.connect(self.plate_solve_files)
+        self.actionPlate_Solve_Astrometry_net.triggered.connect(self.plate_solve_files_astrometry)
+        self.actionList_Files.triggered.connect(self.report_list_files)
+        self.actionHeader_Text.triggered.connect(self.add_header_text_filter)
+        self.actionMetadata_Report.triggered.connect(self.report_metadata)
+        self.actionTelescopius_List.triggered.connect(self.report_telescopius_list)
+        self.actionTarget_List_Report.triggered.connect(self.report_targets)
+        self.actionManage_Projects.triggered.connect(self.show_projects_window)
+        self.menuAddToNearbyProject.aboutToShow.connect(self.populate_nearby_projects)
+        self.menuAddToRecentProject.aboutToShow.connect(self.populate_recent_projects)
+        self.menuProject.aboutToShow.connect(self.on_show_project_menu)
+        self.actionAddToNewProject.triggered.connect(self.on_add_to_project_action)
+        self.dockWidget.visibilityChanged.connect(self.show_projects_window)
+        self.action_filter_no_project.triggered.connect(self.add_no_project_filter)
 
     def new_search_tab(self):
         panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
@@ -234,29 +277,36 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         tabs.setTabText(my_index, title)
         self.tabs_changed.emit(self.get_search_panels())
 
-    def add_exposure_filter(self):
-        self.get_current_search_panel().add_exposure_filter()
-
     def get_current_search_panel(self) -> SearchPanel:
         return self.tabWidget.currentWidget()
 
+    def add_exposure_filter(self):
+        self.get_current_search_panel().add_exposure_filter()
+        self.enable_actions_for_current_tab()
+
     def add_telescope_filter(self):
         self.get_current_search_panel().add_telescope_filter()
+        self.enable_actions_for_current_tab()
 
     def add_binning_filter(self):
         self.get_current_search_panel().add_binning_filter()
+        self.enable_actions_for_current_tab()
 
     def add_gain_filter(self):
         self.get_current_search_panel().add_gain_filter()
+        self.enable_actions_for_current_tab()
 
     def add_temperature_filter(self):
         self.get_current_search_panel().add_temperature_filter()
+        self.enable_actions_for_current_tab()
 
     def add_datetime_filter(self):
         self.get_current_search_panel().add_datetime_filter()
+        self.enable_actions_for_current_tab()
 
     def add_coordinates_filter(self):
         self.get_current_search_panel().add_coordinates_filter()
+        self.enable_actions_for_current_tab()
 
     def add_header_text_filter(self):
         self.get_current_search_panel().add_header_text_filter()
@@ -463,6 +513,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             current_type = selected_image.image_type
             self.actionFind_matching_darks.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
             self.actionFind_matching_flats.setEnabled(current_type == "LIGHT")
+
+        self.actionExposure.setChecked(AdvancedFilter.EXPOSURE in current_panel.advanced_options)
+        self.actionCoordinates.setChecked(AdvancedFilter.COORDINATES in current_panel.advanced_options)
+        self.actionDate.setChecked(AdvancedFilter.DATETIME in current_panel.advanced_options)
+        self.actionTelescope.setChecked(AdvancedFilter.TELESCOPE in current_panel.advanced_options)
+        self.actionBinning.setChecked(AdvancedFilter.BINNING in current_panel.advanced_options)
+        self.actionGain.setChecked(AdvancedFilter.GAIN in current_panel.advanced_options)
+        self.actionTemperature.setChecked(AdvancedFilter.TEMPERATURE in current_panel.advanced_options)
 
     def add_selection_to_project(self, project: Project):
         edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)

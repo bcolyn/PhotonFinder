@@ -90,6 +90,15 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.filter_name_text.textChanged.connect(self.update_search_criteria)
         self.filter_fname_text.textChanged.connect(self.update_search_criteria)
         self.checkBox.toggled.connect(self.update_search_criteria)
+        self.toolbar = QToolBar()
+        self.filter_layout.insertWidget(1, self.toolbar)
+        self.toolbar.addAction(mainWindow.actionExposure)
+        self.toolbar.addAction(mainWindow.actionCoordinates)
+        self.toolbar.addAction(mainWindow.actionDate)
+        self.toolbar.addAction(mainWindow.actionTelescope)
+        self.toolbar.addAction(mainWindow.actionBinning)
+        self.toolbar.addAction(mainWindow.actionGain)
+        self.toolbar.addAction(mainWindow.actionTemperature)
 
     def showEvent(self, event, /):
         super().showEvent(event)
@@ -140,7 +149,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if current:
             self.remove_filter_button_control(current)
         self.advanced_options[button.filter_type] = button
-        self.filter_layout.insertWidget(0, button)
+        self.filter_layout.insertWidget(2, button)
         button.clicked.connect(self.remove_filter_button)
 
     def remove_filter_button(self):
@@ -149,7 +158,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.update_search_criteria()
 
     def remove_filter_button_control(self, button: 'FilterButton'):
+        del self.advanced_options[button.filter_type]
         self.filter_layout.removeWidget(button)
+        self.mainWindow.enable_actions_for_current_tab()
         button.on_remove_filter.emit()
         button.hide()
         button.destroy()

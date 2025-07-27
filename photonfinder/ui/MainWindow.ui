@@ -244,6 +244,9 @@
    </property>
   </action>
   <action name="actionExposure">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="icon">
     <iconset resource="resources.qrc">
      <normaloff>:/res/clock.svg</normaloff>:/res/clock.svg</iconset>
@@ -253,6 +256,9 @@
    </property>
   </action>
   <action name="actionCoordinates">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="icon">
     <iconset resource="resources.qrc">
      <normaloff>:/res/rulers.svg</normaloff>:/res/rulers.svg</iconset>
@@ -262,6 +268,9 @@
    </property>
   </action>
   <action name="actionDate">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="icon">
     <iconset resource="resources.qrc">
      <normaloff>:/res/calendar3.svg</normaloff>:/res/calendar3.svg</iconset>
@@ -271,6 +280,9 @@
    </property>
   </action>
   <action name="actionTelescope">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="icon">
     <iconset resource="resources.qrc">
      <normaloff>:/res/telescope-icon-original.svg</normaloff>:/res/telescope-icon-original.svg</iconset>
@@ -280,6 +292,9 @@
    </property>
   </action>
   <action name="actionBinning">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="icon">
     <iconset resource="resources.qrc">
      <normaloff>:/res/border-outer.svg</normaloff>:/res/border-outer.svg</iconset>
@@ -289,6 +304,9 @@
    </property>
   </action>
   <action name="actionGain">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="icon">
     <iconset resource="resources.qrc">
      <normaloff>:/res/exposure.svg</normaloff>:/res/exposure.svg</iconset>
@@ -298,6 +316,9 @@
    </property>
   </action>
   <action name="actionTemperature">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="icon">
     <iconset resource="resources.qrc">
      <normaloff>:/res/thermometer-half.svg</normaloff>:/res/thermometer-half.svg</iconset>
@@ -452,664 +473,7 @@
  <resources>
   <include location="resources.qrc"/>
  </resources>
- <connections>
-  <connection>
-   <sender>tabWidget</sender>
-   <signal>tabCloseRequested(int)</signal>
-   <receiver>MainWindow</receiver>
-   <slot>close_search_tab(int)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>399</x>
-     <y>300</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_Export_Data</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>export_data()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_New_Tab</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>new_search_tab()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_Close_Tab</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>close_current_search_tab()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_Exit</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>close()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_Manage_Libraries</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>manage_library_roots()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_Settings</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>open_settings_dialog()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_Scan_Libraries</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>scan_libraries()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionExposure</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>add_exposure_filter()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionDate</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>add_datetime_filter()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_View_Log</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>view_log()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionCoordinates</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>add_coordinates_filter()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionTelescope</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>add_telescope_filter()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionBinning</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>add_binning_filter()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionGain</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>add_gain_filter()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionTemperature</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>add_temperature_filter()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_Create_Backup</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>create_backup()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_Create_Database</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>create_database()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_Open_Database</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>open_database()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionDuplicate_Tab</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>dup_search_tab()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionFind_matching_darks</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>find_matching_darks()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionFind_matching_flats</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>find_matching_flats()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_About</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>show_about_dialog()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>tabWidget</sender>
-   <signal>currentChanged(int)</signal>
-   <receiver>MainWindow</receiver>
-   <slot>on_tab_switch()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>399</x>
-     <y>305</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionOpen_File</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>open_selected_file()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionShow_location</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>show_file_location()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionSelect_path</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>select_path_in_tree()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionPlate_solve_files</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>plate_solve_files()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionPlate_Solve_Astrometry_net</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>plate_solve_files_astrometry()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionList_Files</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>report_list_files()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionHeader_Text</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>add_header_text_filter()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionMetadata_Report</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>report_metadata()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionTelescopius_List</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>report_telescopius_list()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionTarget_List_Report</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>report_targets()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionManage_Projects</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>show_projects_window(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>menuAddToNearbyProject</sender>
-   <signal>aboutToShow()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>populate_nearby_projects()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>78</x>
-     <y>38</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>menuAddToRecentProject</sender>
-   <signal>aboutToShow()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>populate_recent_projects()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>77</x>
-     <y>38</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>menuProject</sender>
-   <signal>aboutToShow()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>on_show_project_menu()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>120</x>
-     <y>77</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actionAddToNewProject</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>on_add_to_project_action()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>dockWidget</sender>
-   <signal>visibilityChanged(bool)</signal>
-   <receiver>MainWindow</receiver>
-   <slot>show_projects_window(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>699</x>
-     <y>332</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>action_filter_no_project</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>add_no_project_filter()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>399</x>
-     <y>299</y>
-    </hint>
-   </hints>
-  </connection>
- </connections>
+ <connections/>
  <slots>
   <slot>close_search_tab(int)</slot>
   <slot>new_search_tab()</slot>
