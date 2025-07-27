@@ -1,5 +1,6 @@
 import logging
 import time
+from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal, QObject, QSize
 from PySide6.QtGui import QIcon, QPalette, QAction
@@ -82,7 +83,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.app = app
         self.scan_worker = None  # Initialize scan_worker attribute
         self.projects_window = None
-        self.new_search_tab()
 
         # Set the window icon from the resource file
         self.setWindowIcon(QIcon(":/icon.png"))
@@ -104,7 +104,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionGain.setIcon(create_colored_svg_icon(":/res/exposure.svg", size, text_color))
         self.actionTemperature.setIcon(create_colored_svg_icon(":/res/thermometer-half.svg", size, text_color))
 
-
         # hide the dock initially
         self.dockWidget.hide()
 
@@ -112,6 +111,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.reporter.on_message.connect(self.statusBar().showMessage)
         context.set_status_reporter(self.reporter)
         self.connect_signals()
+        self.restore_session()
 
     def connect_signals(self):
         self.tabWidget.tabCloseRequested.connect(self.close_search_tab)
@@ -156,11 +156,41 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.dockWidget.visibilityChanged.connect(self.show_projects_window)
         self.action_filter_no_project.triggered.connect(self.add_no_project_filter)
 
-    def new_search_tab(self):
+    def closeEvent(self, event):
+        try:
+            self.save_session()
+        finally:
+            event.accept()  # Accept the event to actually close the window
+
+    def restore_session(self):
+        file = self.context.get_session_file()
+        try:
+            if file and Path(file).exists():
+                with open(file, mode="rb") as fd:
+                    json_bytes = fd.read()
+                    all_criteria = SearchCriteria.from_json(json_bytes.decode("UTF-8"))
+                    for search_criteria in all_criteria:
+                        panel = self.new_search_tab(search_criteria)
+                        panel.refresh_data_grid()
+        finally:
+            if len(self.get_search_panels()) == 0:
+                self.new_search_tab()
+
+    def save_session(self):
+        all_search_criteria = list(map(lambda x: x.search_criteria, self.get_search_panels()))
+        file = self.context.get_session_file()
+        with open(file, mode='wb') as fd:
+            fd.write(SearchCriteria.list_to_json(all_search_criteria).encode("UTF-8"))
+        logging.info(f"Session saved to {file}")
+
+    def new_search_tab(self, search_criteria=None) -> SearchPanel:
         panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
         tab = self.tabWidget.addTab(panel, "Loading")
+        if search_criteria:
+            panel.apply_search_criteria(search_criteria)
         self.tabWidget.setCurrentIndex(tab)
         self.tabs_changed.emit(self.get_search_panels())
+        return panel
 
     def dup_search_tab(self):
         current_index = self.tabWidget.currentIndex()
@@ -169,11 +199,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_widget = self.tabWidget.widget(current_index)
         assert isinstance(current_widget, SearchPanel)
         current_criteria = current_widget.search_criteria
-        panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
-        tab = self.tabWidget.addTab(panel, "Loading")
-        panel.apply_search_criteria(current_criteria)
-        self.tabWidget.setCurrentIndex(tab)
-        self.tabs_changed.emit(self.get_search_panels())
+        self.new_search_tab(current_criteria)
 
     def close_current_search_tab(self):
         self.close_search_tab(self.tabWidget.currentIndex())

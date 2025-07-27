@@ -129,11 +129,30 @@ class SearchCriteria:
             return value.__dict__
 
     def to_json(self):
-        return json.dumps(self.__dict__, default=self._serialize, sort_keys=True, indent=4)
+        return SearchCriteria._to_json(self)
+
+    @staticmethod
+    def _to_json(value: 'SearchCriteria' | typing.Iterable['SearchCriteria']) -> str:
+        return json.dumps(value, default=SearchCriteria._serialize, sort_keys=True, indent=4)
+
+    list_to_json = _to_json
 
     @classmethod
-    def from_json(cls, json_bytes):
-        data_dict = json.loads(json_bytes)
+    def from_json(cls, json_str: str):
+        value = json.loads(json_str)
+        return SearchCriteria._inflate(value)
+
+    @staticmethod
+    def _inflate(value):
+        if isinstance(value, list):
+            return [SearchCriteria._inflate(x) for x in value]
+        elif isinstance(value, dict):
+            return SearchCriteria._inflate_dict(value)
+        else:
+            raise f"Can't inflate value {value}"
+
+    @staticmethod
+    def _inflate_dict(data_dict):
         if data_dict.get('reference_file'):  # re-inflate the reference file
             data_dict['reference_file'] = File.get(File.rowid == data_dict['reference_file'])
         if data_dict.get('project'):  # re-inflate the project
@@ -479,7 +498,7 @@ class Project(Model):
                                        image_coord.c.coord_dec.alias("coord_dec")
                                        ).join_from(Project, image_coord,
                                                    on=((Project.rowid == image_coord.c.project_id) & (
-                                                               image_coord.c.rn == 1))))
+                                                           image_coord.c.rn == 1))))
 
         def dist(project: Project):
             return coord.separation(project.image.get_sky_coord())
@@ -523,7 +542,9 @@ class Project(Model):
 
         return list(query)
 
+
 NO_PROJECT = Project(rowid=-1, name="No Project")
+
 
 class ProjectFile(Model):
     rowid = RowIDField()

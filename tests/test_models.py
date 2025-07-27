@@ -94,14 +94,12 @@ class TestModels:
         project_file = ProjectFile.find_by_filename("does_not_match.fits", 1)
         assert project_file is None
 
-
     def test_criteria_serde(self):
         search_criteria = SearchCriteria(
             paths=[RootAndPath(1, "dummy", "subdir1")], paths_as_prefix=False, filter="Ha",
             reference_file=File.get_by_id(1), start_datetime=datetime.now(), end_datetime=datetime.now(),
         )
         json_bytes = search_criteria.to_json()
-        print(json_bytes)
         deser = SearchCriteria.from_json(json_bytes)
         assert deser == search_criteria
 
@@ -109,3 +107,20 @@ class TestModels:
         json_bytes = empty_criteria.to_json()
         deser = SearchCriteria.from_json(json_bytes)
         assert deser == empty_criteria
+
+    def test_criteria_serde_all(self):
+        all_search_criteria = [
+            SearchCriteria(
+                paths=[RootAndPath(1, "dummy", "subdir1")], paths_as_prefix=False, filter="Ha",
+                reference_file=File.get_by_id(1), start_datetime=datetime.now(), end_datetime=datetime.now(),
+            ),
+            SearchCriteria(
+                project=NO_PROJECT, type="LIGHT"
+            ),
+            SearchCriteria(
+                gain=120, offset=10, camera="ZWO ASI 294MC"
+            )
+        ]
+        json_bytes = SearchCriteria.list_to_json(all_search_criteria)
+        deser = SearchCriteria.from_json(json_bytes)
+        assert deser == all_search_criteria

@@ -62,10 +62,8 @@ def main():
     thread_pool = QThreadPool.globalInstance()
     logging.info(f"Maximum thread count: {thread_pool.maxThreadCount()}")
     settings = Settings()
-    if settings.get_last_database_path():
-        context = ApplicationContext(settings.get_last_database_path(), settings)
-    else:
-        context = ApplicationContext.create_in_app_data(app_data_path, settings)
+
+    context = ApplicationContext.create_in_app_data(app_data_path, settings)
 
     with context:
         main_window = MainWindow(app, context)

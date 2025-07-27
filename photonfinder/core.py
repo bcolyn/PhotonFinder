@@ -35,15 +35,20 @@ class ApplicationContext:
 
     @staticmethod
     def create_in_app_data(app_data_path: str, settings) -> 'ApplicationContext':
-        database_path = Path(app_data_path) / "astroFileManager.db"
-        database_path.parent.mkdir(parents=True, exist_ok=True)
-        return ApplicationContext(database_path, settings)
+        if settings.get_last_database_path():
+            database_path = settings.get_last_database_path()
+        else:
+            database_path = Path(app_data_path) / "astroFileManager.db"
+            database_path.parent.mkdir(parents=True, exist_ok=True)
+        session_file = Path(app_data_path) / "session_v1.json"
+        return ApplicationContext(database_path, settings, str(session_file))
 
-    def __init__(self, database_path: str | Path, settings) -> None:
+    def __init__(self, database_path: str | Path, settings, session_file: str | None = None) -> None:
         self.database_path = database_path
         self.database: SqliteDatabase | None = None
         self.settings = settings
         self.status_reporter: StatusReporter | None = None
+        self.session_file = session_file
 
     def __enter__(self):
         self.open_database()
@@ -91,6 +96,9 @@ class ApplicationContext:
 
     def get_known_fits_keywords(self) -> list[str]:
         return self.settings.get_known_fits_keywords()
+
+    def get_session_file(self) -> str | None:
+        return self.session_file
 
 
 class Settings:

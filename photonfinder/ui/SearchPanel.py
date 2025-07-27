@@ -42,7 +42,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         self.context = context
         self.update_in_progress = False
-        self.title = "All files"
+        self.title = "Loading"
         self.mainWindow = mainWindow
         self.search_criteria = SearchCriteria()
         self.advanced_options = dict()
@@ -245,8 +245,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # Update the status bar with the selection information
         if selected_count > 0:
             self.context.status_reporter.update_status(f"{selected_count} files out of {self.total_files} selected")
-        else:
-            self.context.status_reporter.update_status(f"{self.total_files} files")
 
         self.mainWindow.enable_actions_for_current_tab()
 
@@ -266,11 +264,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.total_files = total_files
             # Update our tab title
             if self.search_criteria.is_empty():
-                self.set_title("All files")
+                self.set_title(f"{self.total_files} files (All)")
             else:
                 self.set_title(f"{self.total_files} files [{str(self.search_criteria)}]")
-            # Update the status bar with the total number of files
-            self.context.status_reporter.update_status(f"{self.total_files} files")
+            # clear the status bar
+            self.context.status_reporter.update_status("")
 
         # Reset loading_more flag after processing
         self.loading_more = False
