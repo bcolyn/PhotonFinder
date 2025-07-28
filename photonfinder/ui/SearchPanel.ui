@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1373</width>
-    <height>1139</height>
+    <width>936</width>
+    <height>621</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -314,6 +314,9 @@
          </property>
          <property name="selectionBehavior">
           <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+         </property>
+         <property name="sortingEnabled">
+          <bool>true</bool>
          </property>
          <property name="wordWrap">
           <bool>false</bool>

@@ -120,31 +120,49 @@ class SearchResultsLoader(BackgroundLoaderBase):
         self.current_page = 0
         self.total_results = 0
         self.last_criteria = None
+        self.running = False
 
     def search(self, search_criteria, page=0):
+        if self.running and search_criteria == self.last_criteria and page == self.current_page:
+            return # don't start if we're running the same query already
+
         """Start a search with the given criteria."""
         self.current_page = page
         self.last_criteria = search_criteria
+        self.running = True
         self.run_in_thread(self._search_task, search_criteria, page)
 
     def load_more(self):
         """Load the next page of results using the last search criteria."""
         if self.last_criteria:
-            self.current_page += 1
-            self.search(self.last_criteria, self.current_page)
+            self.search(self.last_criteria, self.current_page + 1)
 
     def _search_task(self, search_criteria, page):
         """Background task to search for files matching the criteria."""
         try:
             # Start building the query
+            fields = [File.name, Image.image_type, Image.filter, Image.exposure, Image.gain, Image.offset,
+                      Image.binning, Image.set_temp, Image.camera, Image.telescope, Image.object_name,
+                      Image.date_obs, File.path, File.size, File.mtime_millis, Image.coord_ra, Image.coord_dec,
+                      FileWCS.wcs.is_null(False).alias('has_wcs')]
             query = (File
-                     .select(File, Image, FileWCS.wcs.is_null(False).alias('has_wcs'))
+                     .select(*(fields + [File, Image, LibraryRoot]))
+                     .join_from(File, LibraryRoot)
                      .join_from(File, Image, JOIN.LEFT_OUTER)
-                     .join_from(File, FileWCS, JOIN.LEFT_OUTER)
-                     .order_by(File.root, File.path, File.name))
+                     .join_from(File, FileWCS, JOIN.LEFT_OUTER))
+
 
             # Apply search criteria to the query
             query = Image.apply_search_criteria(query, search_criteria)
+
+            # Apply sorting
+            if search_criteria.sorting_index is None:
+                query = query.order_by(File.root, File.path, File.name)
+            else:
+                field = fields[search_criteria.sorting_index]
+                if field == File.name or field == File.path:
+                    field = field.collate("NOCASE")
+                query = query.order_by(field.desc()) if search_criteria.sorting_desc else query.order_by(field.asc())
 
             # Get total count for pagination
             self.total_results = query.count()
@@ -163,6 +181,7 @@ class SearchResultsLoader(BackgroundLoaderBase):
         except Exception as e:
             logging.error(f"Error searching files: {e}", exc_info=True)
             self.results_loaded.emit([], False)
+        self.running = False
 
 
 class ImageReindexWorker(BackgroundLoaderBase):
@@ -367,8 +386,7 @@ class PlateSolveTask(FileProcessingTask):
                                  ).where(Image.file == file).execute()
         except Exception as e:
             logging.error(f"Error solving file {file.full_filename()}: {e}", exc_info=True)
-            self.context.status_reporter.update_status(f"Error solving file {file.full_filename()}: {e}")
-            return
+            raise e
 
 
 class FileListTask(FileProcessingTask):

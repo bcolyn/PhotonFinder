@@ -27,6 +27,9 @@ from .generated.SearchPanel_ui import Ui_SearchPanel
 EMPTY_LABEL = "<empty>"
 RESET_LABEL = "<any>"
 
+ROWID_ROLE = Qt.UserRole
+SORT_ROLE = Qt.UserRole + 1
+
 
 # Using the new database-backed tree model for filesystemTreeView
 def _not_empty(current_text):
@@ -58,7 +61,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Initialize the data view model
         self.data_model = QStandardItemModel(self)
-        self.dataView.setModel(self.data_model)
+        self.proxy_model = QSortFilterProxyModel()
+        self.proxy_model.setSortRole(SORT_ROLE)
+        self.proxy_model.setSourceModel(self.data_model)
+        self.dataView.setModel(self.proxy_model)
         self.dataView.verticalScrollBar().valueChanged.connect(self.on_scroll)
         self.dataView.doubleClicked.connect(self.on_item_double_clicked)
         self.dataView.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -90,6 +96,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.filter_name_text.textChanged.connect(self.update_search_criteria)
         self.filter_fname_text.textChanged.connect(self.update_search_criteria)
         self.checkBox.toggled.connect(self.update_search_criteria)
+        self.dataView.horizontalHeader().sortIndicatorChanged.connect(self.on_sort_requested)
+
+        # insert the toolbar
         self.toolbar = QToolBar()
         self.filter_layout.insertWidget(1, self.toolbar)
         self.toolbar.addAction(mainWindow.actionExposure)
@@ -184,7 +193,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             return None
 
         name_index = self.data_model.index(row, 0)
-        return self.data_model.data(name_index, Qt.UserRole)
+        return self.data_model.data(name_index, ROWID_ROLE)
 
     def refresh_data_grid(self):
         """Trigger a search with the current search criteria."""
@@ -248,6 +257,38 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         self.mainWindow.enable_actions_for_current_tab()
 
+    def on_sort_requested(self, logical_index: int, order: Qt.SortOrder):
+        if logical_index < 0:
+            # step 0: reset
+            self.search_criteria.sorting_index = None
+            self.search_criteria.sorting_desc = False
+        elif self.search_criteria.sorting_index != logical_index:
+            # step 1: if we're sorting a new column, start with asc order
+            self.search_criteria.sorting_index = logical_index
+            self.search_criteria.sorting_desc = False
+        elif not self.search_criteria.sorting_desc:
+            # step 2: if we're sorting the same colum, switch from asc to desc
+            self.search_criteria.sorting_index = logical_index
+            self.search_criteria.sorting_desc = True
+        else:
+            # step 3: if we're sorting the same column and we're already desc reset sorting
+            self.search_criteria.sorting_index = None
+            self.search_criteria.sorting_desc = False
+
+        if self.has_more_results:  # not all data is loaded, we need to let the database do the sorting
+            self.refresh_data_grid()
+        else:
+            self.update_sort_indicator()
+
+    def update_sort_indicator(self):
+        self.dataView.horizontalHeader().sortIndicatorChanged.disconnect(self.on_sort_requested)
+        if self.search_criteria.sorting_index is None:
+            self.dataView.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)
+        else:
+            order = Qt.SortOrder.DescendingOrder if self.search_criteria.sorting_desc else Qt.SortOrder.AscendingOrder
+            self.dataView.horizontalHeader().setSortIndicator(self.search_criteria.sorting_index, order)
+        self.dataView.horizontalHeader().sortIndicatorChanged.connect(self.on_sort_requested)
+
     def on_search_results_loaded(self, results, page, total_files, has_more):
         """Handle search results loaded from the database."""
         self.has_more_results = has_more
@@ -278,11 +319,14 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         for file in results:
             # Create row items
             name_item = QStandardItem(file.name)
+            name_item.setData(file.name.lower(), SORT_ROLE)
             path_item = QStandardItem(file.path)
+            path_item.setData(file.path.lower(), SORT_ROLE)
 
             # Format size (convert bytes to KB, MB, etc.)
             size_str = _format_file_size(file.size)
             size_item = QStandardItem(size_str)
+            size_item.setData(file.size, SORT_ROLE)
 
             # Get image data if available
             type_item = QStandardItem("")
@@ -299,47 +343,62 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             ra_item = QStandardItem("")
             dec_item = QStandardItem("")
             solved_item = QStandardItem("True" if hasattr(file, 'has_wcs') and file.has_wcs else "False")
+            solved_item.setData(solved_item.text(), SORT_ROLE)
 
             localtime: datetime
             try:
                 if hasattr(file, 'image') and file.image:
                     if file.image.image_type is not None:
                         type_item.setText(file.image.image_type)
+                        type_item.setData(file.image.image_type, SORT_ROLE)
                     if file.image.filter is not None:
                         filter_item.setText(file.image.filter)
+                        filter_item.setData(file.image.filter, SORT_ROLE)
                     if file.image.exposure is not None:
                         exposure_item.setText(str(file.image.exposure))
+                        exposure_item.setData(file.image.exposure, SORT_ROLE)
                     if file.image.gain is not None:
                         gain_item.setText(str(file.image.gain))
+                        gain_item.setData(file.image.gain, SORT_ROLE)
                     if file.image.offset is not None:
                         offset_item.setText(str(file.image.offset))
+                        offset_item.setData(file.image.offset, SORT_ROLE)
                     if file.image.binning is not None:
                         binning_item.setText(str(file.image.binning))
+                        binning_item.setData(file.image.binning, SORT_ROLE)
                     if file.image.set_temp is not None:
                         set_temp_item.setText(str(file.image.set_temp))
+                        set_temp_item.setData(file.image.set_temp, SORT_ROLE)
                     if file.image.camera is not None:
                         camera_item.setText(file.image.camera)
+                        camera_item.setData(file.image.camera, SORT_ROLE)
                     if file.image.telescope is not None:
                         telescope_item.setText(file.image.telescope)
+                        telescope_item.setData(file.image.telescope, SORT_ROLE)
                     if file.image.object_name is not None:
                         object_item.setText(file.image.object_name)
+                        object_item.setData(file.image.object_name, SORT_ROLE)
                     if file.image.date_obs is not None:
                         from zoneinfo import ZoneInfo
                         utctime = file.image.date_obs.replace(tzinfo=timezone.utc)
                         localtime = utctime.astimezone(tz=None)
                         date_obs_item.setText(_format_date(localtime))
+                        date_obs_item.setData(localtime, SORT_ROLE)
                     if file.image.coord_ra is not None:
                         ra_item.setText(_format_ra(file.image.coord_ra))
+                        ra_item.setData(file.image.coord_ra, SORT_ROLE)
                     if file.image.coord_dec is not None:
                         dec_item.setText(_format_dec(file.image.coord_dec))
+                        dec_item.setData(file.image.coord_dec, SORT_ROLE)
             except Exception as e:
                 logging.error(f"Error getting image data: {e}")
 
             # Format date from mtime_millis
             date_item = QStandardItem(_format_timestamp(file.mtime_millis))
+            date_item.setData(file.mtime_millis, SORT_ROLE)
 
             # Store the full filename in the name_item's data
-            name_item.setData(file, Qt.UserRole)
+            name_item.setData(file, ROWID_ROLE)
 
             # Add row to model
             self.data_model.appendRow([
@@ -350,6 +409,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Resize columns to content
         self.dataView.resizeColumnsToContents()
+        self.update_sort_indicator()
 
     def on_scroll(self, value):
         """Handle scrolling in the data view for infinite scroll."""
@@ -415,7 +475,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         recent_projects = Project.find_recent()
         project_actions = list([new_project_action])
 
-
         if recent_projects:
             add_to_recent_project_menu.addSeparator()
             for recent_project in recent_projects:
@@ -474,7 +533,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Get the full filename from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
-            file = self.data_model.data(name_index, Qt.UserRole)
+            file = self.data_model.data(name_index, ROWID_ROLE)
             filename = file.full_filename()
 
         if filename:
@@ -488,7 +547,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Get the full filename from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
-            file = self.data_model.data(name_index, Qt.UserRole)
+            file = self.data_model.data(name_index, ROWID_ROLE)
             filename = file.full_filename()
 
         if filename:
@@ -509,7 +568,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Get the file object from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
-            file = self.data_model.data(name_index, Qt.UserRole)
+            file = self.data_model.data(name_index, ROWID_ROLE)
             if not file:
                 return
 
@@ -531,7 +590,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Get the file object from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
-            file = self.data_model.data(name_index, Qt.UserRole)
+            file = self.data_model.data(name_index, ROWID_ROLE)
             if not file:
                 QMessageBox.warning(self, "Warning", "No file selected.")
                 return
@@ -852,11 +911,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Get the file object from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
-            file = self.data_model.data(name_index, Qt.UserRole)
+            file = self.data_model.data(name_index, ROWID_ROLE)
             if hasattr(file, 'image') and file.image:
                 return file.image
 
         return None
+
     def reset_project_criteria(self):
         self.search_criteria.project = None
 
@@ -943,6 +1003,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         else:
             for path in self.search_criteria.paths:
                 self._find_and_select_node(path)
+
+        self.checkBox.setChecked(criteria.paths_as_prefix)
 
         # Update combo boxes
         self.update_in_progress = True

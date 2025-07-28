@@ -51,6 +51,8 @@ class SearchCriteria:
     reference_file: Optional['File'] = None
     header_text: str = ""
     project: 'Project' = None
+    sorting_index: int | None = None
+    sorting_desc: bool = True
 
     def is_empty(self):
         return self == SearchCriteria()
@@ -443,7 +445,6 @@ class Image(Model):
         # Apply all conditions to the query
         for condition in conditions:
             query = query.where(condition)
-        query.order_by(File.mtime_millis.desc())
         return query
 
     @staticmethod
