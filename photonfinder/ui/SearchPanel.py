@@ -21,7 +21,7 @@ from .HeaderDialog import HeaderDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .MetadataReportDialog import MetadataReportDialog
 from .ProgressDialog import ProgressDialog
-from .common import _format_ra, _format_dec, _format_date, _format_file_size, _format_timestamp
+from .common import _format_ra, _format_dec, _format_date, _format_file_size, _format_timestamp, ensure_header_widths
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
 EMPTY_LABEL = "<empty>"
@@ -408,8 +408,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             ])
 
         # Resize columns to content
-        self.dataView.resizeColumnsToContents()
+        self.resize_columns()
         self.update_sort_indicator()
+
+    def resize_columns(self):
+        self.dataView.resizeColumnsToContents()
+        ensure_header_widths(self.dataView)
 
     def on_scroll(self, value):
         """Handle scrolling in the data view for infinite scroll."""

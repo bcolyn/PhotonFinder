@@ -4,6 +4,7 @@ from datetime import datetime
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter
 from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtWidgets import QStyle
 
 
 def _format_file_size(size_bytes):
@@ -57,6 +58,7 @@ def _format_timestamp(timestamp_ms: int):
     date_str = _format_date(dt)
     return date_str
 
+
 def create_colored_svg_icon(svg_path: str, size: QSize, color) -> QIcon:
     renderer = QSvgRenderer(svg_path)
     pixmap = QPixmap(size)
@@ -69,3 +71,26 @@ def create_colored_svg_icon(svg_path: str, size: QSize, color) -> QIcon:
     painter.end()
 
     return QIcon(pixmap)
+
+
+def ensure_header_widths(table_view, extra_padding=12):
+    from PySide6.QtGui import QFontMetrics
+    from PySide6.QtCore import Qt
+
+    header = table_view.horizontalHeader()
+    font = header.font()
+    fm = QFontMetrics(font)
+
+    for col in range(table_view.model().columnCount()):
+        # Get header text
+        text = table_view.model().headerData(col, Qt.Horizontal, Qt.DisplayRole)
+        text_width = fm.horizontalAdvance(str(text))
+
+        # Add extra space for sort indicator
+        sort_space = header.style().pixelMetric(QStyle.PixelMetric.PM_HeaderMargin) + 20
+
+        total_needed = text_width + sort_space + extra_padding
+
+        current_width = header.sectionSize(col)
+        if current_width < total_needed:
+            header.resizeSection(col, total_needed)
