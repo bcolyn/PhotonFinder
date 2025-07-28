@@ -241,7 +241,7 @@ class File(Model):
     rowid = RowIDField()
     root = ForeignKeyField(LibraryRoot, on_delete='CASCADE')
     path = CharField()
-    name = CharField(index=True)
+    name = CharField(index=True, null=False)
     size = IntegerField()
     mtime_millis = IntegerField()
 

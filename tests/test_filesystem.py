@@ -86,6 +86,31 @@ class TestImporter:
         assert File.select().count() == NUM_FILES
         assert Image.select().count() == 0
 
+    def test_compressed_file(self, filesystem, database, app_context):
+        self.initial_import(app_context)
+        filesystem.remove("test/2021-12-26/Darks/image06.fits")
+        filesystem.writebytes("test/2021-12-26/Darks/image06.fits.xz", "GZ".encode("ASCII"))
+        change_list = self.importer.import_files_from(filesystem, self.root)
+        assert len(change_list.changed_files) == 1
+        assert len(change_list.new_files) == 0, "New Files"
+        assert len(change_list.removed_files) == 0, "Removed files"
+        assert change_list.changed_files[0].rowid
+        rowid = change_list.changed_files[0].rowid
+        assert change_list.changed_files[0].name == "image06.fits.xz"
+        change_list.apply_all()
+        assert File.select().count() == NUM_FILES
+        db_file = File.get_by_id(rowid)
+        assert db_file.name == "image06.fits.xz"
+
+    def test_decompressed_file(self, filesystem, database, app_context):
+        self.initial_import(app_context)
+        filesystem.remove("test/2021-12-26/Darks/image08.fits.xz")
+        filesystem.writebytes("test/2021-12-26/Darks/image08.fits", "DUMMY BYTES".encode("ASCII"))
+        change_list = self.importer.import_files_from(filesystem, self.root)
+        assert len(change_list.changed_files) == 1
+        assert len(change_list.new_files) == 0
+        assert change_list.changed_files[0].rowid
+
     def test_update_fits_header_cache(self, filesystem, database, app_context, mocker):
         from .sample_headers import header_apt
         mocker.patch('photonfinder.filesystem.read_fits_header',

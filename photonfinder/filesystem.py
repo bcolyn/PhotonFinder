@@ -17,7 +17,7 @@ from xisf import XISF
 
 from photonfinder.core import StatusReporter, compress
 from photonfinder.fits_handlers import normalize_fits_header
-from photonfinder.models import File, LibraryRoot, FitsHeader, Image, norm_db_path
+from photonfinder.models import File, LibraryRoot, FitsHeader, Image, norm_db_path, FileWCS
 
 compressed_exts = {
     ".xz": lzma.open,
@@ -237,11 +237,23 @@ class ChangeList:
             for file in self.new_files:
                 file.save(force_insert=True)
             for file in self.removed_files:
-                File.delete_by_id(file.rowid)
-            for fileId in self.changed_ids:  # delete and re-create
-                File.delete_by_id(fileId)
+                file.delete_instance()
             for file in self.changed_files:
-                file.save(force_insert=True)
+                file.save()
+                # If the file is changed, we want to re-examine its contents but don't disconnect it from any projects
+                Image.delete().where(Image.file == file).execute()
+                FitsHeader.delete().where(FitsHeader.file == file).execute()
+                FileWCS.delete().where(FileWCS.file == file).execute()
+
+
+def possible_compressed_variants(filename: str):
+    variants = set()
+    variants.add(filename)
+    basename =  os.path.splitext(filename)[0] if is_compressed(filename) else filename
+    variants.add(basename)
+    for ext in compressed_exts.keys():
+        variants.add(basename + ext)
+    return list(variants)
 
 
 class Importer:
@@ -331,8 +343,8 @@ class Importer:
                                                   bulk=False)
                 if entry.is_file:
                     if self._file_filter(entry):
-                        self._import_file(entry, current_dir, root, result)
-                        filtered_files.add(entry.name)
+                        name = self._import_file(entry, current_dir, root, result)
+                        filtered_files.add(name)
                     else:
                         # only log this if it was a file that the user could expect us to handle anyway
                         if self.is_fits(entry) or self.is_xisf(entry):
@@ -355,20 +367,35 @@ class Importer:
 
         return result
 
-    def _import_file(self, file: Info, rel_path, root, changelist):
+    def _import_file(self, file: Info, rel_path, root, changelist) -> str:
         log(DEBUG, "[root %s] record file stats: %s/%s", root.name, rel_path, file.name)
 
         rel_path = norm_db_path(rel_path)
 
         mtime_millis = int(file.modified.timestamp() * 1000)
 
-        db_file = File.select(File.rowid, File.size, File.mtime_millis) \
-            .where(File.root == root, File.path == rel_path, File.name == file.name).get_or_none()
+        possible_file_names = possible_compressed_variants(file.name)
+        query = (File.select().where(
+            (File.root == root) & (File.path == rel_path) & (File.name.in_(possible_file_names,))))
+
+        results = list(query.execute())
+        db_file = None
+        if len(results) == 1:
+            db_file = results[0]
+        elif len(results) > 1:
+            exact_match = list(filter(lambda x: x.name == file.name, results))
+            db_file = (exact_match + results)[0]
+
         if db_file is None:
             model = File(name=file.name, path=rel_path, root=root, size=file.size, mtime_millis=mtime_millis)
             changelist.new_files.append(model)
+            return file.name
         else:
+            oldname = db_file.name
             if db_file.mtime_millis != mtime_millis or db_file.size != file.size:
-                model = File(name=file.name, path=rel_path, root=root, size=file.size, mtime_millis=mtime_millis)
+                db_file.name=file.name
+                db_file.size=file.size
+                db_file.mtime_millis=mtime_millis
                 changelist.changed_ids.append(db_file.rowid)
-                changelist.changed_files.append(model)
+                changelist.changed_files.append(db_file)
+            return oldname
