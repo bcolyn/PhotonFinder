@@ -1112,6 +1112,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         task = PlateSolveTask(context=self.context, search_criteria=self.search_criteria,
                               files=selected_files if selected_files else None, solver_type=solver_type)
         dialog = ProgressDialog("Loading", "Plate solving", task, parent=self)
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
         dialog.show()
         task.finished.connect(self.refresh_data_grid)
         task.start()
@@ -1133,6 +1134,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             task = FileListTask(context=self.context, search_criteria=self.search_criteria,
                                 files=selected_files if selected_files else None)
             dialog = ProgressDialog("Creating file list", "File List", task, parent=self)
+            dialog.setAttribute(Qt.WA_DeleteOnClose)
             dialog.show()
             task.start(file_path)
 
@@ -1146,6 +1148,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         selected_files = self.get_selected_files()
         report_dialog = MetadataReportDialog(context=self.context, search_criteria=self.search_criteria,
                                              files=selected_files if selected_files else None, parent=self)
+        report_dialog.setAttribute(Qt.WA_DeleteOnClose)
         report_dialog.show()
 
     def report_telescopius_list(self):
@@ -1153,11 +1156,13 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         from .TelescopiusCompareDialog import TelescopiusCompareDialog
         report_dialog = TelescopiusCompareDialog(context=self.context, search_criteria=self.search_criteria,
                                                  files=selected_files if selected_files else None, parent=self)
+        report_dialog.setAttribute(Qt.WA_DeleteOnClose)
         report_dialog.show()
 
     def report_targets(self):
         from .TargetObjectReportWindow import TargetObjectReportWindow
         target_report_window = TargetObjectReportWindow(context=self.context, parent=self)
+        target_report_window.setAttribute(Qt.WA_DeleteOnClose)
         target_report_window.show()
 
     def add_no_project_filter(self):
