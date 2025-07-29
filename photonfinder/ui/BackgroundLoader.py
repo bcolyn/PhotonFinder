@@ -377,7 +377,7 @@ class PlateSolveTask(FileProcessingTask):
 
         try:
             with (self.solver):
-                solution = self.solver.solve(Path(file.full_filename()))
+                solution = self.solver.solve(Path(file.full_filename()), file.image)
                 if solution:
                     self.context.status_reporter.update_status(f"Solved file {file.full_filename()}")
                     FileWCS(file=file, wcs=compress(solution.tostring().encode())).save()

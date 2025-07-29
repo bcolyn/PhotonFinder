@@ -1,4 +1,5 @@
 import configparser
+import logging
 import shutil
 import subprocess
 import tempfile
@@ -39,11 +40,14 @@ class SolverBase(metaclass=ABCMeta):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if self.tmp_dir:
-            shutil.rmtree(self.tmp_dir)
+        try:
+            if self.tmp_dir:
+                shutil.rmtree(self.tmp_dir)
+        except Exception as e:
+            logging.error(str(e), exc_info=True)
 
     @abstractmethod
-    def solve(self, image_path):
+    def solve(self, image_path, image: Image = None):
         pass
 
     @staticmethod
@@ -128,7 +132,7 @@ class ASTAPSolver(SolverBase):
     def is_pre_solved(header):
         return ASTAPSolver.keep_headers.issubset(header.keys()) and has_valid_scale(header)
 
-    def solve(self, image_path: Path) -> Header:
+    def solve(self, image_path: Path, image: Image = None) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self._exe:
@@ -136,7 +140,7 @@ class ASTAPSolver(SolverBase):
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
         temp_image = self._create_temp_fits(image_path)
-        hint = ASTAPSolver.extract_hint(fits.getheader(temp_image))
+        hint = ASTAPSolver.extract_hint(fits.getheader(temp_image), image)
         return self._solve(temp_image, hint)
 
     @staticmethod
@@ -152,9 +156,13 @@ class ASTAPSolver(SolverBase):
         return hint
 
     @staticmethod
-    def extract_hint(header: Header) -> typing.Dict[str, str]:
-        ra = header.get("RA") or header.get("CRVAL1")
-        dec = header.get("DEC") or header.get("CRVAL2")
+    def extract_hint(header: Header, image: Image) -> typing.Dict[str, str]:
+        if image and image.coord_ra:
+            ra = image.coord_ra
+            dec = image.coord_dec
+        else:
+            ra = header.get("RA") or header.get("CRVAL1")
+            dec = header.get("DEC") or header.get("CRVAL2")
         scale = header.get("SCALE") or header.get("PIXSCALE")
         if scale is None:
             focal_len = header.get("FOCALLEN")
@@ -196,7 +204,7 @@ class AstrometryNetSolver(SolverBase):
         self.ast = AstrometryNet()
         self.ast.api_key = api_key
 
-    def solve(self, image_path) -> Header:
+    def solve(self, image_path, image: Image = None) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self.tmp_dir:
