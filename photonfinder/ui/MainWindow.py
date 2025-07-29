@@ -1,9 +1,10 @@
 import logging
 import time
 from pathlib import Path
+from typing import List
 
 from PySide6.QtCore import QThread, Signal, QObject, QSize
-from PySide6.QtGui import QIcon, QPalette, QAction
+from PySide6.QtGui import QIcon, QPalette, QAction, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext, StatusReporter, backup_database
@@ -51,27 +52,37 @@ class LibraryScanWorker(QThread):
     finished = Signal()
     change_list_ready = Signal(object)  # Signal emitted when a change list is ready
 
-    def __init__(self, context):
+    def __init__(self, context, files: List[str] = None):
         super().__init__()
         self.context = context
+        self.files = files
         self.importer = Importer(context,
                                  context.settings.get_bad_file_patterns(),
                                  context.settings.get_bad_dir_patterns())
 
     def run(self):
-        """Run the import process in a background thread."""
-        for changes_per_library in self.importer.import_files():
+        if self.files:
+            self.import_files()
+        else:
+            self.import_all()
+
+        # Signal that we're done
+        self.finished.emit()
+
+    def import_all(self):
+        for changes_per_library in self.importer.import_all():
             self.context.status_reporter.update_status(
-                f" {changes_per_library.root.name}: Files removed {len(changes_per_library.removed_files)} " +
+                f"Files removed {len(changes_per_library.removed_files)} " +
                 f"added {len(changes_per_library.new_files)} " +
                 f"changed {len(changes_per_library.changed_files)}")
             changes_per_library.apply_all()
             update_fits_header_cache(changes_per_library, self.context.status_reporter, self.context.settings)
-
         check_missing_header_cache(self.context.status_reporter, self.context.settings)
 
-        # Signal that we're done
-        self.finished.emit()
+    def import_files(self):
+        changes = self.importer.import_selection(self.files)
+        changes.apply_all()
+        update_fits_header_cache(changes, self.context.status_reporter, self.context.settings)
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -114,6 +125,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         context.set_status_reporter(self.reporter)
         self.connect_signals()
         self.restore_session()
+        self.setAcceptDrops(True)
 
     def connect_signals(self):
         self.tabWidget.tabCloseRequested.connect(self.close_search_tab)
@@ -163,6 +175,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.save_session()
         finally:
             event.accept()  # Accept the event to actually close the window
+
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        # Check if dragged data has URLs (files)
+        if not self.scan_worker and event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event: QDropEvent):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            file_paths = [url.toLocalFile() for url in urls]
+            if self.scan_worker is not None:
+                logging.warning("Filesystem Scanner is busy, aborting.")
+                return
+
+            self.scan_worker = LibraryScanWorker(self.context, file_paths)
+            self.scan_worker.finished.connect(self._scan_finished)
+            self.scan_worker.start()
+        else:
+            event.ignore()
 
     def restore_session(self):
         file = self.context.get_session_file()

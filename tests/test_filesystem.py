@@ -31,7 +31,7 @@ class TestImporter:
         self.root = LibraryRoot(name="dummy", path=r'test://')
         self.root.save()
         self.importer = Importer(context)
-        return self.importer.import_files()
+        return self.importer.import_all()
 
     def test_fixture(self, filesystem):
         for path, dirs, files in filesystem.walk("/", namespaces=['details']):
@@ -110,6 +110,15 @@ class TestImporter:
         assert len(change_list.changed_files) == 1
         assert len(change_list.new_files) == 0
         assert change_list.changed_files[0].rowid
+
+    def test_import_selection(self, filesystem, database, app_context):
+        self.initial_import(app_context)
+        filesystem.remove("test/2021-12-26/Darks/image08.fits.xz")
+        filesystem.writebytes("new_file.fits", b"DUMMY BYTES")
+        change_list = self.importer.import_selection(["test://test/2021-12-26/Darks", "test://new_file.fits"])
+        assert len(change_list.changed_files) == 0
+        assert len(change_list.new_files) == 1, "New Files"
+        assert len(change_list.removed_files) == 1, "Removed Files"
 
     def test_update_fits_header_cache(self, filesystem, database, app_context, mocker):
         from .sample_headers import header_apt

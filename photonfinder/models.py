@@ -232,6 +232,10 @@ class LibraryRoot(Model):
         path = Path(path_str)
         return path.exists() and path.is_dir()
 
+    @staticmethod
+    def find_for_file(fs_item: str) -> Optional['LibraryRoot']:
+        return LibraryRoot.select().where(fn.LIKE(LibraryRoot.path + "%", fs_item)).get_or_none()
+
     def __eq__(self, other):
         return self.name == other.name and self.path == other.path
 

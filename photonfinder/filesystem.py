@@ -2,6 +2,7 @@ import bz2
 import fnmatch
 import gzip
 import json
+import logging
 import lzma
 import os
 import typing
@@ -212,11 +213,7 @@ def check_missing_header_cache(status_reporter, settings):
 
 
 class ChangeList:
-    def __init__(self, root: typing.Optional[LibraryRoot] = None,
-                 new_files=None,
-                 removed_files=None,
-                 changed_ids=None,
-                 changed_files=None):
+    def __init__(self, new_files=None, removed_files=None, changed_ids=None, changed_files=None):
         if changed_files is None:
             changed_files = list()
         if changed_ids is None:
@@ -225,11 +222,16 @@ class ChangeList:
             removed_files = list()
         if new_files is None:
             new_files = list()
-        self.root = root
         self.new_files = new_files
         self.removed_files = removed_files
         self.changed_ids = changed_ids
         self.changed_files = changed_files
+
+    def merge(self, other: 'ChangeList'):
+        self.new_files += other.new_files
+        self.changed_files += other.changed_files
+        self.changed_ids += other.changed_ids
+        self.removed_files += other.removed_files
 
     def apply_all(self):
         with File._meta.database.atomic():
@@ -249,7 +251,7 @@ class ChangeList:
 def possible_compressed_variants(filename: str):
     variants = set()
     variants.add(filename)
-    basename =  os.path.splitext(filename)[0] if is_compressed(filename) else filename
+    basename = os.path.splitext(filename)[0] if is_compressed(filename) else filename
     variants.add(basename)
     for ext in compressed_exts.keys():
         variants.add(basename + ext)
@@ -306,7 +308,7 @@ class Importer:
     def _dir_filter(self, x: Info):
         return not self.marked_bad(x)
 
-    def import_files(self) -> typing.Iterable[ChangeList]:
+    def import_all(self) -> typing.Iterable[ChangeList]:
         roots: typing.Sequence[LibraryRoot] = list(LibraryRoot.select().execute())
         log(INFO, "Scanning for new/changed files in libraries...")
         for root in roots:
@@ -323,10 +325,10 @@ class Importer:
                 self.status.update_status(f"Error importing library: {root.name} - {str(err)}")
         self.status.update_status("done.")
 
-    def import_files_from(self, root_fs: FS, root: LibraryRoot) -> ChangeList:
-        dir_queue: typing.List[str] = ['.']
+    def import_files_from(self, root_fs: FS, root: LibraryRoot, start_dir='.') -> ChangeList:
+        dir_queue: typing.List[str] = [start_dir]
         all_dirs = set(map(norm_db_path, dir_queue))
-        result = ChangeList(root=root)
+        result = ChangeList()
         while len(dir_queue) > 0:
             current_dir: str = dir_queue.pop()
             self.status.update_status(f"Scanning directory: {root.name}/{current_dir}", bulk=True)
@@ -358,12 +360,13 @@ class Importer:
                     result.removed_files.append(file)
 
         # clean up deleted dirs
-        query = File.select(File.path).distinct().where(File.root == root)
-        for (old_path,) in query.tuples().iterator():
-            if old_path not in all_dirs:
-                files = File.select().where(File.root == root, File.path == old_path).execute()
-                for file in files:
-                    result.removed_files.append(file)
+        if start_dir == ".":  # only if we saw the whole filesystem
+            query = File.select(File.path).distinct().where(File.root == root)
+            for (old_path,) in query.tuples().iterator():
+                if old_path not in all_dirs:
+                    files = File.select().where(File.root == root, File.path == old_path).execute()
+                    for file in files:
+                        result.removed_files.append(file)
 
         return result
 
@@ -376,7 +379,7 @@ class Importer:
 
         possible_file_names = possible_compressed_variants(file.name)
         query = (File.select().where(
-            (File.root == root) & (File.path == rel_path) & (File.name.in_(possible_file_names,))))
+            (File.root == root) & (File.path == rel_path) & (File.name.in_(possible_file_names, ))))
 
         results = list(query.execute())
         db_file = None
@@ -393,9 +396,28 @@ class Importer:
         else:
             oldname = db_file.name
             if db_file.mtime_millis != mtime_millis or db_file.size != file.size:
-                db_file.name=file.name
-                db_file.size=file.size
-                db_file.mtime_millis=mtime_millis
+                db_file.name = file.name
+                db_file.size = file.size
+                db_file.mtime_millis = mtime_millis
                 changelist.changed_ids.append(db_file.rowid)
                 changelist.changed_files.append(db_file)
             return oldname
+
+    def import_selection(self, files: typing.List[str]) -> ChangeList:
+        changes = ChangeList()
+        for file in files:
+            root = LibraryRoot.find_for_file(file)
+            root_fs = fs.open_fs(root.path, writeable=False)
+            rel_path = fs.path.relativefrom(root.path, file)
+
+            file_info = root_fs.getinfo(rel_path, ["details"])
+            if file_info.is_dir:
+                root_changes = self.import_files_from(root_fs, root, rel_path)
+                changes.merge(root_changes)
+            elif file_info.is_file:
+                rel_path_parent = str(Path(rel_path).parent)
+                self._import_file(file_info, rel_path_parent, root, changes)
+            else:
+                logging.error(f"Unknow type {file} of type {file_info.type}");
+                self.status.update_status(f"Unknow type {file} of type {file_info.type}")
+        return changes
