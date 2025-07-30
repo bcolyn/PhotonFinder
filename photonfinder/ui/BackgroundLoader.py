@@ -347,10 +347,12 @@ class FileProcessingTask(ProgressBackgroundTask):
 
 
 class PlateSolveTask(FileProcessingTask):
+
     def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File],
                  solver_type: SolverType):
         super().__init__(context, search_criteria, files)
         settings = self.context.settings
+        self.solved_files = list()
         match solver_type:
             case SolverType.ASTAP:
                 self.solver = ASTAPSolver(exe=settings.get_astap_path(), fallback_fov=settings.get_astap_fallback_fov())
@@ -385,6 +387,11 @@ class PlateSolveTask(FileProcessingTask):
                     ra, dec, healpix = get_image_center_coords(solution)
                     Image.update(coord_ra=ra, coord_dec=dec, coord_pix256=healpix
                                  ).where(Image.file == file).execute()
+                    file.has_wcs = True
+                    file.image.coord_ra = ra
+                    file.image.coord_dec = dec
+                    file.image.coord_pix256 = healpix
+                    self.solved_files.append(file)
         except Exception as e:
             logging.error(f"Error solving file {file.full_filename()}: {e}", exc_info=True)
             raise e

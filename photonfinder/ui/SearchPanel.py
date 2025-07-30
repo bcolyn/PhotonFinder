@@ -920,7 +920,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             file = self.data_model.data(name_index, ROWID_ROLE)
             return file
 
-
     def get_selected_image(self) -> Image | None:
         file = self.get_selected_file()
         if file and hasattr(file, 'image') and file.image:
@@ -1121,9 +1120,29 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         dialog = ProgressDialog("Loading", "Plate solving", task, parent=self)
         dialog.setAttribute(Qt.WA_DeleteOnClose)
         dialog.show()
-        task.finished.connect(self.refresh_data_grid)
+        task.finished.connect(self.on_files_solved)
         task.finished.connect(self.print_task_complete)
         task.start()
+
+    def on_files_solved(self):
+        task: PlateSolveTask = self.sender()
+        solved_files = set(task.solved_files)
+        model = self.dataView.model()
+        for row in range(model.rowCount()):
+            index = model.index(row, 0)
+            if index.data(ROWID_ROLE) in solved_files:
+                file = index.data(ROWID_ROLE)
+                assert file.has_wcs
+                ra_item = model.index(row, 15)
+                dec_item = model.index(row, 16)
+                solved_item = model.index(row, 17)
+
+                model.setData(ra_item,_format_ra(file.image.coord_ra),Qt.DisplayRole)
+                model.setData(ra_item,file.image.coord_ra, SORT_ROLE)
+                model.setData(dec_item, _format_dec(file.image.coord_dec),Qt.DisplayRole)
+                model.setData(dec_item, file.image.coord_dec, SORT_ROLE)
+                model.setData(solved_item, "True",Qt.DisplayRole)
+                model.setData(solved_item, "True", SORT_ROLE)
 
     def report_list_files(self):
         selected_files = self.get_selected_files()
