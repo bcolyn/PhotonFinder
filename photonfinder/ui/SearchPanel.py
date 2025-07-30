@@ -408,7 +408,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             ])
 
         # Resize columns to content
-        self.resize_columns()
+        if page == 0:
+            self.resize_columns()
         self.update_sort_indicator()
 
     def resize_columns(self):
