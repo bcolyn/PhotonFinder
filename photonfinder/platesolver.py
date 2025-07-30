@@ -96,10 +96,11 @@ class ASTAPSolver(SolverBase):
     _exe: str
     _log: bool
 
-    def __init__(self, exe=get_default_astap_path()):
+    def __init__(self, exe=get_default_astap_path(), fallback_fov: float = 1.0):
         super().__init__()
         self._exe = exe
         self._log = True
+        self.fallback_fov = fallback_fov
 
     def _solve(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None) -> Header:
 
@@ -140,7 +141,7 @@ class ASTAPSolver(SolverBase):
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
         temp_image = self._create_temp_fits(image_path)
-        hint = ASTAPSolver.extract_hint(fits.getheader(temp_image), image)
+        hint = self.extract_hint(fits.getheader(temp_image), image)
         return self._solve(temp_image, hint)
 
     @staticmethod
@@ -155,8 +156,7 @@ class ASTAPSolver(SolverBase):
             hint["-fov"] = str(fov)
         return hint
 
-    @staticmethod
-    def extract_hint(header: Header, image: Image) -> typing.Dict[str, str]:
+    def extract_hint(self, header: Header, image: Image) -> typing.Dict[str, str]:
         if image and image.coord_ra:
             ra = image.coord_ra
             dec = image.coord_dec
@@ -172,8 +172,11 @@ class ASTAPSolver(SolverBase):
         height = header.get("NAXIS2")
         if scale is not None and height is not None:
             fov = int(height) * scale / 3600
+        elif self.fallback_fov:
+            fov = self.fallback_fov
         else:
             fov = None
+
         return ASTAPSolver.create_hint(ra, dec, fov)
 
     def _raise_error(self, ini_file, log_file, image_file):

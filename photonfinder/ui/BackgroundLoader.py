@@ -353,7 +353,7 @@ class PlateSolveTask(FileProcessingTask):
         settings = self.context.settings
         match solver_type:
             case SolverType.ASTAP:
-                self.solver = ASTAPSolver(exe=settings.get_astap_path())
+                self.solver = ASTAPSolver(exe=settings.get_astap_path(), fallback_fov=settings.get_astap_fallback_fov())
             case SolverType.ASTROMETRY_NET:
                 self.solver = AstrometryNetSolver(api_key=settings.get_astrometry_net_api_key())
 

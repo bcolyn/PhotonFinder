@@ -165,6 +165,13 @@ class Settings:
         """Set the path to the ASTAP executable."""
         self.settings.setValue("astap_path", value)
 
+    def get_astap_fallback_fov(self):
+        return self.settings.value("astap_fov", 2.0, float)
+
+    def set_astap_fallback_fov(self, value):
+        self.settings.setValue("astap_fov", value)
+
+
     def get_astrometry_net_api_key(self):
         """Get the API key for astrometry.net."""
         return self.settings.value("astrometry_net_api_key", "", str)

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>541</width>
-    <height>339</height>
+    <width>612</width>
+    <height>396</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -82,6 +82,34 @@
          <widget class="QPushButton" name="astap_browse_button">
           <property name="text">
            <string>Browse...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="label_4">
+          <property name="text">
+           <string>ASTAP Fallback FoV (degrees)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="astap_fov_edit">
+          <property name="decimals">
+           <number>1</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_5">
+          <property name="text">
+           <string>Used when FoV can't be determined from metadata</string>
           </property>
          </widget>
         </item>
