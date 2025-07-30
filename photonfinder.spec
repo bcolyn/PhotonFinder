@@ -1,11 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from PyInstaller.utils.hooks import copy_metadata
-
-block_cipher = None
+from PyInstaller.utils.hooks import collect_data_files
 
 datas = [('icon.png', '.')]
 datas += copy_metadata('xisf')
+datas += collect_data_files('astroquery')
+datas += collect_data_files('photutils')
+
+block_cipher = None
 
 a = Analysis(['photonfinder\\main.py'],
              binaries=[],
