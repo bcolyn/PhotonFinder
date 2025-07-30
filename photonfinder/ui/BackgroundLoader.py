@@ -355,7 +355,8 @@ class PlateSolveTask(FileProcessingTask):
             case SolverType.ASTAP:
                 self.solver = ASTAPSolver(exe=settings.get_astap_path(), fallback_fov=settings.get_astap_fallback_fov())
             case SolverType.ASTROMETRY_NET:
-                self.solver = AstrometryNetSolver(api_key=settings.get_astrometry_net_api_key())
+                self.solver = AstrometryNetSolver(api_key=settings.get_astrometry_net_api_key(),
+                                                  force_image_upload=settings.get_astrometry_net_force_image_upload())
 
     def get_tables(self) -> List:
         tables = super().get_tables()

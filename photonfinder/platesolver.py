@@ -199,13 +199,14 @@ class ASTAPSolver(SolverBase):
 
 class AstrometryNetSolver(SolverBase):
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, force_image_upload: bool = False):
         super().__init__()
         if not api_key:
             raise FileNotFoundError("API key not found")
         self.api_key = api_key
         self.ast = AstrometryNet()
         self.ast.api_key = api_key
+        self.force_image_upload = force_image_upload
 
     def solve(self, image_path, image: Image = None) -> Header:
         if not image_path.is_file():
@@ -213,7 +214,8 @@ class AstrometryNetSolver(SolverBase):
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
         temp_image = self._create_temp_fits(image_path)
-        wcs_header: Header = self.ast.solve_from_image(temp_image, verbose=False, crpix_center=True)
+        wcs_header: Header = self.ast.solve_from_image(temp_image, verbose=False, crpix_center=True,
+                                                       force_image_upload=self.force_image_upload)
         result = SolverBase.extract_wcs_cards(wcs_header)
         original_header = fits.getheader(temp_image)
         result['NAXIS1'] = original_header['NAXIS1']

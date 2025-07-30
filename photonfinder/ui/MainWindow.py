@@ -566,15 +566,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_panel = self.get_current_search_panel()
         if not current_panel:
             return
-        selected_image = current_panel.get_selected_image()
+        file = current_panel.get_selected_file()
+        selected_image = file.image if file and hasattr(file, 'image') and file.image else None
         has_selection = selected_image is not None
         self.actionOpen_File.setEnabled(has_selection)
         self.actionShow_location.setEnabled(has_selection)
         self.actionSelect_path.setEnabled(has_selection)
+
         if selected_image:
             current_type = selected_image.image_type
             self.actionFind_matching_darks.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
             self.actionFind_matching_flats.setEnabled(current_type == "LIGHT")
+            has_wcs = hasattr(file, 'has_wcs') and file.has_wcs
+            is_light = not current_type or "LIGHT" in current_type
+            self.actionPlate_solve_files.setEnabled(is_light and not has_wcs)
+            self.actionPlate_Solve_Astrometry_net.setEnabled(is_light and not has_wcs)
 
         self.actionExposure.setChecked(AdvancedFilter.EXPOSURE in current_panel.advanced_options)
         self.actionCoordinates.setChecked(AdvancedFilter.COORDINATES in current_panel.advanced_options)

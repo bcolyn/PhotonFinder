@@ -180,6 +180,12 @@ class Settings:
         """Set the API key for astrometry.net."""
         self.settings.setValue("astrometry_net_api_key", value)
 
+    def get_astrometry_net_force_image_upload(self):
+        return self.settings.value('astrometry_net_force_image_upload', False, bool)
+
+    def set_astrometry_net_force_image_upload(self, value):
+        return self.settings.setValue('astrometry_net_force_image_upload', value)
+
     def get_last_export_xisf_as_fits(self):
         return self.settings.value("last_export_xisf_as_fits", False, bool)
 

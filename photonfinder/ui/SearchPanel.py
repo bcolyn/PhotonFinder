@@ -470,7 +470,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         find_darks_action = menu.addAction("Find matching darks")
         find_flats_action = menu.addAction("Find matching flats")
         menu.addSeparator()
-
+        menu.addAction(self.mainWindow.actionPlate_solve_files)
+        menu.addAction(self.mainWindow.actionPlate_Solve_Astrometry_net)
+        menu.addSeparator()
         new_project_action = menu.addAction("Add to New Project")
         new_project_action.setData(Project())
 
@@ -901,7 +903,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_criteria.coord_dec = ""
         self.search_criteria.coord_radius = 0.5
 
-    def get_selected_image(self) -> Image | None:
+    def get_selected_file(self) -> File | None:
         """Get the image data of the first selected file, if any."""
         selected_rows = self.dataView.selectionModel().selectedRows()
         if not selected_rows:
@@ -916,10 +918,15 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # Get the file object from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
             file = self.data_model.data(name_index, ROWID_ROLE)
-            if hasattr(file, 'image') and file.image:
-                return file.image
+            return file
 
-        return None
+
+    def get_selected_image(self) -> Image | None:
+        file = self.get_selected_file()
+        if file and hasattr(file, 'image') and file.image:
+            return file.image
+        else:
+            return None
 
     def reset_project_criteria(self):
         self.search_criteria.project = None
@@ -1115,6 +1122,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         dialog.setAttribute(Qt.WA_DeleteOnClose)
         dialog.show()
         task.finished.connect(self.refresh_data_grid)
+        task.finished.connect(self.print_task_complete)
         task.start()
 
     def report_list_files(self):
@@ -1173,6 +1181,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.add_filter_button_control(filter_button)
         self.search_criteria.project = project
         self.update_search_criteria()
+
+    def print_task_complete(self):
+        self.context.status_reporter.update_status("Task complete")
 
 
 def _get_combo_value(combo: QComboBox) -> str | None:
