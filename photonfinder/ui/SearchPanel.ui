@@ -270,6 +270,9 @@
          <layout class="QVBoxLayout" name="comboTreeLayout">
           <item>
            <widget class="QTreeView" name="filesystemTreeView">
+            <property name="contextMenuPolicy">
+             <enum>Qt::ContextMenuPolicy::CustomContextMenu</enum>
+            </property>
             <property name="selectionMode">
              <enum>QAbstractItemView::SelectionMode::ExtendedSelection</enum>
             </property>

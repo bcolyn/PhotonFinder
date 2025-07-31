@@ -88,6 +88,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.filesystemTreeView.setHeaderHidden(True)
         self.filesystemTreeView.setItemsExpandable(True)
         self.filesystemTreeView.selectionModel().selectionChanged.connect(self.on_tree_selection_changed)
+        self.filesystemTreeView.customContextMenuRequested.connect(self.on_tree_context_menu)
 
         # Connect UI elements to update search criteria
         self.filter_type_combo.currentTextChanged.connect(self.update_search_criteria)
@@ -451,6 +452,18 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # if not self.update_in_progress:
         self.refresh_combo_options()
         self.search_criteria_changed.emit()
+
+    def on_tree_context_menu(self, position):
+        index = self.filesystemTreeView.indexAt(position)
+        if not index.isValid():
+            return
+        root_and_path = self.library_tree_model.get_roots_and_paths([index])
+
+        menu = QMenu(self)
+        create_project_action = menu.addAction("Create Project")
+        action = menu.exec(self.filesystemTreeView.viewport().mapToGlobal(position))
+        if action == create_project_action:
+            self.mainWindow.create_project_for_folder(root_and_path)
 
     def show_context_menu(self, position):
         """Show context menu for the data view."""

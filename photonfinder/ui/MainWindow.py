@@ -1,5 +1,6 @@
 import logging
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import List
 
@@ -9,7 +10,7 @@ from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext, StatusReporter, backup_database
 from photonfinder.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
-from photonfinder.models import SearchCriteria, Project, File, ProjectFile
+from photonfinder.models import SearchCriteria, Project, File, ProjectFile, RootAndPath, Image, LibraryRoot
 from .AboutDialog import AboutDialog
 from .LibraryRootDialog import LibraryRootDialog
 from .LogWindow import LogWindow
@@ -597,8 +598,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for file in files_to_add:
             edit_dialog.add_file(ProjectFile(project=project, file=file))
         edit_dialog.refresh_table()
-        edit_dialog.exec()
-        if self.projects_window:
+        result = edit_dialog.exec()
+        if result == QDialog.Accepted  and self.projects_window:
+            self.projects_window.populate_table()
+
+    def create_project_for_folder(self, root_and_paths: List[RootAndPath]):
+        if not root_and_paths:
+            return
+        root_and_path = root_and_paths[0]
+        project = Project(name=root_and_path.path)
+        edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)
+        temp_criteria = deepcopy(self.get_current_search_panel().search_criteria)
+        temp_criteria.paths = [root_and_path]
+        query = (File.select(File, LibraryRoot, Image)
+                 .join_from(File, LibraryRoot)
+                 .join_from(File, Image))
+        query = Image.apply_search_criteria(query, temp_criteria)
+        for file in list(query.execute()):
+            edit_dialog.add_file(ProjectFile(project=project, file=file))
+        edit_dialog.refresh_table()
+        result = edit_dialog.exec()
+        if result == QDialog.Accepted and self.projects_window:
             self.projects_window.populate_table()
 
     def populate_recent_projects(self):
