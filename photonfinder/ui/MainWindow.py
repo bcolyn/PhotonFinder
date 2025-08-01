@@ -21,6 +21,7 @@ from .SettingsDialog import SettingsDialog
 from .common import create_colored_svg_icon
 from .generated.MainWindow_ui import Ui_MainWindow
 import photonfinder.ui.generated.resources_rc
+from .session import SessionManager, Session
 from ..platesolver import SolverType
 
 
@@ -33,6 +34,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         self.context = context
         self.app = app
+        self.session_manager = SessionManager(context.get_session_file())
         self.scan_worker = None  # Initialize scan_worker attribute
         self.projects_window = None
 
@@ -142,25 +144,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             event.ignore()
 
     def restore_session(self):
-        file = self.context.get_session_file()
         try:
-            if file and Path(file).exists():
-                with open(file, mode="rb") as fd:
-                    json_bytes = fd.read()
-                    all_criteria = SearchCriteria.from_json(json_bytes.decode("UTF-8"))
-                    for search_criteria in all_criteria:
-                        panel = self.new_search_tab(search_criteria)
-                        panel.refresh_data_grid()
+            sessions = self.session_manager.load_sessions()
+            for session in sessions:
+                panel = self.new_search_tab(session.criteria)
+                panel.set_title(session.title)
+                panel.visibility_controller.load_visibility(session.hidden_columns)
+        except Exception as e:
+            logging.error(e, exc_info=True)
         finally:
             if len(self.get_search_panels()) == 0:
                 self.new_search_tab()
 
     def save_session(self):
-        all_search_criteria = list(map(lambda x: x.search_criteria, self.get_search_panels()))
-        file = self.context.get_session_file()
-        with open(file, mode='wb') as fd:
-            fd.write(SearchCriteria.list_to_json(all_search_criteria).encode("UTF-8"))
-        logging.info(f"Session saved to {file}")
+        sessions = [Session(
+            criteria=panel.search_criteria,
+            hidden_columns=panel.visibility_controller.save_visibility(),
+            title=panel.title
+        ) for panel in self.get_search_panels()]
+        self.session_manager.save_sessions(sessions)
 
     def new_search_tab(self, search_criteria=None) -> SearchPanel:
         panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
@@ -610,13 +612,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_tab = self.get_current_search_panel()
         current_tab.visibility_controller.build_menu(self.menuSearch_Details)
 
-
     def populate_project_details(self):
         self.menuProject_Details.clear()
         if self.projects_window:
             controller = self.projects_window.visibility_controller
             controller.build_menu(self.menuProject_Details)
-
 
 
 class UIStatusReporter(StatusReporter, QObject):

@@ -58,10 +58,14 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_results_loader.results_loaded.connect(self.on_search_results_loaded)
         self.combo_loader = GenericControlLoader(context)
         self.combo_loader.data_ready.connect(self.on_combo_options_loaded)
-        self.refresh_combo_options()
+        #self.refresh_combo_options()
 
         # Initialize the data view model
         self.data_model = QStandardItemModel(self)
+        self.data_model.setHorizontalHeaderLabels([
+            "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
+            "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved"
+        ])
         self.proxy_model = QSortFilterProxyModel()
         self.proxy_model.setSortRole(SORT_ROLE)
         self.proxy_model.setSourceModel(self.data_model)
@@ -115,7 +119,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def showEvent(self, event, /):
         super().showEvent(event)
         if self.data_model.rowCount() == 0:
-            self.refresh_data_grid()
+            self.update_search_criteria()
 
     def on_library_tree_ready(self):
         all_libraries_index = self.library_tree_model.index(0, 0, QModelIndex())
@@ -298,11 +302,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # If this is a new search (data model is empty), reset the total files counter
         if page == 0:
-            self.data_model.clear()
-            self.data_model.setHorizontalHeaderLabels([
-                "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
-                "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved"
-            ])
+            self.data_model.removeRows(0, self.data_model.rowCount())
 
             # Reset total files counter when starting a new search
             self.total_files = total_files
