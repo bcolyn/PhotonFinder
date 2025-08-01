@@ -222,6 +222,12 @@ class Settings:
     def add_known_fits_keywords(self, keywords: list[str]):
         self.known_fits_keywords.update(keywords)
 
+    def get_project_hidden_cols(self):
+        return self.settings.value("project_hidden_cols", "", str)
+
+    def set_project_hidden_cols(self, value) -> str:
+        self.settings.setValue("project_hidden_cols", value)
+
     def sync(self):
         """Ensure settings are saved to disk."""
         self.settings.setValue("known_fits_keywords", "|".join(self.known_fits_keywords))

@@ -219,14 +219,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.dockWidget.show()
         else:
             if self.projects_window:
-                self.projects_window.destroy()
-                self.projects_window = None
-                self.menuProject_Details.setEnabled(False)
+                self.clear_projects_window()
                 self.dockWidget.setWidget(self.dockWidgetContents)
             self.actionManage_Projects.setChecked(False)
             self.dockWidget.hide()
 
     def clear_projects_window(self):
+        self.projects_window.save_cols()
         self.projects_window = None
         self.menuProject_Details.setEnabled(False)
 

@@ -27,6 +27,8 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
         size = QSize(24, 24)
         self.actionUseAsFilter.setIcon(create_colored_svg_icon(":/res/funnel.svg", size, text_color))
         self.visibility_controller = ColumnVisibilityController(self.tableWidget)
+        hidden_cols = context.settings.get_project_hidden_cols()
+        self.visibility_controller.load_visibility(hidden_cols)
 
     def connect_signals(self):
         self.actionCreate.triggered.connect(self.create_action)
@@ -61,6 +63,10 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
 
         self.tableWidget.resizeColumnsToContents()
         self.enable_disable_actions()
+
+    def save_cols(self):
+        hidden_cols = self.visibility_controller.save_visibility()
+        self.context.settings.set_project_hidden_cols(hidden_cols)
 
     def closeEvent(self, event, /):
         self.closing.emit()
