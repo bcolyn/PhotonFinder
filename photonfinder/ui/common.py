@@ -108,14 +108,13 @@ class ColumnVisibilityController:
         )
 
     def show_menu(self, global_pos):
-        menu = self.build_menu()
+        menu = QMenu("Select Columns")
+        self.build_menu(menu)
         menu.exec(global_pos)
 
-    def build_menu(self) -> QMenu:
-        menu = QMenu("Select Columns")
-
+    def build_menu(self, menu: QMenu) -> QMenu:
         if not self.model:
-            return menu
+            return
 
         for col in range(self.model.columnCount()):
             header = self.model.headerData(col, Qt.Horizontal)
@@ -127,13 +126,19 @@ class ColumnVisibilityController:
 
         return menu
 
-    def save_visibility(self) -> dict:
-        return {
-            str(col): not self.table_view.isColumnHidden(col)
-            for col in range(self.model.columnCount())
-        }
+    def save_visibility(self) -> str:
+        """Return a comma-separated string of hidden column headers."""
+        hidden_columns = []
+        for col in range(self.model.columnCount()):
+            if self.table_view.isColumnHidden(col):
+                header = str(self.model.headerData(col, Qt.Horizontal))
+                hidden_columns.append(header)
+        return ",".join(hidden_columns)
 
-    def load_visibility(self, state: dict):
-        for col_str, visible in state.items():
-            col = int(col_str)
-            self.table_view.setColumnHidden(col, not visible)
+    def load_visibility(self, csv_string: str):
+        """Hide columns listed in the comma-separated string; show all others."""
+        hidden_headers = set(h.strip() for h in csv_string.split(",") if h.strip())
+        for col in range(self.model.columnCount()):
+            header = str(self.model.headerData(col, Qt.Horizontal))
+            self.table_view.setColumnHidden(col, header in hidden_headers)
+

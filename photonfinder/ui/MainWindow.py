@@ -24,68 +24,6 @@ import photonfinder.ui.generated.resources_rc
 from ..platesolver import SolverType
 
 
-class UIStatusReporter(StatusReporter, QObject):
-    on_message = Signal(str)
-
-    def __init__(self):
-        super().__init__()
-        self.last_update_time = 0
-        self.log_messages = []
-
-    def update_status(self, message: str, bulk=False) -> None:
-        current_time = time.time()
-        if bulk and (current_time - self.last_update_time) < 1:
-            return
-        self.last_update_time = current_time
-        self.on_message.emit(message)
-
-        # Store non-bulk messages for the log window
-        if not bulk:
-            self.log_messages.append(message)
-
-    def get_log_messages(self):
-        """Return the list of log messages."""
-        return self.log_messages
-
-
-class LibraryScanWorker(QThread):
-    """Worker thread for scanning libraries."""
-    finished = Signal()
-    change_list_ready = Signal(object)  # Signal emitted when a change list is ready
-
-    def __init__(self, context, files: List[str] = None):
-        super().__init__()
-        self.context = context
-        self.files = files
-        self.importer = Importer(context,
-                                 context.settings.get_bad_file_patterns(),
-                                 context.settings.get_bad_dir_patterns())
-
-    def run(self):
-        if self.files:
-            self.import_files()
-        else:
-            self.import_all()
-
-        # Signal that we're done
-        self.finished.emit()
-
-    def import_all(self):
-        for changes_per_library in self.importer.import_all():
-            self.context.status_reporter.update_status(
-                f"Files removed {len(changes_per_library.removed_files)} " +
-                f"added {len(changes_per_library.new_files)} " +
-                f"changed {len(changes_per_library.changed_files)}")
-            changes_per_library.apply_all()
-            update_fits_header_cache(changes_per_library, self.context.status_reporter, self.context.settings)
-        check_missing_header_cache(self.context.status_reporter, self.context.settings)
-
-    def import_files(self):
-        changes = self.importer.import_selection(self.files)
-        changes.apply_all()
-        update_fits_header_cache(changes, self.context.status_reporter, self.context.settings)
-
-
 class MainWindow(QMainWindow, Ui_MainWindow):
     tabs_changed = Signal(list)
     projects_window: ProjectsWindow | None
@@ -97,6 +35,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.app = app
         self.scan_worker = None  # Initialize scan_worker attribute
         self.projects_window = None
+
+        self.menuProject_Details.removeAction(self.actionLoading_2)
+        self.menuSearch_Details.removeAction(self.actionLoading)
 
         # Set the window icon from the resource file
         self.setWindowIcon(QIcon(":/icon.png"))
@@ -170,13 +111,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionAddToNewProject.triggered.connect(self.on_add_to_project_action)
         self.dockWidget.visibilityChanged.connect(self.show_projects_window)
         self.action_filter_no_project.triggered.connect(self.add_no_project_filter)
+        self.menuSearch_Details.aboutToShow.connect(self.populate_search_details)
+        self.menuProject_Details.aboutToShow.connect(self.populate_project_details)
 
     def closeEvent(self, event):
         try:
             self.save_session()
         finally:
             event.accept()  # Accept the event to actually close the window
-
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         # Check if dragged data has URLs (files)
@@ -271,6 +213,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if not self.projects_window:
                 widget = ProjectsWindow(context=self.context, main_window=self, parent=self)
                 self.projects_window = widget
+                self.menuProject_Details.setEnabled(True)
                 self.dockWidget.setWidget(widget)
             self.actionManage_Projects.setChecked(True)
             self.dockWidget.show()
@@ -278,12 +221,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if self.projects_window:
                 self.projects_window.destroy()
                 self.projects_window = None
+                self.menuProject_Details.setEnabled(False)
                 self.dockWidget.setWidget(self.dockWidgetContents)
             self.actionManage_Projects.setChecked(False)
             self.dockWidget.hide()
 
     def clear_projects_window(self):
         self.projects_window = None
+        self.menuProject_Details.setEnabled(False)
 
     def open_settings_dialog(self):
         """
@@ -599,7 +544,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             edit_dialog.add_file(ProjectFile(project=project, file=file))
         edit_dialog.refresh_table()
         result = edit_dialog.exec()
-        if result == QDialog.Accepted  and self.projects_window:
+        if result == QDialog.Accepted and self.projects_window:
             self.projects_window.populate_table()
 
     def create_project_for_folder(self, root_and_paths: List[RootAndPath]):
@@ -660,3 +605,78 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         selection_coord = next((coord for f in files if hasattr(f, 'image') and
                                 f.image and (coord := f.image.get_sky_coord()) is not None), None)
         self.menuAddToNearbyProject.setEnabled(has_selection and selection_coord is not None)
+
+    def populate_search_details(self):
+        self.menuSearch_Details.clear()
+        current_tab = self.get_current_search_panel()
+        current_tab.visibility_controller.build_menu(self.menuSearch_Details)
+
+
+    def populate_project_details(self):
+        self.menuProject_Details.clear()
+        if self.projects_window:
+            controller = self.projects_window.visibility_controller
+            controller.build_menu(self.menuProject_Details)
+
+
+
+class UIStatusReporter(StatusReporter, QObject):
+    on_message = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.last_update_time = 0
+        self.log_messages = []
+
+    def update_status(self, message: str, bulk=False) -> None:
+        current_time = time.time()
+        if bulk and (current_time - self.last_update_time) < 1:
+            return
+        self.last_update_time = current_time
+        self.on_message.emit(message)
+
+        # Store non-bulk messages for the log window
+        if not bulk:
+            self.log_messages.append(message)
+
+    def get_log_messages(self):
+        """Return the list of log messages."""
+        return self.log_messages
+
+
+class LibraryScanWorker(QThread):
+    """Worker thread for scanning libraries."""
+    finished = Signal()
+    change_list_ready = Signal(object)  # Signal emitted when a change list is ready
+
+    def __init__(self, context, files: List[str] = None):
+        super().__init__()
+        self.context = context
+        self.files = files
+        self.importer = Importer(context,
+                                 context.settings.get_bad_file_patterns(),
+                                 context.settings.get_bad_dir_patterns())
+
+    def run(self):
+        if self.files:
+            self.import_files()
+        else:
+            self.import_all()
+
+        # Signal that we're done
+        self.finished.emit()
+
+    def import_all(self):
+        for changes_per_library in self.importer.import_all():
+            self.context.status_reporter.update_status(
+                f"Files removed {len(changes_per_library.removed_files)} " +
+                f"added {len(changes_per_library.new_files)} " +
+                f"changed {len(changes_per_library.changed_files)}")
+            changes_per_library.apply_all()
+            update_fits_header_cache(changes_per_library, self.context.status_reporter, self.context.settings)
+        check_missing_header_cache(self.context.status_reporter, self.context.settings)
+
+    def import_files(self):
+        changes = self.importer.import_selection(self.files)
+        changes.apply_all()
+        update_fits_header_cache(changes, self.context.status_reporter, self.context.settings)

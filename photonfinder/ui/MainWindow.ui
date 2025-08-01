@@ -146,11 +146,34 @@
     <addaction name="menuAddToRecentProject"/>
     <addaction name="menuAddToNearbyProject"/>
    </widget>
+   <widget class="QMenu" name="menuView">
+    <property name="title">
+     <string>View</string>
+    </property>
+    <widget class="QMenu" name="menuSearch_Details">
+     <property name="title">
+      <string>Search Details</string>
+     </property>
+     <addaction name="actionLoading"/>
+    </widget>
+    <widget class="QMenu" name="menuProject_Details">
+     <property name="enabled">
+      <bool>false</bool>
+     </property>
+     <property name="title">
+      <string>Project List Details</string>
+     </property>
+     <addaction name="actionLoading_2"/>
+    </widget>
+    <addaction name="menuSearch_Details"/>
+    <addaction name="menuProject_Details"/>
+   </widget>
    <addaction name="menu_File"/>
    <addaction name="menuFilter"/>
    <addaction name="menu_Tools"/>
    <addaction name="menuProject"/>
    <addaction name="menuReport"/>
+   <addaction name="menuView"/>
    <addaction name="menu_Help"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
@@ -467,6 +490,16 @@
   <action name="action_filter_no_project">
    <property name="text">
     <string>Without Project</string>
+   </property>
+  </action>
+  <action name="actionLoading">
+   <property name="text">
+    <string>Loading</string>
+   </property>
+  </action>
+  <action name="actionLoading_2">
+   <property name="text">
+    <string>Loading</string>
    </property>
   </action>
  </widget>
