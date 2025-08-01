@@ -2,9 +2,9 @@ import logging
 from datetime import datetime
 
 from PySide6.QtCore import QSize
-from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter
+from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter, QAction
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QStyle
+from PySide6.QtWidgets import QStyle, QTableView, QMenu
 
 
 def _format_file_size(size_bytes):
@@ -94,3 +94,46 @@ def ensure_header_widths(table_view, extra_padding=12):
         current_width = header.sectionSize(col)
         if current_width < total_needed:
             header.resizeSection(col, total_needed)
+
+
+class ColumnVisibilityController:
+    def __init__(self, table_view: QTableView):
+        self.table_view = table_view
+        self.model = table_view.model()
+        self.header = table_view.horizontalHeader()
+
+        self.header.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.header.customContextMenuRequested.connect(
+            lambda pos: self.show_menu(self.header.mapToGlobal(pos))
+        )
+
+    def show_menu(self, global_pos):
+        menu = self.build_menu()
+        menu.exec(global_pos)
+
+    def build_menu(self) -> QMenu:
+        menu = QMenu("Select Columns")
+
+        if not self.model:
+            return menu
+
+        for col in range(self.model.columnCount()):
+            header = self.model.headerData(col, Qt.Horizontal)
+            action = QAction(header, menu)
+            action.setCheckable(True)
+            action.setChecked(not self.table_view.isColumnHidden(col))
+            action.toggled.connect(lambda checked, c=col: self.table_view.setColumnHidden(c, not checked))
+            menu.addAction(action)
+
+        return menu
+
+    def save_visibility(self) -> dict:
+        return {
+            str(col): not self.table_view.isColumnHidden(col)
+            for col in range(self.model.columnCount())
+        }
+
+    def load_visibility(self, state: dict):
+        for col_str, visible in state.items():
+            col = int(col_str)
+            self.table_view.setColumnHidden(col, not visible)

@@ -8,7 +8,7 @@ from photonfinder.core import ApplicationContext
 from photonfinder.models import Project, ProjectFile
 from photonfinder.ui.generated.ProjectsWindow_ui import Ui_ProjectsWindow
 from .ProjectEditDialog import ProjectEditDialog
-from .common import _format_ra, _format_dec, _format_date, create_colored_svg_icon
+from .common import _format_ra, _format_dec, _format_date, create_colored_svg_icon, ColumnVisibilityController
 
 
 class ProjectsWindow(QWidget, Ui_ProjectsWindow):
@@ -26,6 +26,7 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
         text_color = self.palette().color(QPalette.WindowText)
         size = QSize(24, 24)
         self.actionUseAsFilter.setIcon(create_colored_svg_icon(":/res/funnel.svg", size, text_color))
+        self.visibility_controller = ColumnVisibilityController(self.tableWidget)
 
     def connect_signals(self):
         self.actionCreate.triggered.connect(self.create_action)

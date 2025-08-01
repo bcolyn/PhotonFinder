@@ -21,7 +21,8 @@ from .HeaderDialog import HeaderDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .MetadataReportDialog import MetadataReportDialog
 from .ProgressDialog import ProgressDialog
-from .common import _format_ra, _format_dec, _format_date, _format_file_size, _format_timestamp, ensure_header_widths
+from .common import _format_ra, _format_dec, _format_date, _format_file_size, _format_timestamp, ensure_header_widths, \
+    ColumnVisibilityController
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
 EMPTY_LABEL = "<empty>"
@@ -72,6 +73,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.dataView.customContextMenuRequested.connect(self.show_context_menu)
         # Connect selection changes
         self.dataView.selectionModel().selectionChanged.connect(self.on_data_selection_changed)
+        self.visibility_controller = ColumnVisibilityController(self.dataView)
         self.has_more_results = False
         self.loading_more = False
 
