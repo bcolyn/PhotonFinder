@@ -15,10 +15,7 @@ class Session:
 
     @staticmethod
     def _serialize(value) -> dict:
-        if isinstance(value, SearchCriteria):
-            return SearchCriteria._serialize(value)
-        else:
-            return value.__dict__
+        return SearchCriteria._serialize(value)
 
     @classmethod
     def _inflate(cls, value):

@@ -1,3 +1,5 @@
+import datetime
+
 from photonfinder.models import SearchCriteria, RootAndPath
 from photonfinder.ui.session import Session, sessions_to_json, json_to_sessions
 
@@ -10,7 +12,7 @@ def test_roundtrip():
     ), Session(
         hidden_columns="col1,col2",
         title="title2",
-        criteria=SearchCriteria()
+        criteria=SearchCriteria(start_datetime=datetime.datetime.fromisoformat("20190101T000000"))
     )]
     json_str = sessions_to_json(sessions)
     assert json_str is not None
