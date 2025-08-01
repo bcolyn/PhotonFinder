@@ -64,7 +64,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.data_model = QStandardItemModel(self)
         self.data_model.setHorizontalHeaderLabels([
             "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
-            "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved"
+            "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved",
+            "Projects"
         ])
         self.proxy_model = QSortFilterProxyModel()
         self.proxy_model.setSortRole(SORT_ROLE)
@@ -348,6 +349,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             solved_item = QStandardItem("True" if hasattr(file, 'has_wcs') and file.has_wcs else "False")
             solved_item.setData(solved_item.text(), SORT_ROLE)
 
+            projects = file.projectfile.project_names if (hasattr(file, "projectfile") and
+                                                          hasattr(file.projectfile, "project_names") and
+                                                          file.projectfile.project_names) else ""
+            projects_item = QStandardItem(projects)
+            projects_item.setData(projects, SORT_ROLE)
+
             localtime: datetime
             try:
                 if hasattr(file, 'image') and file.image:
@@ -406,8 +413,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             # Add row to model
             self.data_model.appendRow([
                 name_item, type_item, filter_item, exposure_item, gain_item, offset_item,
-                binning_item, set_temp_item, camera_item, telescope_item,
-                object_item, date_obs_item, path_item, size_item, date_item, ra_item, dec_item, solved_item
+                binning_item, set_temp_item, camera_item, telescope_item, object_item, date_obs_item,
+                path_item, size_item, date_item, ra_item, dec_item, solved_item, projects_item
             ])
 
         # Resize columns to content

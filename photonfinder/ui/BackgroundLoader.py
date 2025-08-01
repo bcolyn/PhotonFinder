@@ -5,11 +5,12 @@ from typing import Callable, List
 
 from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
-from peewee import JOIN
+from peewee import JOIN, fn
 
 from photonfinder.core import ApplicationContext, compress, decompress
 from photonfinder.fits_handlers import normalize_fits_header
-from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS
+from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, ProjectFile, \
+    Project
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
 from photonfinder.platesolver import ASTAPSolver, get_image_center_coords, SolverType, AstrometryNetSolver
 
@@ -140,16 +141,28 @@ class SearchResultsLoader(BackgroundLoaderBase):
     def _search_task(self, search_criteria, page):
         """Background task to search for files matching the criteria."""
         try:
+            project_names_subq = (
+                ProjectFile
+                .select(
+                    ProjectFile.file.alias('file_id'),
+                    fn.GROUP_CONCAT(Project.name).alias('project_names')
+                )
+                .join(Project)
+                .group_by(ProjectFile.file)
+            )
+
             # Start building the query
             fields = [File.name, Image.image_type, Image.filter, Image.exposure, Image.gain, Image.offset,
                       Image.binning, Image.set_temp, Image.camera, Image.telescope, Image.object_name,
                       Image.date_obs, File.path, File.size, File.mtime_millis, Image.coord_ra, Image.coord_dec,
-                      FileWCS.wcs.is_null(False).alias('has_wcs')]
+                      FileWCS.wcs.is_null(False).alias('has_wcs'), project_names_subq.c.project_names.alias('project_names')]
             query = (File
                      .select(*(fields + [File, Image, LibraryRoot]))
                      .join_from(File, LibraryRoot)
                      .join_from(File, Image, JOIN.LEFT_OUTER)
-                     .join_from(File, FileWCS, JOIN.LEFT_OUTER))
+                     .join_from(File, FileWCS, JOIN.LEFT_OUTER)
+                     .join_from(File, project_names_subq, JOIN.LEFT_OUTER, on=(File.rowid == project_names_subq.c.file_id))
+                     )
 
 
             # Apply search criteria to the query
