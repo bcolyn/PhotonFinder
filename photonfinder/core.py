@@ -2,10 +2,12 @@ import logging
 from abc import abstractmethod
 from pathlib import Path
 
+import astropy.units as u
 import zstd
 from PySide6.QtCore import QSettings
+from astropy.coordinates import SkyCoord
 from astropy.io.fits import Header
-from peewee import Database, SqliteDatabase
+from peewee import SqliteDatabase
 
 
 def get_default_astap_path():
@@ -29,6 +31,13 @@ def register_udfs(db: SqliteDatabase):
     @db.func("decompress_header_value", 2)
     def db_decompress_header_value(value, header_key: str):
         return Header.fromstring(decompress(value)).get(header_key, None)
+
+    @db.func("sky_distance", 4)
+    def db_sky_distance(ra1, dec1, ra2, dec2):
+        coord1 = SkyCoord(ra1, dec1, unit=u.deg, frame='icrs')
+        coord2 = SkyCoord(ra2, dec2, unit=u.deg, frame='icrs')
+        retval = coord1.separation(coord2).value
+        return retval
 
 
 class ApplicationContext:
@@ -170,7 +179,6 @@ class Settings:
 
     def set_astap_fallback_fov(self, value):
         self.settings.setValue("astap_fov", value)
-
 
     def get_astrometry_net_api_key(self):
         """Get the API key for astrometry.net."""

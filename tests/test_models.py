@@ -2,6 +2,9 @@ import pytest
 
 from photonfinder.models import *
 
+coord1 = SkyCoord(5.4778 * 15, 35.8239, unit=u.deg, frame='icrs')
+coord2 = SkyCoord(5.4689 * 15, 35.3300, unit=u.deg, frame='icrs')
+
 
 @pytest.mark.usefixtures("app_context")
 class TestModels:
@@ -21,9 +24,12 @@ class TestModels:
         # Create images with different filters
         Image.create(file=file1, filter="Red", image_type="Light", exposure=10.0, gain=100, binning=1)
         Image.create(file=file2, filter="Green", image_type="Dark", exposure=20.0, gain=100, binning=1)
-        Image.create(file=file3, filter="Blue", image_type="Light", exposure=20.0, gain=100, binning=1)
-        Image.create(file=file4, filter="Luminance", image_type="Light", exposure=10.0, gain=100, binning=1)
-
+        Image.create(file=file3, filter="Blue", image_type="Light", exposure=20.0, gain=100, binning=1,
+                     coord_ra=coord1.ra.value, coord_dec=coord1.dec.value,
+                     coord_pix256=int(hp.skycoord_to_healpix(coord1)))
+        Image.create(file=file4, filter="Luminance", image_type="Light", exposure=10.0, gain=100, binning=1,
+                     coord_ra=coord2.ra.value, coord_dec=coord2.dec.value,
+                     coord_pix256=int(hp.skycoord_to_healpix(coord2)))
         project = Project.create(name="TestProject")
         ProjectFile.create(project=project, file=file1)
         ProjectFile.create(project=project, file=file2)
@@ -93,6 +99,12 @@ class TestModels:
 
         project_file = ProjectFile.find_by_filename("does_not_match.fits", 1)
         assert project_file is None
+
+    def test_sky_distance(self):
+        value = (Image.select(fn.sky_distance(Image.coord_ra, Image.coord_dec, coord1.ra.value, coord1.dec.value))
+                 .where(Image.rowid == 4).scalar())
+        assert value == pytest.approx(0.5056942)
+
 
     def test_criteria_serde(self):
         search_criteria = SearchCriteria(
