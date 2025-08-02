@@ -1,4 +1,5 @@
 import copy
+import datetime
 import logging
 import os
 import shutil
@@ -15,7 +16,7 @@ from peewee import JOIN
 
 from photonfinder.core import ApplicationContext, Settings, decompress
 from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict
-from photonfinder.models import Image, File, SearchCriteria, FileWCS
+from photonfinder.models import Image, File, SearchCriteria, FileWCS, Project, ProjectFile
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
 from photonfinder.ui.generated.ExportDialog_ui import Ui_ExportDialog
 
@@ -99,11 +100,12 @@ class ExportWorker(BackgroundLoaderBase):
         self.export_xisf_as_fits = False
         self.override_platesolve = False
         self.custom_headers = {}
+        self.project = None
 
     def export_files(self, search_criteria: SearchCriteria,
                      files: Optional[List[File]], output_path: str, decompress: bool,
                      pattern: str, total_files: int, export_xisf_as_fits: bool = False,
-                     override_platesolve: bool = False, custom_headers: dict = None):
+                     override_platesolve: bool = False, custom_headers: dict = None, project: Project = None):
         """Start the export process in a background thread."""
         self.search_criteria = search_criteria
         self.files = files
@@ -115,6 +117,7 @@ class ExportWorker(BackgroundLoaderBase):
         self.export_xisf_as_fits = export_xisf_as_fits
         self.override_platesolve = override_platesolve
         self.custom_headers = custom_headers or {}
+        self.project = project
         self.run_in_thread(self._export_files_task)
 
     def _export_files_task(self):
@@ -143,7 +146,7 @@ class ExportWorker(BackgroundLoaderBase):
             logging.error(f"Error exporting files: {e}", exc_info=True)
             self.error.emit(str(e))
 
-    def _process_file(self, file, index):
+    def _process_file(self, file: File, index: int):
         """Process a single file during export."""
         # Get the source file path
         source_path = file.full_filename()
@@ -164,6 +167,11 @@ class ExportWorker(BackgroundLoaderBase):
         else:
             logging.info(f"Copying {source_path} to {output_file_path}")
             self.copy_file(source_path, output_file_path, file)
+
+        # add to project, if requested
+        if self.project:
+            link = ProjectFile(project=self.project, file=file)
+            link.save()
 
         # Update progress
         self.progress.emit(int((index + 1) / self.total_files * 100))
@@ -252,7 +260,6 @@ class ExportWorker(BackgroundLoaderBase):
     def customize_fits_headers(self):
         return self.override_platesolve or self.custom_headers
 
-#TODO: CREATE PROJECT
 class ExportDialog(QDialog, Ui_ExportDialog):
     """Dialog for exporting files."""
 
@@ -381,6 +388,12 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         if not self.useRefCheckBox.isChecked():
             self.search_criteria.reference_file = None
 
+        project = None
+        if self.createGroupCheckBox.isChecked():
+            path = Path(self.outputPathEdit.text())
+            project = Project(name=f"Export {path.name} {datetime.datetime.now().date().isoformat()}")
+            project.save()
+
         # Parse custom headers
         custom_headers = {}
         if self.customHeadersTextEdit.toPlainText().strip():
@@ -399,7 +412,8 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             self.total_files,
             self.exportXisfAsFitsCheckBox.isChecked(),
             self.overridePlatesolveCheckBox.isChecked(),
-            custom_headers
+            custom_headers,
+            project
         )
 
         # Connect the Cancel button to cancel the export
