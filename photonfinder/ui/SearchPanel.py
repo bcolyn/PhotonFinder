@@ -58,7 +58,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.search_results_loader.results_loaded.connect(self.on_search_results_loaded)
         self.combo_loader = GenericControlLoader(context)
         self.combo_loader.data_ready.connect(self.on_combo_options_loaded)
-        #self.refresh_combo_options()
+        # self.refresh_combo_options()
 
         # Initialize the data view model
         self.data_model = QStandardItemModel(self)
@@ -167,7 +167,32 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.remove_filter_button_control(current)
         self.advanced_options[button.filter_type] = button
         self.filter_layout.insertWidget(2, button)
-        button.clicked.connect(self.remove_filter_button)
+        button.clicked.connect(self.edit_filter_button)
+        button.right_clicked.connect(self.remove_filter_button)
+
+    def edit_filter_button(self):
+        sender: FilterButton = self.sender()
+        filter_type = sender.filter_type
+        match filter_type:
+            case AdvancedFilter.EXPOSURE:
+                self.add_exposure_filter()
+            case AdvancedFilter.DATETIME:
+                self.add_datetime_filter()
+            case AdvancedFilter.TELESCOPE:
+                self.add_telescope_filter()
+            case AdvancedFilter.BINNING:
+                self.add_binning_filter()
+            case AdvancedFilter.GAIN:
+                self.add_gain_filter()
+            case AdvancedFilter.TEMPERATURE:
+                self.add_temperature_filter()
+            case AdvancedFilter.COORDINATES:
+                self.add_coordinates_filter()
+            case AdvancedFilter.HEADER_TEXT:
+                self.add_header_text_filter()
+            case AdvancedFilter.PROJECT:
+                pass
+        self.mainWindow.enable_actions_for_current_tab()
 
     def remove_filter_button(self):
         sender: FilterButton = self.sender()
@@ -421,6 +446,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if page == 0:
             self.resize_columns()
         self.update_sort_indicator()
+        self.mainWindow.enable_actions_for_current_tab()
 
     def resize_columns(self):
         self.dataView.resizeColumnsToContents()
@@ -1160,11 +1186,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 dec_item = model.index(row, 16)
                 solved_item = model.index(row, 17)
 
-                model.setData(ra_item,_format_ra(file.image.coord_ra),Qt.DisplayRole)
-                model.setData(ra_item,file.image.coord_ra, SORT_ROLE)
-                model.setData(dec_item, _format_dec(file.image.coord_dec),Qt.DisplayRole)
+                model.setData(ra_item, _format_ra(file.image.coord_ra), Qt.DisplayRole)
+                model.setData(ra_item, file.image.coord_ra, SORT_ROLE)
+                model.setData(dec_item, _format_dec(file.image.coord_dec), Qt.DisplayRole)
                 model.setData(dec_item, file.image.coord_dec, SORT_ROLE)
-                model.setData(solved_item, "True",Qt.DisplayRole)
+                model.setData(solved_item, "True", Qt.DisplayRole)
                 model.setData(solved_item, "True", SORT_ROLE)
 
     def report_list_files(self):
@@ -1239,18 +1265,26 @@ def _get_combo_value(combo: QComboBox) -> str | None:
 
 class FilterButton(QPushButton):
     on_remove_filter = Signal()
+    right_clicked = Signal()
 
     def __init__(self, parent, text: str, filter_type) -> None:
         super().__init__(parent)
         self.setText(text)
         self.setMinimumHeight(20)
         self.setMinimumWidth(20)
+        self.setToolTip("Click to edit, right click to remove filter")
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         palette: QPalette = self.palette()
         brush: QBrush = palette.windowText()
         self.setStyleSheet(
             f"border-radius : 10px; border : 1px solid {brush.color().name()}; padding-left:10px; padding-right:10px")
         self.filter_type = filter_type
+
+    def mouseReleaseEvent(self, e, /):
+        if e.button() == Qt.MouseButton.RightButton:
+            self.right_clicked.emit()
+        else:
+            super().mouseReleaseEvent(e)
 
 
 class AdvancedFilter(Enum):

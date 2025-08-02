@@ -10,7 +10,7 @@ from photonfinder.models import Project, File, LibraryRoot, ProjectFile, Image
 from photonfinder.ui.common import _format_timestamp
 from photonfinder.ui.generated.ProjectEditDialog_ui import Ui_ProjectEditDialog
 
-
+#TODO AUTO ADD FILES
 class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
     project_files: List[ProjectFile]
     links_to_delete: Set[ProjectFile]

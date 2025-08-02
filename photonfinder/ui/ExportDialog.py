@@ -252,7 +252,7 @@ class ExportWorker(BackgroundLoaderBase):
     def customize_fits_headers(self):
         return self.override_platesolve or self.custom_headers
 
-
+#TODO: CREATE PROJECT
 class ExportDialog(QDialog, Ui_ExportDialog):
     """Dialog for exporting files."""
 
