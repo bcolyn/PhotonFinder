@@ -1,16 +1,21 @@
+import operator
 from datetime import datetime
+from functools import reduce, cmp_to_key
+from itertools import chain
 from pathlib import Path
 from typing import List, Set
+from astropy import units as u
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTableWidgetItem, QFileDialog, QMessageBox
+from astropy.coordinates import SkyCoord
 
 from photonfinder.core import ApplicationContext
-from photonfinder.models import Project, File, LibraryRoot, ProjectFile, Image
+from photonfinder.models import Project, File, LibraryRoot, ProjectFile, Image, hp, RootAndPath
 from photonfinder.ui.common import _format_timestamp
 from photonfinder.ui.generated.ProjectEditDialog_ui import Ui_ProjectEditDialog
 
-#TODO AUTO ADD FILES
+
 class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
     project_files: List[ProjectFile]
     links_to_delete: Set[ProjectFile]
@@ -21,11 +26,12 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
         self.setupUi(self)
         self.context = context
         self.project = project
-        self.project_files = (ProjectFile.select(ProjectFile, File, LibraryRoot)
-                              .join(File)
-                              .join(LibraryRoot)
-                              .where(ProjectFile.project == self.project.rowid)
-                              .order_by(LibraryRoot.name, File.path, File.name))
+        self.project_files = list(ProjectFile.select(ProjectFile, File, LibraryRoot, Image)
+                                  .join(File)
+                                  .join_from(File, Image)
+                                  .join_from(File, LibraryRoot)
+                                  .where(ProjectFile.project == self.project.rowid)
+                                  .order_by(LibraryRoot.name, File.path, File.name))
         if not project.rowid:
             self.setWindowTitle("Create Project")
         else:
@@ -36,8 +42,8 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
 
     def refresh_table(self):
         self.tableWidget.clearContents()
-
-        updated_files = [f for f in self.project_files if f not in self.links_to_delete] + list(self.links_to_add)
+        updated_files = self.get_current_files()
+        updated_files.sort(key=lambda pf: (pf.file.root.rowid, pf.file.path, pf.file.name))
         self.tableWidget.setRowCount(len(updated_files))
 
         for row, project_file in enumerate(updated_files):
@@ -49,6 +55,9 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
             self.tableWidget.setItem(row, 3, QTableWidgetItem(_format_timestamp(project_file.file.mtime_millis)))
 
         self.tableWidget.resizeColumnsToContents()
+
+    def get_current_files(self):
+        return [f for f in self.project_files if f not in self.links_to_delete] + list(self.links_to_add)
 
     def save_data_and_close(self):
         if self.dirty():
@@ -76,6 +85,54 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
         self.name_edit.textEdited.connect(self.enable_disable_actions)
         self.remove_button.clicked.connect(self.delete_selected)
         self.add_button.clicked.connect(self.add_files)
+        self.scan_more_button.clicked.connect(self.do_scan_more)
+
+    def do_scan_more(self):
+        project_files = self.get_current_files()
+        used_file_ids = set([pf.file.rowid for pf in project_files])
+        if not project_files:
+            return # can't add more if we have nothing to go on
+
+        # Add files with same (more or less) center coordinates
+        coord_groups = _coords_by_pixel(
+            project_files)  # group by, but in memory since not all data may be persisted yet
+        max_dist = 10 * u.arcmin
+        all_pixels = set(chain.from_iterable(
+            hp.cone_search_skycoord(SkyCoord(ra=x[0], dec=x[1], unit=u.deg, frame='icrs'), max_dist) for x in
+            coord_groups))
+
+        # build query
+        q = (File.select(File, Image, LibraryRoot)
+             .join_from(File, LibraryRoot).join_from(File, Image))
+        q = q.where(Image.coord_pix256.in_(all_pixels))
+        q = q.where(File.rowid.not_in(used_file_ids))
+        any_of_conditions = []
+
+        # add if they are in the same directory as current files
+        dirs_in_project = list(set(
+            map(lambda pf: RootAndPath(pf.file.root.rowid, pf.file.root.name, pf.file.path), project_files)))
+
+        any_of_conditions += list(map(
+            lambda root_and_path: ((File.path == root_and_path.path) & (File.root == root_and_path.root_id)),
+            dirs_in_project))
+
+        # add if they are LIGHT files older than our current MASTER LIGHT images
+        masters = list(filter(lambda pf: pf.file.image.image_type == "MASTER LIGHT", project_files))
+        if masters:
+            min_timestamp = min(map(lambda pf: pf.file.mtime_millis, masters))
+            min_dt = datetime.fromtimestamp(min_timestamp / 1000)
+            any_of_conditions.append((Image.image_type == "LIGHT") & (Image.date_obs < min_dt))
+
+        q = q.where(reduce(operator.or_, any_of_conditions))
+        q = q.order_by(File.root, File.path, File.name)
+
+        for f in q.execute():
+            #TODO: should we filter again on actual distance?
+            pf = ProjectFile(file=f, project=self.project)
+            self.add_file(pf)
+
+        self.refresh_table()
+
 
     def enable_disable_actions(self):
         selected = self.get_selected_files()
@@ -148,3 +205,22 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
             fdir = ""
         files, _ = QFileDialog.getOpenFileNames(self, f"Select Files for project {self.project.name}", fdir, filters)
         return files
+
+
+def _coords_by_pixel(project_files: List[ProjectFile]):
+    import numpy as np
+    data = np.array([
+        [pf.file.image.coord_ra, pf.file.image.coord_dec, pf.file.image.coord_pix256]
+        for pf in project_files
+    ])
+    unique_pix_ids = np.unique(data[:, 2])
+    result = [
+        (
+            # Use boolean indexing to get all rows for the current pix_id,
+            # select the first two columns (ra, dec), and calculate their mean.
+            *np.mean(data[data[:, 2] == pix_id, :2], axis=0),
+            int(pix_id)
+        )
+        for pix_id in unique_pix_ids
+    ]
+    return result

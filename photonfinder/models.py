@@ -18,7 +18,7 @@ from playhouse.sqlite_ext import RowIDField
 hp = HEALPix(nside=256, order='nested', frame='icrs')
 
 
-@dataclass
+@dataclass(frozen=True)
 class RootAndPath:
     root_id: int
     root_label: str
