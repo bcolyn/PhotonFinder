@@ -423,7 +423,7 @@ NUMFRAME=                   30 / # number of frames used in MasterFlat creation
 END                                                                             
 """
 
-header_seestar= """SIMPLE  =                    T / file does conform to FITS standard             
+header_seestar = """SIMPLE  =                    T / file does conform to FITS standard             
 BITPIX  =                   16 / number of bits per data pixel                  
 NAXIS   =                    3 / number of data axes                            
 NAXIS1  =                 1080 / length of data axis 1                          
@@ -508,7 +508,7 @@ IMAGEH  =                 1920 / Image height, in pixels.
 END                                                                             
 """
 
-wcs_header_m106="""
+wcs_header_m106 = """
 NAXIS   =                    2                                                  
 NAXIS1  =                 5496 / length of data axis 1                          
 NAXIS2  =                 3672 / length of data axis 2                          
@@ -528,4 +528,82 @@ CD1_2   = -8.031746010254E-006 / CD matrix to convert (x,y) to (Ra, Dec)
 CD2_1   = -8.036282230522E-006 / CD matrix to convert (x,y) to (Ra, Dec)        
 CD2_2   = -3.444652512162E-004 / CD matrix to convert (x,y) to (Ra, Dec)
 END        
+"""
+
+header_pixinsight = """IMAGETYP= 'Master Light'       / Type of image                                  
+XBINNING= '1       '           / Binning factor, horizontal axis                
+YBINNING= '1       '           / Binning factor, vertical axis                  
+FILTER  = 'LP      '           / Filter used when taking image                  
+EXPTIME = '120.00  '           / Exposure time in seconds                       
+OBSERVER= 'Benny   '           / Observer who acquired the data                 
+INSTRUME= 'ZWO ASI183MC Pro'   / Name of instrument                             
+BAYERPAT= 'RGGB    '           / Bayer CFA pattern                              
+XPIXSZ  = '4.63    '           / Pixel size including binning, X-axis (um)      
+YPIXSZ  = '4.63    '           / Pixel size including binning, Y-axis (um)      
+EGAIN   = '3.62    '           / Camera gain in electrons per data number       
+TELESCOP= 'EQMOD ASCOM HEQ5/6' / Name of telescope                              
+FOCALLEN= '769.37892'          / Focal length (mm)                              
+OBJECT  = 'Abell 1185'         / Name of observed object                        
+RA      = '167.6425781635544'  / Right ascension of the center of the image (deg
+DEC     = '28.75940048831734'  / Declination of the center of the image (deg)   
+DATE-OBS= '2022-03-07T21:58:44.060' / Start date/time of observation (UTC)      
+DATE-END= '2022-03-07T22:00:44.060' / End date/time of observation (UTC)        
+OBSGEO-L= '3.716667'           / Geodetic longitude of observation location (deg
+OBSGEO-B= '51.05   '           / Geodetic latitude of observation location (deg)
+OBSGEO-H= '10      '           / Geodetic height of observation location (m)    
+PSFFLX00= '1.5930e+03'         / Sum of PSF flux estimates, channel #0          
+PSFFLP00= '2.5701e+04'         / Sum of squared PSF flux estimates, channel #0  
+PSFMFL00= '2.5753e+00'         / Sum of mean PSF flux estimates, channel #0     
+PSFMFP00= '5.0739e-03'         / Sum of mean squared PSF flux estimates, channel
+PSFMST00= '7.9460e-05'         / M* mean background estimate, channel #0        
+PSFNST00= '1.1639e-04'         / N* noise estimate, channel #0                  
+PSFSGN00= '1581    '           / Number of valid PSF flux estimates, channel #0 
+NOISE00 = '1.0130e-04'         / Noise estimate, channel #0                     
+NOISEL00= '7.498869e-05'       / Noise scaling factor, low pixels, channel #0   
+NOISEH00= '1.564547e-04'       / Noise scaling factor, high pixels, channel #0  
+NOISEA00= 'MRS     '           / Noise evaluation algorithm, channel #0         
+PSFSGTYP= 'Moffat4 '           / PSF type used for signal estimation            
+TIMESYS = 'UTC     '           / Time scale: Universal Time, Coordinated        
+LONG-OBS= '3.716667'           / Geodetic longitude (deg) (compatibility)       
+LAT-OBS = '51.05   '           / Geodetic latitude (deg) (compatibility)        
+ALT-OBS = '10      '           / Geodetic height (m) (compatibility)            
+OBJCTRA = '11 10 34.219'       / Right ascension (hours) (compatibility)        
+OBJCTDEC= '+28 45 33.84'       / Declination (deg) (compatibility)              
+RADESYS = 'ICRS    '           / Coordinates referred to ICRS / J2000.0         
+CTYPE1  = 'RA---TAN'           / Axis1 projection: Gnomonic                     
+CTYPE2  = 'DEC--TAN'           / Axis2 projection: Gnomonic                     
+CRPIX1  = '2714.63604531'      / Axis1 reference pixel                          
+CRPIX2  = '1794.45598343'      / Axis2 reference pixel                          
+CRVAL1  = '167.6425782937148'  / Axis1 reference value                          
+CRVAL2  = '28.75940050460799'  / Axis2 reference value                          
+PV1_1   = '0       '           / Native longitude of the reference point (deg)  
+PV1_2   = '0       '           / Native latitude of the reference point (deg)   
+CD1_1   = '-0.0003447401052947' / Scale matrix (1,1)                            
+CD1_2   = '4.3753791232e-06'   / Scale matrix (1,2)                             
+CD2_1   = '-4.363641309e-06'   / Scale matrix (2,1)                             
+CD2_2   = '-0.0003447982979937' / Scale matrix (2,2)                            
+REFSPLIN= 'T       '           / Thin plate spline astrometric solution availabl
+CDELT1  = '-0.0003447677908268204' / Axis1 scale                                
+CDELT2  = '-0.0003448259881991839' / Axis2 scale                                
+CROTA1  = '0.7261120283027274' / Axis1 rotation angle (deg)                     
+CROTA2  = '0.7261120283027274' / Axis2 rotation angle (deg)                     
+WBPPCROP= '(55,43)x(5483,3631)' / WBPP Autocrop                                 
+COMMENT PixInsight image preprocessing pipeline                                 
+COMMENT Master frame generated with Weighted Batch Preprocessing Script v2.5.9  
+COMMENT Integration with PixInsight 1.8.9-1                                     
+COMMENT Astrometric solution by PixInsight 1.8.9-1                              
+HISTORY Integration with ImageIntegration module version 1.5.1                  
+HISTORY Integration with ImageIntegration process                               
+HISTORY ImageIntegration.pixelCombination: Average                              
+HISTORY ImageIntegration.outputNormalization: Local                             
+HISTORY ImageIntegration.weightMode: PSF Signal Weight                          
+HISTORY ImageIntegration.scaleEstimator: Biweight midvariance                   
+HISTORY ImageIntegration.rangeRejection: range_low=0.000000                     
+HISTORY ImageIntegration.pixelRejection: Generalized extreme Studentized deviate
+HISTORY ImageIntegration.rejectionNormalization: Local                          
+HISTORY ImageIntegration.rejectionClippings: low=yes high=yes                   
+HISTORY ImageIntegration.rejectionParameters: esd_outliers=0.30 esd_alpha=0.05 e
+HISTORY sd_low=1                                                                
+HISTORY ImageIntegration.numberOfImages: 238
+END
 """

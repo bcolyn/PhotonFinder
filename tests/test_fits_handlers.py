@@ -1,4 +1,6 @@
 from datetime import datetime
+
+import pytest
 from astropy.io.fits import Header
 
 from tests.utils import fix_embedded_header
@@ -218,3 +220,12 @@ END                                                                             
         assert image is not None
         assert image.image_type == "MASTER FLAT"
         assert image.filter == "HaOIII"
+
+    def test_pixinsight_header(self):
+        header = Header.fromstring(header_pixinsight, "\n")
+        file = self.create_test_file()
+        image = normalize_fits_header(file, header)
+        assert image is not None
+        assert image.image_type == "MASTER LIGHT"
+        assert image.coord_ra == pytest.approx(15 * 11.1756, abs=0.2)  # 24hr -> 360deg
+        assert image.coord_dec == pytest.approx(28.5973, abs=0.2)

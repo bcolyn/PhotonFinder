@@ -16,6 +16,7 @@ from photonfinder.core import StatusReporter
 # Calculate HEALPix value with nside=256
 hp = HEALPix(nside=256, order='nested', frame='icrs')
 
+
 def _upper(value: str):
     return None if value is None else value.upper()
 
@@ -23,7 +24,7 @@ def _upper(value: str):
 def _int(value):
     try:
         return None if value is None else int(value)
-    except ValueError: #try it as a float, and round
+    except ValueError:  # try it as a float, and round
         return int(float(value))
 
 
@@ -195,10 +196,18 @@ class FitsHeaderHandler:
         if ra_value is None or dec_value is None:
             return None, None, None
 
+        def _try_parse(value):
+            if isinstance(ra_value, (int, float)):
+                return ra_value
+            try:
+                return float(value)
+            except ValueError:
+                return None
+
         try:
             # Check if RA and DEC are already in degrees (numeric values)
-            ra_numeric = isinstance(ra_value, (int, float))
-            dec_numeric = isinstance(dec_value, (int, float))
+            ra_numeric = _try_parse(ra_value)
+            dec_numeric = _try_parse(dec_value)
 
             if ra_numeric and dec_numeric:
                 # RA and DEC are already in degrees, use them directly for SkyCoord
