@@ -2,6 +2,7 @@ import logging
 import os.path
 from logging.handlers import TimedRotatingFileHandler
 import sys
+import sqlite3
 
 from PySide6.QtCore import QStandardPaths, Qt, QThreadPool
 from PySide6.QtWidgets import QApplication, QStyleFactory
@@ -37,6 +38,9 @@ def main():
     app_data_path = os.path.join(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation), "photonfinder")
     os.makedirs(app_data_path, exist_ok=True)
     init_logging(app_data_path)
+
+    logging.info("sqlite3 module version:", sqlite3.version)
+    logging.info("SQLite library version:", sqlite3.sqlite_version)
 
     if hasattr(Qt, 'HighDpiScaleFactorRoundingPolicy'):
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
