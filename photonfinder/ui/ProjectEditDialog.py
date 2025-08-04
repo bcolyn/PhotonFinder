@@ -88,6 +88,7 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
         self.scan_more_button.clicked.connect(self.do_scan_more)
 
     def do_scan_more(self):
+        #TODO: if any of the current files have WCS, maybe use that - at the very least FoV for max_dist
         project_files = self.get_current_files()
         used_file_ids = set([pf.file.rowid for pf in project_files])
         if not project_files:
