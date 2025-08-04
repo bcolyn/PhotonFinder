@@ -266,6 +266,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.scan_worker.deleteLater()
             self.scan_worker = None
 
+        self.get_current_search_panel().update_search_criteria()
+
     def reload_library_roots_in_all_panels(self):
         """
         Reload library roots in all search panels.
