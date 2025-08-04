@@ -12,7 +12,8 @@ from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, ProjectFile, \
     Project
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
-from photonfinder.platesolver import ASTAPSolver, get_image_center_coords, SolverType, AstrometryNetSolver
+from photonfinder.platesolver import ASTAPSolver, get_image_center_coords, SolverType, AstrometryNetSolver, \
+    has_been_plate_solved, extract_wcs_cards
 
 
 class BackgroundLoaderBase(QObject):
@@ -248,6 +249,12 @@ class ImageReindexWorker(BackgroundLoaderBase):
 
                         if header is None:
                             continue
+
+                        if not hasattr(header_record.file, 'filewcs') and has_been_plate_solved(header):
+                            solution = extract_wcs_cards(header)
+                            wcs = FileWCS(file=header_record.file, wcs=compress(solution.tostring().encode()))
+                            FileWCS.insert(wcs.__data__).on_conflict_ignore().execute()
+                            setattr(header_record.file, 'filewcs', wcs)
 
                         self.context.settings.add_known_fits_keywords(header.keys())
                         # Process the header

@@ -162,10 +162,15 @@ def _handle_file_metadata(file, status_reporter, settings):
             FitsHeader(file=file, header=compress(header_bytes)).save()
             header = header_from_xisf_dict(header_dict)
     if header is not None:
+        from photonfinder.platesolver import has_been_plate_solved, extract_wcs_cards
         settings.add_known_fits_keywords(header.keys())
         image = normalize_fits_header(file, header, status_reporter)
         if image is not None:
             Image.insert(image.__data__).on_conflict_replace().execute()
+        if has_been_plate_solved(header):
+            solution = extract_wcs_cards(header)
+            wcs = FileWCS(file=file, wcs=compress(solution.tostring().encode()))
+            FileWCS.insert(wcs.__data__).on_conflict_ignore().execute()
 
 
 def header_from_xisf_dict(header_dict: dict[str, list]):

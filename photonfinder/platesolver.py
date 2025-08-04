@@ -50,13 +50,6 @@ class SolverBase(metaclass=ABCMeta):
     def solve(self, image_path, image: Image = None):
         pass
 
-    @staticmethod
-    def extract_wcs_cards(header):
-        cards_filtered = list(filter(lambda card: card.keyword in SolverBase.keep_headers, header.cards))
-        result_header = Header(cards_filtered)
-        result_header['NAXIS'] = 2
-        return result_header
-
     def _create_temp_fits(self, input_image) -> Path:
         temp_image = Path(self.tmp_dir) / (input_image.name + ".fit")
         if Importer.is_fits_by_name(str(input_image)):
@@ -125,7 +118,7 @@ class ASTAPSolver(SolverBase):
             header = hdul[0].header
             if not header.get('PLTSOLVD'):
                 raise SolverError("Platesolver failed to solve image " + str(tmp_image_file))
-            result_header = SolverBase.extract_wcs_cards(header)
+            result_header = extract_wcs_cards(header)
 
         return result_header
 
@@ -216,7 +209,7 @@ class AstrometryNetSolver(SolverBase):
         temp_image = self._create_temp_fits(image_path)
         wcs_header: Header = self.ast.solve_from_image(temp_image, verbose=False, crpix_center=True,
                                                        force_image_upload=self.force_image_upload)
-        result = SolverBase.extract_wcs_cards(wcs_header)
+        result = extract_wcs_cards(wcs_header)
         original_header = fits.getheader(temp_image)
         result['NAXIS1'] = original_header['NAXIS1']
         result['NAXIS2'] = original_header['NAXIS2']
@@ -244,6 +237,13 @@ def get_image_center_coords(header):
     coords = SkyCoord(ra, dec, unit=(u.deg, u.deg), frame='icrs')
     healpix_index = int(hp.skycoord_to_healpix(coords))
     return ra, dec, healpix_index
+
+
+def extract_wcs_cards(header):
+    cards_filtered = list(filter(lambda card: card.keyword in SolverBase.keep_headers, header.cards))
+    result_header = Header(cards_filtered)
+    result_header['NAXIS'] = 2
+    return result_header
 
 
 def has_been_plate_solved(header):

@@ -3,6 +3,7 @@ from datetime import datetime
 import pytest
 from astropy.io.fits import Header
 
+from photonfinder.platesolver import has_been_plate_solved
 from tests.utils import fix_embedded_header
 from .sample_headers import *
 from photonfinder.models import File
@@ -229,3 +230,4 @@ END                                                                             
         assert image.image_type == "MASTER LIGHT"
         assert image.coord_ra == pytest.approx(15 * 11.1756, abs=0.2)  # 24hr -> 360deg
         assert image.coord_dec == pytest.approx(28.5973, abs=0.2)
+        assert has_been_plate_solved(header), "Image is pre-solved"
