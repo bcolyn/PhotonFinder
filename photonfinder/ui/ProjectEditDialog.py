@@ -4,10 +4,12 @@ from functools import reduce, cmp_to_key
 from itertools import chain
 from pathlib import Path
 from typing import List, Set
+
+from PySide6.QtGui import QAction
 from astropy import units as u
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTableWidgetItem, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTableWidgetItem, QFileDialog, QMessageBox, QMenu
 from astropy.coordinates import SkyCoord
 
 from photonfinder.core import ApplicationContext
@@ -32,10 +34,23 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
                                   .join_from(File, LibraryRoot)
                                   .where(ProjectFile.project == self.project.rowid)
                                   .order_by(LibraryRoot.name, File.path, File.name))
+        self.roots = list(LibraryRoot.select())
         if not project.rowid:
             self.setWindowTitle("Create Project")
         else:
             self.setWindowTitle(f"Edit Project {project.name}")
+
+        library_menu = QMenu(parent=self)
+        action = library_menu.addAction("Any Library")
+        action.triggered.connect(self.do_scan_more)
+        library_menu.addSeparator()
+        for root in self.roots:
+            action = library_menu.addAction(root.name)
+            action.setData(root)
+            action.triggered.connect(self.do_scan_more)
+
+        self.scan_more_button.setMenu(library_menu)
+        self.scan_more_button.setMinimumWidth(self.scan_more_button.width() + 20)
         self.connect_signals()
         self.reload_data()
         self.enable_disable_actions()
@@ -55,6 +70,7 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
             self.tableWidget.setItem(row, 3, QTableWidgetItem(_format_timestamp(project_file.file.mtime_millis)))
 
         self.tableWidget.resizeColumnsToContents()
+        self.enable_disable_actions()
 
     def get_current_files(self):
         return [f for f in self.project_files if f not in self.links_to_delete] + list(self.links_to_add)
@@ -88,11 +104,14 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
         self.scan_more_button.clicked.connect(self.do_scan_more)
 
     def do_scan_more(self):
-        #TODO: if any of the current files have WCS, maybe use that - at the very least FoV for max_dist
+        # TODO: if any of the current files have WCS, maybe use that - at the very least FoV for max_dist
+        action = self.sender()
+        root = action.data() if action and isinstance(action, QAction) else None
+
         project_files = self.get_current_files()
         used_file_ids = set([pf.file.rowid for pf in project_files])
         if not project_files:
-            return # can't add more if we have nothing to go on
+            return  # can't add more if we have nothing to go on
 
         # Add files with same (more or less) center coordinates
         coord_groups = _coords_by_pixel(
@@ -117,28 +136,30 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
             lambda root_and_path: ((File.path == root_and_path.path) & (File.root == root_and_path.root_id)),
             dirs_in_project))
 
-        # add if they are LIGHT files older than our current MASTER LIGHT images
-        masters = list(filter(lambda pf: pf.file.image.image_type == "MASTER LIGHT", project_files))
-        if masters:
-            min_timestamp = min(map(lambda pf: pf.file.mtime_millis, masters))
-            min_dt = datetime.fromtimestamp(min_timestamp / 1000)
-            any_of_conditions.append((Image.image_type == "LIGHT") & (Image.date_obs < min_dt))
+        # add if they are LIGHT files older the newest file in the project
+        max_timestamp = max(map(lambda pf: pf.file.mtime_millis, project_files))
+        max_dt = datetime.fromtimestamp(max_timestamp / 1000)
+        any_of_conditions.append((Image.image_type == "LIGHT") & (Image.date_obs < max_dt))
 
         q = q.where(reduce(operator.or_, any_of_conditions))
+        if root:
+            q = q.where(File.root == root)
         q = q.order_by(File.root, File.path, File.name)
 
         for f in q.execute():
-            #TODO: should we filter again on actual distance?
+            # TODO: should we filter again on actual distance?
             pf = ProjectFile(file=f, project=self.project)
             self.add_file(pf)
 
         self.refresh_table()
 
-
     def enable_disable_actions(self):
         selected = self.get_selected_files()
         self.remove_button.setEnabled(len(selected) >= 1)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).setEnabled(self.dirty())
+        files = self.get_current_files()
+        files_with_coords = [pf for pf in files if pf.file.image.coord_ra]
+        self.scan_more_button.setEnabled(len(files_with_coords) > 0)
 
     def dirty(self) -> bool:
         return not (self.name_edit.text() == self.project.name and
@@ -210,10 +231,17 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
 
 def _coords_by_pixel(project_files: List[ProjectFile]):
     import numpy as np
-    data = np.array([
+    filtered_data = [
         [pf.file.image.coord_ra, pf.file.image.coord_dec, pf.file.image.coord_pix256]
         for pf in project_files
-    ])
+        if pf.file.image.coord_pix256 is not None
+    ]
+
+    if not filtered_data:
+        return []
+
+    data = np.array(filtered_data)
+
     unique_pix_ids = np.unique(data[:, 2])
     result = [
         (
