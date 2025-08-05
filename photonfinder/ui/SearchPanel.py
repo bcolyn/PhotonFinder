@@ -489,17 +489,35 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.refresh_combo_options()
         self.search_criteria_changed.emit()
 
+    def get_selected_roots_and_paths(self) -> typing.List[RootAndPath]:
+        indexes = self.filesystemTreeView.selectionModel().selectedIndexes()
+        return self.library_tree_model.get_roots_and_paths(indexes)
+
+    def get_selected_treenodes(self):
+        indexes = self.filesystemTreeView.selectionModel().selectedIndexes()
+        return [self.library_tree_model.getItem(idx) for idx in indexes]
+
     def on_tree_context_menu(self, position):
         index = self.filesystemTreeView.indexAt(position)
         if not index.isValid():
             return
-        root_and_path = self.library_tree_model.get_roots_and_paths([index])
+
+        root_and_paths = self.get_selected_roots_and_paths()
+        roots = [rp for rp in root_and_paths if rp.path is None]
+        only_paths = len(root_and_paths) > 0 and len(roots) == 0
+        only_roots = len(roots) == len(root_and_paths)
 
         menu = QMenu(self)
-        create_project_action = menu.addAction("Create Project")
+        create_project_action = menu.addAction("Create Project") if only_paths else None
+
+        if only_roots:
+            menu.addAction(self.mainWindow.action_Scan_Libraries)
+
         action = menu.exec(self.filesystemTreeView.viewport().mapToGlobal(position))
+        if action is None:
+            return
         if action == create_project_action:
-            self.mainWindow.create_project_for_folder(root_and_path)
+            self.mainWindow.create_project_for_folder(root_and_paths)
 
     def show_context_menu(self, position):
         """Show context menu for the data view."""

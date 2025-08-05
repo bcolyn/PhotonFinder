@@ -313,8 +313,9 @@ class Importer:
     def _dir_filter(self, x: Info):
         return not self.marked_bad(x)
 
-    def import_all(self) -> typing.Iterable[ChangeList]:
-        roots: typing.Sequence[LibraryRoot] = list(LibraryRoot.select().execute())
+    def import_roots(self, roots: typing.Sequence[LibraryRoot] = None) -> typing.Iterable[ChangeList]:
+        if not roots:
+            roots = list(LibraryRoot.select().execute())
         log(INFO, "Scanning for new/changed files in libraries...")
         for root in roots:
             self.status.update_status(f"importing library root: {root.name}")

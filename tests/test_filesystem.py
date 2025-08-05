@@ -31,7 +31,7 @@ class TestImporter:
         self.root = LibraryRoot(name="dummy", path=r'test://')
         self.root.save()
         self.importer = Importer(context)
-        return self.importer.import_all()
+        return self.importer.import_roots()
 
     def test_fixture(self, filesystem):
         for path, dirs, files in filesystem.walk("/", namespaces=['details']):

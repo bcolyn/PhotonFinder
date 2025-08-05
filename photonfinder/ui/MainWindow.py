@@ -13,6 +13,7 @@ from photonfinder.filesystem import Importer, update_fits_header_cache, check_mi
 from photonfinder.models import SearchCriteria, Project, File, ProjectFile, RootAndPath, Image, LibraryRoot
 from .AboutDialog import AboutDialog
 from .LibraryRootDialog import LibraryRootDialog
+from .LibraryTreeModel import AllLibrariesNode, LibraryRootNode
 from .LogWindow import LogWindow
 from .ProjectEditDialog import ProjectEditDialog
 from .ProjectsWindow import ProjectsWindow
@@ -249,8 +250,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             logging.warning("Scan already in progress, skipping.")
             return
 
+        search_panel = self.get_current_search_panel()
+        tree_nodes = search_panel.get_selected_treenodes()
+        roots = []
+        for tree_node in tree_nodes:
+            if isinstance(tree_node, AllLibrariesNode):
+                roots = None
+                break
+            elif isinstance(tree_node, LibraryRootNode):
+                roots.append(tree_node.library_root)
+
         # Create a worker thread
-        self.scan_worker = LibraryScanWorker(self.context)
+        self.scan_worker = LibraryScanWorker(self.context, roots=roots)
 
         # Connect signals
         self.scan_worker.finished.connect(self._scan_finished)
@@ -661,10 +672,11 @@ class LibraryScanWorker(QThread):
     finished = Signal()
     change_list_ready = Signal(object)  # Signal emitted when a change list is ready
 
-    def __init__(self, context, files: List[str] = None):
+    def __init__(self, context, files: List[str] = None, roots: List[LibraryRoot] = None):
         super().__init__()
         self.context = context
         self.files = files
+        self.roots = roots
         self.importer = Importer(context,
                                  context.settings.get_bad_file_patterns(),
                                  context.settings.get_bad_dir_patterns())
@@ -673,13 +685,13 @@ class LibraryScanWorker(QThread):
         if self.files:
             self.import_files()
         else:
-            self.import_all()
+            self.import_roots()
 
         # Signal that we're done
         self.finished.emit()
 
-    def import_all(self):
-        for changes_per_library in self.importer.import_all():
+    def import_roots(self):
+        for changes_per_library in self.importer.import_roots(self.roots):
             self.context.status_reporter.update_status(
                 f"Files removed {len(changes_per_library.removed_files)} " +
                 f"added {len(changes_per_library.new_files)} " +
