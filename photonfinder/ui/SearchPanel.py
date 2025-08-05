@@ -965,7 +965,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         if dialog.exec():
             ra, dec, radius = dialog.get_coordinates()
-            text = f"Coordinates: RA={ra}, DEC={dec}, r={radius}°"
+            text = f"Coordinates: RA={ra}, DEC={dec}, r={radius:.2f}°"
             filter_button = FilterButton(self, text, AdvancedFilter.COORDINATES)
             filter_button.on_remove_filter.connect(self.reset_coordinates_criteria)
             self.add_filter_button_control(filter_button)
@@ -1151,7 +1151,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.add_filter_button_control(filter_button)
 
         if criteria.coord_ra and criteria.coord_dec:
-            text = f"Coordinates: RA={criteria.coord_ra}, DEC={criteria.coord_dec}, r={criteria.coord_radius}°"
+            text = f"Coordinates: RA={criteria.coord_ra}, DEC={criteria.coord_dec}, r={criteria.coord_radius:.2f}°"
             filter_button = FilterButton(self, text, AdvancedFilter.COORDINATES)
             filter_button.on_remove_filter.connect(self.reset_coordinates_criteria)
             self.add_filter_button_control(filter_button)
