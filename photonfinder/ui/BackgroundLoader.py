@@ -414,7 +414,8 @@ class PlateSolveTask(FileProcessingTask):
                     self.solved_files.append(file)
         except Exception as e:
             logging.error(f"Error solving file {file.full_filename()}: {e}", exc_info=True)
-            raise e
+            if self.total <= 1:
+                raise e
 
 
 class FileListTask(FileProcessingTask):
