@@ -223,11 +223,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def get_file_at_row(self, row) -> File | None:
         """Get the Image object at the specified row."""
-        if row < 0 or row >= self.data_model.rowCount():
+        if row < 0 or row >= self.dataView.model().rowCount():
             return None
 
-        name_index = self.data_model.index(row, 0)
-        return self.data_model.data(name_index, ROWID_ROLE)
+        name_index = self.dataView.model().index(row, 0)
+        return self.dataView.model().data(name_index, ROWID_ROLE)
 
     def refresh_data_grid(self):
         """Trigger a search with the current search criteria."""
@@ -603,11 +603,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def open_file(self, index):
         """Open the file at the given index."""
         # Get the name item from the first column
-        name_index = self.data_model.index(index.row(), 0)
+        name_index = self.dataView.model().index(index.row(), 0)
 
         # Get the full filename from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
-            file = self.data_model.data(name_index, ROWID_ROLE)
+            file = self.dataView.model().data(name_index, ROWID_ROLE)
             filename = file.full_filename()
 
         if filename:
@@ -617,11 +617,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def show_file_location(self, index):
         """Open the file explorer showing the directory containing the file."""
         # Get the name item from the first column
-        name_index = self.data_model.index(index.row(), 0)
+        name_index = self.dataView.model().index(index.row(), 0)
 
         # Get the full filename from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
-            file = self.data_model.data(name_index, ROWID_ROLE)
+            file = self.dataView.model().data(name_index, ROWID_ROLE)
             filename = file.full_filename()
 
         if filename:
@@ -638,11 +638,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def select_path_in_tree(self, index):
         """Select the path in the tree view."""
         # Get the name item from the first column
-        name_index = self.data_model.index(index.row(), 0)
+        name_index = self.dataView.model().index(index.row(), 0)
 
         # Get the file object from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
-            file = self.data_model.data(name_index, ROWID_ROLE)
+            file = self.dataView.model().data(name_index, ROWID_ROLE)
             if not file:
                 return
 
@@ -660,11 +660,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def show_file_details(self, index):
         """Show the cached FITS header for the selected file."""
         # Get the name item from the first column
-        name_index = self.data_model.index(index.row(), 0)
+        name_index = self.dataView.model().index(index.row(), 0)
 
         # Get the file object from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
-            file = self.data_model.data(name_index, ROWID_ROLE)
+            file = self.dataView.model().data(name_index, ROWID_ROLE)
             if not file:
                 QMessageBox.warning(self, "Warning", "No file selected.")
                 return
@@ -989,11 +989,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         first_row = selected_rows[0].row()
 
         # Get the name item from the first column
-        name_index = self.data_model.index(first_row, 0)
+        name_index = self.dataView.model().index(first_row, 0)
 
         # Get the file object from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
-            file = self.data_model.data(name_index, ROWID_ROLE)
+            file = self.dataView.model().data(name_index, ROWID_ROLE)
             return file
 
     def get_selected_image(self) -> Image | None:
