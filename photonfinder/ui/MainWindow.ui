@@ -106,6 +106,7 @@
     <addaction name="actionOpen_File"/>
     <addaction name="actionShow_location"/>
     <addaction name="actionSelect_path"/>
+    <addaction name="actionShow_Details"/>
     <addaction name="separator"/>
     <addaction name="action_Export_Data"/>
     <addaction name="actionPlate_solve_files"/>
@@ -500,6 +501,11 @@
   <action name="actionLoading_2">
    <property name="text">
     <string>Loading</string>
+   </property>
+  </action>
+  <action name="actionShow_Details">
+   <property name="text">
+    <string>Show Details</string>
    </property>
   </action>
  </widget>

@@ -12,8 +12,9 @@ from PySide6.QtWidgets import *
 from astropy.coordinates import SkyCoord
 
 from photonfinder.core import ApplicationContext, decompress
-from photonfinder.filesystem import Importer, header_from_xisf_dict
-from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT
+from photonfinder.filesystem import Importer, header_from_xisf_dict, parse_FITS_header
+from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
+    FileWCS
 from photonfinder.platesolver import SolverType
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
 from .DateRangeDialog import DateRangeDialog
@@ -512,7 +513,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         open_action = menu.addAction("Open File")
         show_location_action = menu.addAction("Show location")
         select_path_action = menu.addAction("Select path")
-        show_header_action = menu.addAction("Show cached header")
+        show_header_action = menu.addAction("Show details")
         menu.addSeparator()
         export_action = menu.addAction("Export files")
         menu.addSeparator()
@@ -568,7 +569,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         elif action == select_path_action:
             self.select_path_in_tree(index)
         elif action == show_header_action:
-            self.show_cached_header(index)
+            self.show_file_details(index)
         elif action == export_action:
             self.export_data()
         elif action == find_darks_action:
@@ -638,7 +639,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self._find_and_select_node(root_and_path)
             self.update_search_criteria()
 
-    def show_cached_header(self, index):
+    def show_file_details(self, index):
         """Show the cached FITS header for the selected file."""
         # Get the name item from the first column
         name_index = self.data_model.index(index.row(), 0)
@@ -653,18 +654,26 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             try:
                 # Try to get the FitsHeader for this file
                 fits_header = FitsHeader.get(FitsHeader.file == file)
-
-                # Decompress the header data
+                wcs: FileWCS = FileWCS.get_or_none(FileWCS.file == file)
+                from astropy.io.fits import Header
                 header_bytes = decompress(fits_header.header)
                 if Importer.is_fits_by_name(file.name):
-                    header_text = header_bytes.decode('utf-8')
+                    header: Header = parse_FITS_header(header_bytes)
                 elif Importer.is_xisf_by_name(file.name):
                     header_dict = json.loads(header_bytes.decode('utf-8'))
-                    header_text = header_from_xisf_dict(header_dict).tostring(sep="\n")
+                    header = header_from_xisf_dict(header_dict)
+
+                if wcs:
+                    wcs_bytes = decompress(wcs.wcs)
+                    wcs_header: Header = parse_FITS_header(wcs_bytes)
+                else:
+                    wcs_header = None
 
                 # Show the header dialog
-                dialog = HeaderDialog(header_text, self)
-                dialog.exec()
+                dialog = HeaderDialog(header, wcs_header, parent=self)
+                dialog.setAttribute(Qt.WA_DeleteOnClose)
+                dialog.setWindowFlags(Qt.Window)
+                dialog.show()
 
             except FitsHeader.DoesNotExist:
                 QMessageBox.information(self, "No Cached Header",

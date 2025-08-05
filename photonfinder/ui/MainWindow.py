@@ -98,6 +98,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tabWidget.currentChanged.connect(self.on_tab_switch)
         self.actionOpen_File.triggered.connect(self.open_selected_file)
         self.actionShow_location.triggered.connect(self.show_file_location)
+        self.actionShow_Details.triggered.connect(self.show_file_details)
         self.actionSelect_path.triggered.connect(self.select_path_in_tree)
         self.actionPlate_solve_files.triggered.connect(self.plate_solve_files)
         self.actionPlate_Solve_Astrometry_net.triggered.connect(self.plate_solve_files_astrometry)
@@ -477,6 +478,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Show the file location
         current_panel.show_file_location(selected_rows[0])
 
+    def show_file_details(self):
+        current_panel = self.get_current_search_panel()
+        if not current_panel:
+            return
+        selected_rows = current_panel.dataView.selectionModel().selectedRows()
+        if not selected_rows:
+            return
+        current_panel.show_file_details(selected_rows[0])
+
     def select_path_in_tree(self):
         """Select the path of the selected file in the tree view."""
         current_panel = self.get_current_search_panel()
@@ -521,6 +531,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionOpen_File.setEnabled(has_selection)
         self.actionShow_location.setEnabled(has_selection)
         self.actionSelect_path.setEnabled(has_selection)
+        self.actionShow_Details.setEnabled(has_selection)
 
         if selected_image:
             current_type = selected_image.image_type

@@ -173,7 +173,7 @@ def _handle_file_metadata(file, status_reporter, settings):
             FileWCS.insert(wcs.__data__).on_conflict_ignore().execute()
 
 
-def header_from_xisf_dict(header_dict: dict[str, list]):
+def header_from_xisf_dict(header_dict: dict[str, list]) -> Header:
     result = Header()
     for key, values in header_dict.items():
         for value_dict in values:
