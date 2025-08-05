@@ -29,7 +29,7 @@ class HeaderDialog(QWidget, Ui_HeaderDialog):
         self.wcsHeaderTextEdit.setPlainText(wcs_content)
 
         wcs_model = WCS(wcs_header)
-        shape = get_shape_from_header(header)
+        shape = get_shape_from_header(wcs_header)
         results = analyze_wcs(wcs_model, shape)
         self.wcsSummary.setRowCount(1)
         self.wcsSummary.setItem(0, 0, QTableWidgetItem(f"{results['arcsec_per_pixel'][0]:.2f}\"/px"))
