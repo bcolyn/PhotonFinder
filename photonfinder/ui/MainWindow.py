@@ -68,6 +68,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.reporter = UIStatusReporter()
         self.reporter.on_message.connect(self.statusBar().showMessage)
         context.set_status_reporter(self.reporter)
+        btn = QToolButton(self)
+        btn.setDefaultAction(self.action_View_Log)
+        self.statusBar().addPermanentWidget(btn)
         self.connect_signals()
         self.restore_session()
         self.setAcceptDrops(True)
@@ -669,7 +672,6 @@ class UIStatusReporter(StatusReporter, QObject):
 
 class LibraryScanWorker(QThread):
     """Worker thread for scanning libraries."""
-    finished = Signal()
     change_list_ready = Signal(object)  # Signal emitted when a change list is ready
 
     def __init__(self, context, files: List[str] = None, roots: List[LibraryRoot] = None):
@@ -686,9 +688,6 @@ class LibraryScanWorker(QThread):
             self.import_files()
         else:
             self.import_roots()
-
-        # Signal that we're done
-        self.finished.emit()
 
     def import_roots(self):
         for changes_per_library in self.importer.import_roots(self.roots):

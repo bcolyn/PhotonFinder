@@ -234,7 +234,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if self.update_in_progress:
             return
 
-        self.context.status_reporter.update_status("Searching...")
+        self.context.status_reporter.update_status("Searching...", bulk=True)
 
         self.search_results_loader.search(self.search_criteria)
 
