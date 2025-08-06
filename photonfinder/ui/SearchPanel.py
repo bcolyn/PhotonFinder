@@ -697,6 +697,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 QMessageBox.information(self, "No Cached Header",
                                         f"No cached header found for file: {file.name}")
             except Exception as e:
+                logging.error(e, exc_info=True)
                 QMessageBox.critical(self, "Error",
                                      f"Error reading cached header: {str(e)}")
 

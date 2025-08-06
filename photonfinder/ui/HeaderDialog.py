@@ -34,9 +34,9 @@ class HeaderDialog(QWidget, Ui_HeaderDialog):
         self.wcsSummary.setRowCount(1)
         self.wcsSummary.setItem(0, 0, QTableWidgetItem(f"{results['arcsec_per_pixel'][0]:.2f}\"/px"))
         self.wcsSummary.setItem(0, 1, QTableWidgetItem(f"{_format_ra(results['center'].ra.value)} "
-                                                    f"{_format_dec(results['center'].dec.value)}"))
+                                                       f"{_format_dec(results['center'].dec.value)}"))
         self.wcsSummary.setItem(0, 2, QTableWidgetItem(f"{int(results['fov_arcmin'][0])}' x"
-                                                    f" {int(results['fov_arcmin'][1])}'"))
+                                                       f" {int(results['fov_arcmin'][1])}'"))
         self.wcsSummary.setItem(0, 3, QTableWidgetItem(f"{results['rotation_deg']:.2f}°"))
         self.wcsSummary.resizeColumnsToContents()
 
@@ -73,8 +73,8 @@ def analyze_wcs(wcs, shape):
 
 def get_shape_from_header(header):
     if header['NAXIS'] >= 2:
-        nx = header['NAXIS1']  # number of columns (x-axis)
-        ny = header['NAXIS2']  # number of rows (y-axis)
+        nx = int(header['NAXIS1'])  # number of columns (x-axis)
+        ny = int(header['NAXIS2'])  # number of rows (y-axis)
         return ny, nx
     else:
         raise ValueError("Header does not contain 2D image information.")

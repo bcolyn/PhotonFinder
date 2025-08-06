@@ -175,13 +175,23 @@ def _handle_file_metadata(file, status_reporter, settings):
 
 def header_from_xisf_dict(header_dict: dict[str, list]) -> Header:
     result = Header()
+
+    def try_parse(value):
+        try:
+            return int(value)
+        except ValueError:
+            try:
+                return float(value)
+            except ValueError:
+                return value
+
     for key, values in header_dict.items():
         for value_dict in values:
             # Cards for COMMENT or HISTORY must have their comment in 'value', not comment. Go figure.
             if key in Card._commentary_keywords:
                 card = Card(key, value_dict['comment'])
             else:
-                card = Card(key, value_dict['value'], value_dict['comment'])
+                card = Card(key, try_parse(value_dict['value']), value_dict['comment'])
             card.verify('fix')
             result.append(card)
     return result
