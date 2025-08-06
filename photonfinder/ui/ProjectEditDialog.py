@@ -9,16 +9,16 @@ from PySide6.QtGui import QAction
 from astropy import units as u
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTableWidgetItem, QFileDialog, QMessageBox, QMenu
+from PySide6.QtWidgets import QWidget, QDialogButtonBox, QTableWidgetItem, QFileDialog, QMessageBox, QMenu
 from astropy.coordinates import SkyCoord
 
-from photonfinder.core import ApplicationContext
+from photonfinder.core import ApplicationContext, Change
 from photonfinder.models import Project, File, LibraryRoot, ProjectFile, Image, hp, RootAndPath
 from photonfinder.ui.common import _format_timestamp
 from photonfinder.ui.generated.ProjectEditDialog_ui import Ui_ProjectEditDialog
 
 
-class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
+class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
     project_files: List[ProjectFile]
     links_to_delete: Set[ProjectFile]
     links_to_add: Set[ProjectFile]
@@ -26,8 +26,13 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
     def __init__(self, context: ApplicationContext, project: Project, parent=None):
         super(ProjectEditDialog, self).__init__(parent)
         self.setupUi(self)
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self.setWindowFlags(Qt.Window)
         self.context = context
         self.project = project
+        self.name_edit.setText(self.project.name)
+        self.links_to_delete = set()
+        self.links_to_add = set()
         self.project_files = list(ProjectFile.select(ProjectFile, File, LibraryRoot, Image)
                                   .join(File)
                                   .join_from(File, Image)
@@ -52,8 +57,6 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
         self.scan_more_button.setMenu(library_menu)
         self.scan_more_button.setMinimumWidth(self.scan_more_button.width() + 20)
         self.connect_signals()
-        self.reload_data()
-        self.enable_disable_actions()
 
     def refresh_table(self):
         self.tableWidget.clearContents()
@@ -81,12 +84,18 @@ class ProjectEditDialog(QDialog, Ui_ProjectEditDialog):
             self.project.last_change = datetime.now()
             with self.context.database.atomic():
                 self.project.save()
+                self.context.signal_bus.projects_changed.emit([self.project], Change.CREATE_OR_UPDATE)
+
                 for link in self.links_to_delete:
                     link.delete_instance()
+                if self.links_to_delete:
+                    self.context.signal_bus.project_links_changed.emit(self.links_to_delete, Change.DELETE)
+
                 for link in self.links_to_add:
                     link.save(force_insert=True)
-
-        self.accept()
+                if self.links_to_add:
+                    self.context.signal_bus.project_links_changed.emit(self.links_to_add, Change.CREATE_OR_UPDATE)
+        self.close()
 
     def reload_data(self):
         self.name_edit.setText(self.project.name)

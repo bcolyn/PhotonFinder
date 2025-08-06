@@ -1,10 +1,11 @@
 import logging
 from abc import abstractmethod
+from enum import Enum
 from pathlib import Path
 
 import astropy.units as u
 import zstd
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, QObject, Signal
 from astropy.coordinates import SkyCoord
 from astropy.io.fits import Header
 from peewee import SqliteDatabase
@@ -58,6 +59,7 @@ class ApplicationContext:
         self.settings = settings
         self.status_reporter: StatusReporter | None = None
         self.session_file = session_file
+        self.signal_bus = SignalBus()
 
     def __enter__(self):
         self.open_database()
@@ -258,3 +260,17 @@ def compress(value: bytes) -> bytes:
 
 def decompress(value: bytes) -> bytes:
     return zstd.decompress(value)
+
+
+class Change(Enum):
+    CREATE_OR_UPDATE = 0
+    DELETE = 1
+
+
+class SignalBus(QObject):
+
+    projects_changed = Signal(object, object)
+    """Collection[Project], Change"""
+
+    project_links_changed = Signal(object, object)
+    """Collection[ProjectFile], Change"""

@@ -195,6 +195,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         assert isinstance(widget, SearchPanel)
         self.tabWidget.removeTab(index)
         widget.destroy()
+        widget.deleteLater()
         if self.tabWidget.count() == 0:
             self.new_search_tab()
         else:
@@ -232,8 +233,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.dockWidget.hide()
 
     def clear_projects_window(self):
-        self.projects_window.save_cols()
+        projects_window = self.projects_window
+        projects_window.save_cols()
         self.projects_window = None
+        projects_window.deleteLater()
         self.menuProject_Details.setEnabled(False)
 
     def open_settings_dialog(self):
@@ -570,10 +573,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         files_to_add = File.remove_already_mapped(project, selection)
         for file in files_to_add:
             edit_dialog.add_file(ProjectFile(project=project, file=file))
+        edit_dialog.show()
         edit_dialog.refresh_table()
-        result = edit_dialog.exec()
-        if result == QDialog.Accepted and self.projects_window:
-            self.projects_window.populate_table()
 
     def create_project_for_folder(self, root_and_paths: List[RootAndPath]):
         if not root_and_paths:
@@ -589,10 +590,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         query = Image.apply_search_criteria(query, temp_criteria)
         for file in list(query.execute()):
             edit_dialog.add_file(ProjectFile(project=project, file=file))
+        edit_dialog.show()
         edit_dialog.refresh_table()
-        result = edit_dialog.exec()
-        if result == QDialog.Accepted and self.projects_window:
-            self.projects_window.populate_table()
 
     def populate_recent_projects(self):
         self.menuAddToRecentProject.clear()

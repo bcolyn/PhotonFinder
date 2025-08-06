@@ -1,20 +1,18 @@
 import json
 import logging
-import typing
 from datetime import datetime, timezone
 from enum import Enum
 from logging import DEBUG
+from typing import Collection, List
 
-import astropy.units as u
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
-from astropy.coordinates import SkyCoord
 
-from photonfinder.core import ApplicationContext, decompress
+from photonfinder.core import ApplicationContext, decompress, Change
 from photonfinder.filesystem import Importer, header_from_xisf_dict, parse_FITS_header
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
-    FileWCS
+    FileWCS, ProjectFile
 from photonfinder.platesolver import SolverType
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
 from .DateRangeDialog import DateRangeDialog
@@ -118,6 +116,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.toolbar.addAction(mainWindow.actionGain)
         self.toolbar.addAction(mainWindow.actionTemperature)
 
+        # connect to signal bus
+        self.context.signal_bus.projects_changed.connect(self.on_projects_changed)
+        self.context.signal_bus.project_links_changed.connect(self.on_project_links_changed)
+
     def showEvent(self, event, /):
         super().showEvent(event)
         if self.data_model.rowCount() == 0:
@@ -208,7 +210,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         button.hide()
         button.destroy()
 
-    def get_selected_files(self) -> typing.List[File]:
+    def get_selected_files(self) -> List[File]:
         """Get the currently selected files in the data grid."""
         selected_indexes = self.dataView.selectionModel().selectedRows()
         selected_files = []
@@ -246,7 +248,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         ]
         self.combo_loader.run_tasks(tasks, self.search_criteria)
 
-    def on_combo_options_loaded(self, target: QComboBox, data: typing.List[str]):
+    def on_combo_options_loaded(self, target: QComboBox, data: List[str]):
         logging.log(DEBUG, f"data for {target.objectName()}: {data}")
         self.update_in_progress = True
         current_text = target.currentText()
@@ -489,7 +491,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.refresh_combo_options()
         self.search_criteria_changed.emit()
 
-    def get_selected_roots_and_paths(self) -> typing.List[RootAndPath]:
+    def get_selected_roots_and_paths(self) -> List[RootAndPath]:
         indexes = self.filesystemTreeView.selectionModel().selectedIndexes()
         return self.library_tree_model.get_roots_and_paths(indexes)
 
@@ -942,7 +944,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if selected_image and selected_image.coord_ra is not None and selected_image.coord_dec is not None:
             # Use the selected image's coordinates as the default
             # Convert from decimal degrees to string format
-            from astropy.coordinates import SkyCoord
             import astropy.units as u
 
             try:
@@ -1280,6 +1281,14 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def print_task_complete(self):
         self.context.status_reporter.update_status("Task complete")
+
+    def on_projects_changed(self, projects: Collection[Project], change: Change):
+        # TODO partial update
+        self.update_search_criteria()
+
+    def on_project_links_changed(self, project_files: Collection[ProjectFile], change: Change):
+        #TODO partial update
+        self.update_search_criteria()
 
 
 def _get_combo_value(combo: QComboBox) -> str | None:
