@@ -8,7 +8,7 @@ class LogWindow(QDialog):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Log Messages")
+        self.setWindowTitle("Message History")
         self.resize(600, 400)
         
         # Create layout

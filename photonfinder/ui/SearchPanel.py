@@ -289,7 +289,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Update the status bar with the selection information
         if selected_count > 0:
-            self.context.status_reporter.update_status(f"{selected_count} files out of {self.total_files} selected")
+            self.context.status_reporter.update_status(f"{selected_count} files out of {self.total_files} selected", bulk=True)
 
         self.mainWindow.enable_actions_for_current_tab()
 
@@ -1199,6 +1199,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         dialog = ProgressDialog("Loading", "Plate solving", task, parent=self)
         dialog.setAttribute(Qt.WA_DeleteOnClose)
         dialog.show()
+        task.message.connect(self.context.status_reporter.update_status)
         task.finished.connect(self.on_files_solved)
         task.finished.connect(self.print_task_complete)
         task.start()

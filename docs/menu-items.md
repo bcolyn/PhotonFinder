@@ -77,7 +77,7 @@ The Report menu provides various reporting and analysis tools.
 The Help menu provides access to application information and logging.
 
 ### Information and Support
-- **View Log** - Opens the application log window to view system messages and errors
+- **View History** - Opens the application log window to view system messages and errors
 - **About** - Displays information about the application, version, and credits
 
 ## Context-Sensitive Menu Items

@@ -226,7 +226,7 @@
   </widget>
   <action name="action_View_Log">
    <property name="text">
-    <string>View &amp;Log</string>
+    <string>Message &amp;History</string>
    </property>
   </action>
   <action name="action_About">
