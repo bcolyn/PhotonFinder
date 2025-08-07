@@ -661,7 +661,7 @@ class UIStatusReporter(StatusReporter, QObject):
         self.on_message.emit(message)
 
         # Store non-bulk messages for the log window
-        if not bulk:
+        if not bulk and message:
             self.log_messages.append(message)
 
     def get_log_messages(self):
