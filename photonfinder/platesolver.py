@@ -207,7 +207,9 @@ class AstrometryNetSolver(SolverBase):
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
         temp_image = self._create_temp_fits(image_path)
+        #TODO make solve_timeout configurable
         wcs_header: Header = self.ast.solve_from_image(temp_image, verbose=False, crpix_center=True,
+                                                       solve_timeout=5*60,
                                                        force_image_upload=self.force_image_upload)
         result = extract_wcs_cards(wcs_header)
         original_header = fits.getheader(temp_image)
