@@ -80,6 +80,7 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
 
     def save_data_and_close(self):
         if self.dirty():
+            self.setVisible(False)
             self.project.name = self.name_edit.text()
             self.project.last_change = datetime.now()
             with self.context.database.atomic():
