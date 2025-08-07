@@ -60,7 +60,7 @@
      </column>
      <column>
       <property name="text">
-       <string>Latest</string>
+       <string>Captured</string>
       </property>
      </column>
      <column>
