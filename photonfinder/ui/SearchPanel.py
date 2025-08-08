@@ -500,6 +500,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         return [self.library_tree_model.getItem(idx) for idx in indexes]
 
     def on_tree_context_menu(self, position):
+        #TODO: add show location here
         index = self.filesystemTreeView.indexAt(position)
         if not index.isValid():
             return

@@ -114,6 +114,8 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         self.scan_more_button.clicked.connect(self.do_scan_more)
 
     def do_scan_more(self):
+        # TODO: give user option to exclude files already in a project
+
         # TODO: if any of the current files have WCS, maybe use that - at the very least FoV for max_dist
         action = self.sender()
         root = action.data() if action and isinstance(action, QAction) else None
@@ -126,7 +128,7 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         # Add files with same (more or less) center coordinates
         coord_groups = _coords_by_pixel(
             project_files)  # group by, but in memory since not all data may be persisted yet
-        max_dist = 10 * u.arcmin
+        max_dist = 15 * u.arcmin #TODO - this should be configurable?
         all_pixels = set(chain.from_iterable(
             hp.cone_search_skycoord(SkyCoord(ra=x[0], dec=x[1], unit=u.deg, frame='icrs'), max_dist) for x in
             coord_groups))
