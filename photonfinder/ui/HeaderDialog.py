@@ -29,7 +29,7 @@ class HeaderDialog(QWidget, Ui_HeaderDialog):
         self.wcsHeaderTextEdit.setPlainText(wcs_content)
 
         wcs_model = WCS(wcs_header)
-        shape = get_shape_from_header(wcs_header)
+        shape = get_shape_from_header(header, wcs_header)
         results = analyze_wcs(wcs_model, shape)
         self.wcsSummary.setRowCount(1)
         self.wcsSummary.setItem(0, 0, QTableWidgetItem(f"{results['arcsec_per_pixel'][0]:.2f}\"/px"))
@@ -71,10 +71,10 @@ def analyze_wcs(wcs, shape):
     }
 
 
-def get_shape_from_header(header):
-    if header['NAXIS'] >= 2:
-        nx = int(header['NAXIS1'])  # number of columns (x-axis)
-        ny = int(header['NAXIS2'])  # number of rows (y-axis)
+def get_shape_from_header(header, wcs):
+    if header.get('NAXIS', wcs.get('NAXIS', 2)) >= 2:
+        nx = int(header.get('NAXIS1', wcs.get('NAXIS1', int(wcs.get("CRPIX1")*2))))  # number of columns (x-axis)
+        ny = int(header.get('NAXIS2', wcs.get('NAXIS2', int(wcs.get("CRPIX2")*2))))  # number of rows (y-axis)
         return ny, nx
     else:
         raise ValueError("Header does not contain 2D image information.")
