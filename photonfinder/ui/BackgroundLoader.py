@@ -411,7 +411,8 @@ class PlateSolveTask(FileProcessingTask):
                 solution = self.solver.solve(Path(file.full_filename()), file.image)
                 if solution:
                     self.context.status_reporter.update_status(f"Solved file {file.full_filename()}")
-                    FileWCS(file=file, wcs=compress(solution.tostring().encode())).save()
+                    wcs = FileWCS(file=file, wcs=compress(solution.tostring().encode()))
+                    FileWCS.insert(wcs.__data__).on_conflict_replace().execute()
                     ra, dec, healpix = get_image_center_coords(solution)
                     Image.update(coord_ra=ra, coord_dec=dec, coord_pix256=healpix
                                  ).where(Image.file == file).execute()
