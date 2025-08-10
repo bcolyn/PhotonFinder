@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Callable, List
 
@@ -13,7 +14,7 @@ from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeade
     Project
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
 from photonfinder.platesolver import ASTAPSolver, get_image_center_coords, SolverType, AstrometryNetSolver, \
-    has_been_plate_solved, extract_wcs_cards
+    has_been_plate_solved, extract_wcs_cards, SolverFailure
 
 
 class BackgroundLoaderBase(QObject):
@@ -399,6 +400,12 @@ class PlateSolveTask(FileProcessingTask):
         super()._process_file(file, index)
         self.message.emit(f"Processing file {index + 1}/{self.total}:\n {file.full_filename()}")
 
+        def _message_or_raise(message, e):
+            if self.total <= 1:
+                raise e
+            else:
+                self.message.emit(message)
+
         try:
             with (self.solver):
                 solution = self.solver.solve(Path(file.full_filename()), file.image)
@@ -413,10 +420,19 @@ class PlateSolveTask(FileProcessingTask):
                     file.image.coord_dec = dec
                     file.image.coord_pix256 = healpix
                     self.solved_files.append(file)
+        except SolverFailure as failure:
+            if failure.log:
+                if isinstance(failure.log, Iterable):
+                    for i in failure.log:
+                        self.message.emit(str(i).strip())
+                else:
+                    self.message.emit(failure.log)
+            _message_or_raise(f"Could not solve file {file.full_filename()}: {failure}", failure)
         except Exception as e:
-            logging.error(f"Error solving file {file.full_filename()}: {e}", exc_info=True)
-            if self.total <= 1:
-                raise e
+            msg = f"Error solving file {file.full_filename()}: {e}"
+            logging.error(msg, exc_info=True)
+            _message_or_raise(msg, e)
+
 
 
 class FileListTask(FileProcessingTask):
