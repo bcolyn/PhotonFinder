@@ -18,14 +18,14 @@ class HeaderDialog(QWidget, Ui_HeaderDialog):
         super(HeaderDialog, self).__init__(parent)
         self.setupUi(self)
 
-        header_content = header.tostring(sep="\n")
+        header_content = header.tostring(sep="\n", endcard=False, padding=False)
         self.headerTextEdit.setPlainText(header_content)
 
         if wcs_header is None:
             self.wcsWidget.setVisible(False)
             return
 
-        wcs_content = wcs_header.tostring(sep="\n") if wcs_header is not None else ""
+        wcs_content = wcs_header.tostring(sep="\n", endcard=False, padding=False) if wcs_header is not None else ""
         self.wcsHeaderTextEdit.setPlainText(wcs_content)
 
         wcs_model = WCS(wcs_header)
