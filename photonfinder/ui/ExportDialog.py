@@ -391,7 +391,9 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         project = None
         if self.createGroupCheckBox.isChecked():
             path = Path(self.outputPathEdit.text())
-            project = Project(name=f"Export {path.name} {datetime.datetime.now().date().isoformat()}")
+            project = Project(name=f"Export {path.name} {datetime.datetime.now().isoformat()}",
+                              last_change=datetime.datetime.now())
+
             project.save()
 
         # Parse custom headers
