@@ -126,7 +126,7 @@ class SearchResultsLoader(BackgroundLoaderBase):
 
     def search(self, search_criteria, page=0):
         if self.running and search_criteria == self.last_criteria and page == self.current_page:
-            return # don't start if we're running the same query already
+            return # don't start if we're running the same query already, maybe check timestamp of last tough
 
         """Start a search with the given criteria."""
         self.current_page = page
@@ -195,7 +195,8 @@ class SearchResultsLoader(BackgroundLoaderBase):
         except Exception as e:
             logging.error(f"Error searching files: {e}", exc_info=True)
             self.results_loaded.emit([], False)
-        self.running = False
+        finally:
+            self.running = False
 
 
 class ImageReindexWorker(BackgroundLoaderBase):
