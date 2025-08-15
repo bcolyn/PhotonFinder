@@ -60,3 +60,18 @@ coll = COLLECT(exe,
                upx=True,
                upx_exclude=[],
                name='main')
+
+# --- Post-build zip creation ---
+import shutil, os
+from datetime import datetime
+
+app_name = "PhotonFinder"
+timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+zip_name = f"{app_name}-{timestamp}"
+
+dist_folder = os.path.join('dist', 'main')
+
+# Make archive (will overwrite if it exists, no prompt)
+shutil.make_archive(zip_name, 'zip', dist_folder)
+
+print(f"Created {zip_name}.zip from {dist_folder}")

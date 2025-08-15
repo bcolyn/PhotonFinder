@@ -56,35 +56,13 @@ A versatile desktop application for managing and organizing astronomical image f
 
 Binary releases are published on GitHub. Those are the recommended way to run PhotonFinder. 
 
-If instead you want to run from the python sources:
-
-1. Clone the repository:
-```bash
-git clone https://github.com/your-repo/PhotonFinder.git
-cd PhotonFinder
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Build UI files:
-```bash
-python setup.py build_ui
-```
-
-4. Run the application:
-```bash
-python photonfinder/main.py
-```
-
 ### For Developers
 
 1. Clone and install development dependencies:
 ```bash
 git clone https://github.com/your-repo/PhotonFinder.git
 cd PhotonFinder
+pip install -r requirements.txt
 pip install -r requirements_dev.txt
 ```
 
@@ -117,7 +95,7 @@ pytest tests/
 To create a standalone executable:
 
 ```bash
-pyinstaller photonfinder.spec
+pyinstaller --noconfirm photonfinder.spec
 ```
 
 ## 🤝 Contributing
