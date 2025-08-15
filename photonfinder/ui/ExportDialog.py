@@ -402,7 +402,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             for line in self.customHeadersTextEdit.toPlainText().strip().split('\n'):
                 if '=' in line:
                     key, value = line.split('=', 1)
-                    custom_headers[key.strip()] = value.strip()
+                    custom_headers[key.strip()] = value.strip() #TODO: try to fix type? export float as float, int as int
 
         # Start the export process with either files or search criteria
         self.export_worker.export_files(

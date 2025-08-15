@@ -90,6 +90,7 @@ class SearchCriteria:
         if reference_frame.offset:
             criteria.offset = int(reference_frame.offset)
 
+        # TODO: either allow multiple values (DARKFLAT + DARK) or check if either exists or normalize DARKFLAT->DARK at import
         if reference_frame.image_type == "FLAT":
             criteria.type = "DARKFLAT"
         else:
