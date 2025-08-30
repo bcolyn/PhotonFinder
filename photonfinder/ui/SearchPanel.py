@@ -47,7 +47,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.update_in_progress = False
         self.title = "Loading"
         self.mainWindow = mainWindow
-        self.search_criteria = SearchCriteria()
+        self.search_criteria = SearchCriteria() #TODO: previous / next?
         self.advanced_options = dict()
         self.total_files = 0  # Track total number of files in search results
         self.pending_selections = list()  # Store pending path selections
@@ -524,6 +524,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def show_context_menu(self, position):
         """Show context menu for the data view."""
+        # TODO: copy-paste?
+        # TODO: open associated project?
         # Get the index at the position
         index = self.dataView.indexAt(position)
         if not index.isValid():
