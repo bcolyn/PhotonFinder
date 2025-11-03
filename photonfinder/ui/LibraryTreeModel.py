@@ -12,6 +12,7 @@ from ..models import LibraryRoot
 
 class TreeNode:
     """Base class for all nodes in the tree."""
+    dir_icon: QIcon = None
 
     def __init__(self, parent=None):
         self.parent = parent
@@ -39,7 +40,9 @@ class TreeNode:
         return ""
 
     def get_icon(self, style):
-        return QIcon(style.standardIcon(QStyle.SP_DirIcon))
+        if not TreeNode.dir_icon:
+            TreeNode.dir_icon = QIcon(style.standardIcon(QStyle.SP_DirIcon))
+        return TreeNode.dir_icon
 
 
 class RootNode(TreeNode):
@@ -57,6 +60,7 @@ class RootNode(TreeNode):
 
 class AllLibrariesNode(TreeNode):
     """'All libraries' node."""
+    icon: QIcon = None
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -65,11 +69,14 @@ class AllLibrariesNode(TreeNode):
         return "All libraries"
 
     def get_icon(self, style):
-        return QIcon(style.standardIcon(QStyle.SP_DriveNetIcon))
+        if not AllLibrariesNode.icon:
+            AllLibrariesNode.icon = QIcon(style.standardIcon(QStyle.SP_DriveNetIcon))
+        return AllLibrariesNode.icon
 
 
 class LibraryRootNode(TreeNode):
     """Library root node."""
+    icon: QIcon = None
 
     def __init__(self, parent, library_root: LibraryRoot):
         super().__init__(parent)
@@ -79,7 +86,9 @@ class LibraryRootNode(TreeNode):
         return self.library_root.name
 
     def get_icon(self, style):
-        return QIcon(style.standardIcon(QStyle.SP_DriveHDIcon))
+        if not LibraryRootNode.icon:
+            LibraryRootNode.icon = QIcon(style.standardIcon(QStyle.SP_DriveHDIcon))
+        return LibraryRootNode.icon
 
 
 class PathNode(TreeNode):
