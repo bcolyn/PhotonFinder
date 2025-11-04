@@ -89,11 +89,11 @@ class ASTAPSolver(SolverBase):
     _exe: str
     _log: bool
 
-    def __init__(self, exe=get_default_astap_path(), fallback_fov: float = 1.0):
+    def __init__(self, exe=get_default_astap_path(), fallback_fovs: str = "1.0"):
         super().__init__()
         self._exe = exe
         self._log = True
-        self.fallback_fov = fallback_fov
+        self.fallback_fovs = list(map(float, fallback_fovs.split(";"))) if fallback_fovs else None
 
     def _solve(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None) -> Header:
 
@@ -101,16 +101,37 @@ class ASTAPSolver(SolverBase):
         ini = tmp_image_file.with_suffix(".ini")
         log = tmp_image_file.with_suffix(".log")
 
-        params = [self._exe, "-f", str(tmp_image_file), "-update",
-                  "-platesolve"]  # update, since this is a temp copy anyway
-        options = {"-r": "180", "-s": "100", "-z": "2"}
-        if hint is not None:
-            options.update(hint)
-        params.extend([item for k in options for item in (k, options[k])])
-        if self._log:
-            params.append("-log")
+        # Determine FOV values to try
+        if hint and '-fov' in hint:
+            # Use the FOV from metadata
+            fovs_to_try = [hint['-fov']]
+        elif self.fallback_fovs:
+            # Use fallback FOVs
+            fovs_to_try = [str(fov) for fov in self.fallback_fovs]
+        else:
+            # No FOV specified
+            fovs_to_try = [None]
 
-        subprocess.run(params, capture_output=True, text=True)
+        # Try each FOV value
+        for fov in fovs_to_try:
+            # Clean up old files from previous attempts
+            if ini.exists():
+                ini.unlink()
+            if log.exists():
+                log.unlink()
+
+            # Prepare hint with current FOV
+            current_hint = hint.copy() if hint else {}
+            if fov is not None:
+                current_hint['-fov'] = fov
+            else:
+                current_hint.pop('-fov', None)
+
+            self._run_astap(tmp_image_file, current_hint)
+
+            if wcs.exists():
+                break
+
         if not wcs.exists() and ini.exists():
             self._raise_error(ini, log, tmp_image_file)
 
@@ -121,6 +142,18 @@ class ASTAPSolver(SolverBase):
             result_header = extract_wcs_cards(header)
 
         return result_header
+
+    def _run_astap(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None):
+        """Execute ASTAP with the given parameters."""
+        params = [self._exe, "-f", str(tmp_image_file), "-update", "-platesolve"]
+        options = {"-r": "180",  "-z": "2"} #  "-s": "100" ?
+        if hint is not None:
+            options.update(hint)
+        params.extend([item for k in options for item in (k, options[k])])
+        if self._log:
+            params.append("-log")
+
+        subprocess.run(params, capture_output=True, text=True)
 
     @staticmethod
     def is_pre_solved(header):
@@ -165,8 +198,6 @@ class ASTAPSolver(SolverBase):
         height = header.get("NAXIS2")
         if scale is not None and height is not None:
             fov = int(height) * scale / 3600
-        elif self.fallback_fov:
-            fov = self.fallback_fov
         else:
             fov = None
 

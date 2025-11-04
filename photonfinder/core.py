@@ -177,7 +177,7 @@ class Settings:
         self.settings.setValue("astap_path", value)
 
     def get_astap_fallback_fov(self):
-        return self.settings.value("astap_fov", 2.0, float)
+        return self.settings.value("astap_fov", "1;3;0.66", str)
 
     def set_astap_fallback_fov(self, value):
         self.settings.setValue("astap_fov", value)

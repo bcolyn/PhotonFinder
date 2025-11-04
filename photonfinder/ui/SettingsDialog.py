@@ -18,7 +18,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
 
         # Initialize plate solving settings
         self.astap_path_edit.setText(self.context.settings.get_astap_path())
-        self.astap_fov_edit.setValue(self.context.settings.get_astap_fallback_fov())
+        self.astap_fov_edit.setText(self.context.settings.get_astap_fallback_fov())
         self.astrometry_api_key_edit.setText(self.context.settings.get_astrometry_net_api_key())
         self.astrometry_image_upload_check.setChecked(self.context.settings.get_astrometry_net_force_image_upload())
 
@@ -57,7 +57,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
 
         # Save plate solving settings
         self.context.settings.set_astap_path(self.astap_path_edit.text())
-        self.context.settings.set_astap_fallback_fov(self.astap_fov_edit.value())
+        self.context.settings.set_astap_fallback_fov(self.astap_fov_edit.text())
         self.context.settings.set_astrometry_net_api_key(self.astrometry_api_key_edit.text())
         self.context.settings.set_astrometry_net_force_image_upload(self.astrometry_image_upload_check.isChecked())
 
