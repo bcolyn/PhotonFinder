@@ -44,6 +44,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # Set the window icon from the resource file
         self.setWindowIcon(QIcon(":/icon.png"))
+        self.setWindowTitle(f"PhotonFinder - {context.database_path}")
 
         text_color = self.palette().color(QPalette.WindowText)
         size = QSize(24, 24)
