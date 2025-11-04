@@ -35,7 +35,6 @@ SORT_ROLE = Qt.UserRole + 1
 def _not_empty(current_text):
     return current_text != EMPTY_LABEL and current_text and current_text != RESET_LABEL
 
-# TODO: handle CTRL+A
 class SearchPanel(QFrame, Ui_SearchPanel):
     search_criteria_changed = Signal()
 
@@ -45,6 +44,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         self.context = context
         self.update_in_progress = False
+        self.select_all_pending = False
         self.title = "Loading"
         self.mainWindow = mainWindow
         self.search_criteria = SearchCriteria() #TODO: previous / next?
@@ -77,6 +77,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.dataView.customContextMenuRequested.connect(self.show_context_menu)
         # Connect selection changes
         self.dataView.selectionModel().selectionChanged.connect(self.on_data_selection_changed)
+        self.dataView.installEventFilter(self)
         self.visibility_controller = ColumnVisibilityController(self.dataView)
         self.has_more_results = False
         self.loading_more = False
@@ -124,6 +125,31 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         super().showEvent(event)
         if self.data_model.rowCount() == 0:
             self.update_search_criteria()
+
+    def eventFilter(self, obj, event):
+        """Handle CTRL+A to select all rows, loading all data if needed."""
+        if obj == self.dataView and event.type() == QEvent.KeyPress:
+            if event.matches(QKeySequence.SelectAll):
+                self.handle_select_all()
+                return True  # Event handled
+        return super().eventFilter(obj, event)
+
+    def handle_select_all(self):
+        """Handle CTRL+A - load all data if needed, then select all."""
+        if self.has_more_results:
+            # There's more data to load, so load it all first
+            self.select_all_pending = True
+            self.load_all_remaining_data()
+        else:
+            # All data is already loaded, just select all
+            self.dataView.selectAll()
+
+    def load_all_remaining_data(self):
+        """Load all remaining data in batches."""
+        if not self.loading_more and self.has_more_results:
+            self.loading_more = True
+            self.context.status_reporter.update_status("Loading all data for selection...", bulk=True)
+            self.search_results_loader.load_more()
 
     def on_library_tree_ready(self):
         all_libraries_index = self.library_tree_model.index(0, 0, QModelIndex())
@@ -450,6 +476,17 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.resize_columns()
         self.update_sort_indicator()
         self.mainWindow.enable_actions_for_current_tab()
+
+        # If we're loading all data for select all, continue loading or select all when done
+        if self.select_all_pending:
+            if self.has_more_results:
+                # Continue loading more data
+                self.load_all_remaining_data()
+            else:
+                # All data loaded, now select all
+                self.select_all_pending = False
+                self.dataView.selectAll()
+                self.context.status_reporter.update_status(f"All {self.total_files} files selected", bulk=False)
 
     def resize_columns(self):
         self.dataView.resizeColumnsToContents()
