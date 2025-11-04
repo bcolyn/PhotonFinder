@@ -12,7 +12,7 @@ from PySide6.QtWidgets import *
 from photonfinder.core import ApplicationContext, decompress, Change
 from photonfinder.filesystem import Importer, header_from_xisf_dict, parse_FITS_header
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
-    FileWCS, ProjectFile
+    FileWCS, ProjectFile, LibraryRoot
 from photonfinder.platesolver import SolverType
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
 from .DateRangeDialog import DateRangeDialog
@@ -500,7 +500,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         return [self.library_tree_model.getItem(idx) for idx in indexes]
 
     def on_tree_context_menu(self, position):
-        #TODO: add show location here
         index = self.filesystemTreeView.indexAt(position)
         if not index.isValid():
             return
@@ -512,6 +511,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         menu = QMenu(self)
         create_project_action = menu.addAction("Create Project") if only_paths else None
+        show_location_action = menu.addAction("Show location") if only_paths and len(root_and_paths) == 1 else None
 
         if only_roots:
             menu.addAction(self.mainWindow.action_Scan_Libraries)
@@ -519,8 +519,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         action = menu.exec(self.filesystemTreeView.viewport().mapToGlobal(position))
         if action is None:
             return
-        if action == create_project_action:
+        if create_project_action is not None and action == create_project_action:
             self.mainWindow.create_project_for_folder(root_and_paths)
+        if show_location_action is not None and action == show_location_action:
+            self.show_folder_location(root_and_paths[0])
 
     def show_context_menu(self, position):
         """Show context menu for the data view."""
@@ -618,6 +620,14 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if filename:
             # Open the file with the associated application
             QDesktopServices.openUrl(QUrl.fromLocalFile(filename))
+
+    def show_folder_location(self, root_and_path: RootAndPath):
+        root = LibraryRoot.get_by_id(root_and_path.root_id)
+        if root:
+            import os
+            filename = os.path.join(root.path, root_and_path.path)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(filename))
+
 
     def show_file_location(self, index):
         """Open the file explorer showing the directory containing the file."""
