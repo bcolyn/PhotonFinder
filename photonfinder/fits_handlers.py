@@ -38,6 +38,9 @@ def _normalize_image_type(value):
     value = value.upper()
     value = value.replace(' FRAME', '')
     value = re.sub(r'MASTER(?=\S)', 'MASTER ', value)
+    # DARKFLATs are just DARKs for FLATs, but assuming temp and exp, ... match, could be used just like DARKs
+    # makes no sense to distinguish them when we have the other metadata to compare
+    value = re.sub('DARKFLAT', 'DARK ', value)
     return value.strip()
 
 
