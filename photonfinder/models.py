@@ -59,7 +59,7 @@ class SearchCriteria:
 
     def __str__(self):
         result = []
-        if len(self.paths) > 0:
+        if self.paths and len(self.paths) > 0:
             result += list(map(str, self.paths))
 
         for text in [self.type, self.filter, self.camera, self.file_name, self.object_name, self.exposure,
@@ -135,7 +135,7 @@ class SearchCriteria:
         return SearchCriteria._to_json(self)
 
     @staticmethod
-    def _to_json(value: 'SearchCriteria' | typing.Iterable['SearchCriteria']) -> str:
+    def _to_json(value: 'SearchCriteria | typing.Iterable[SearchCriteria]') -> str:
         return json.dumps(value, default=SearchCriteria._serialize, sort_keys=True, indent=4)
 
     list_to_json = _to_json
