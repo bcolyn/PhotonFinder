@@ -35,7 +35,7 @@ SORT_ROLE = Qt.UserRole + 1
 def _not_empty(current_text):
     return current_text != EMPTY_LABEL and current_text and current_text != RESET_LABEL
 
-
+# TODO: handle CTRL+A
 class SearchPanel(QFrame, Ui_SearchPanel):
     search_criteria_changed = Signal()
 
