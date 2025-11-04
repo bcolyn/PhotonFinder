@@ -10,7 +10,6 @@ class ProgressDialog(QDialog, Ui_ProgressDialog):
         self.setupUi(self)
         self.setWindowTitle(title)
         self.label.setText(label)
-        self.setModal(True)
         self.task = task
 
         self.task.progress.connect(self.progressBar.setValue)

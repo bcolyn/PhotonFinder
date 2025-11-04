@@ -1180,7 +1180,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.add_filter_button_control(filter_button)
 
     def plate_solve_files(self, solver_type: SolverType = SolverType.ASTAP):
-        # TODO make this non-modal, it's really annoying that a 5 mins astrometry.net solve blocks the whole app
         selected_files = self.get_selected_files()
         # If no files are selected, use the search criteria
         if not selected_files:
