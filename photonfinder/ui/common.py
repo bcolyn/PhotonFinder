@@ -58,6 +58,31 @@ def _format_timestamp(timestamp_ms: int):
     date_str = _format_date(dt)
     return date_str
 
+def coerce_value(value: str):
+    """
+    Parse a string value and return it as int, float, or str.
+
+    Attempts to convert the value to int first, then float,
+    otherwise returns the original string.
+
+    Args:
+        value: String value to parse
+
+    Returns:
+        The value as int, float, or str depending on what conversion succeeds
+    """
+    try:
+        return int(value)
+    except ValueError:
+        pass
+
+    try:
+        return float(value)
+    except ValueError:
+        pass
+
+    return value
+
 
 def create_colored_svg_icon(svg_path: str, size: QSize, color) -> QIcon:
     renderer = QSvgRenderer(svg_path)

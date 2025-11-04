@@ -18,6 +18,7 @@ from photonfinder.core import ApplicationContext, Settings, decompress
 from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict
 from photonfinder.models import Image, File, SearchCriteria, FileWCS, Project, ProjectFile
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
+from photonfinder.ui.common import coerce_value
 from photonfinder.ui.generated.ExportDialog_ui import Ui_ExportDialog
 
 
@@ -402,7 +403,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             for line in self.customHeadersTextEdit.toPlainText().strip().split('\n'):
                 if '=' in line:
                     key, value = line.split('=', 1)
-                    custom_headers[key.strip()] = value.strip() #TODO: try to fix type? export float as float, int as int
+                    custom_headers[key.strip()] = coerce_value(value.strip())
 
         # Start the export process with either files or search criteria
         self.export_worker.export_files(
