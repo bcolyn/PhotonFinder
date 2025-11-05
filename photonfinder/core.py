@@ -17,6 +17,30 @@ def get_default_astap_path():
     else:  # else, assume it's on the PATH
         return "astap"
 
+def fatal_error(title: str, message: str, details: str = "") -> None:
+    """
+    Display a fatal error dialog and exit the application.
+
+    Args:
+        title: The window title for the error dialog
+        message: The main error message
+        details: Optional additional details or information
+    """
+    from PySide6.QtWidgets import QMessageBox
+    import sys
+
+    logging.error(f"{title}: {message} {details}")
+
+    msg_box = QMessageBox()
+    msg_box.setIcon(QMessageBox.Critical)
+    msg_box.setWindowTitle(title)
+    msg_box.setText(message)
+    if details:
+        msg_box.setInformativeText(details)
+    msg_box.setStandardButtons(QMessageBox.Ok)
+    msg_box.exec()
+
+    sys.exit(1)
 
 class StatusReporter:
     @abstractmethod
@@ -42,6 +66,8 @@ def register_udfs(db: SqliteDatabase):
 
 
 class ApplicationContext:
+
+    CURRENT_DB_VERSION = 1
 
     @staticmethod
     def create_in_app_data(app_data_path: str, settings) -> 'ApplicationContext':
@@ -78,12 +104,13 @@ class ApplicationContext:
             'cache_size': -1 * 64000,  # 64MB
             'foreign_keys': 1,
             'application_id': 0x46495453,  # FITS
-            'user_version': 1
         })
 
         register_udfs(self.database)
 
         logging.info("Database opened")
+        self._check_database_version()
+
         self.settings.set_last_database_path(str(self.database_path))
         if self.database:
             from .models import CORE_MODELS
@@ -110,6 +137,45 @@ class ApplicationContext:
 
     def get_session_file(self) -> str | None:
         return self.session_file
+
+    def _check_database_version(self):
+        if not self.database:
+            return
+
+        cursor = self.database.execute_sql('PRAGMA user_version')
+        current_version = cursor.fetchone()[0]
+
+        if current_version < self.CURRENT_DB_VERSION:
+            logging.info(
+                f"Database version {current_version} is older than {self.CURRENT_DB_VERSION}. Running migration...")
+            self._run_database_migration(current_version, self.CURRENT_DB_VERSION)
+            # Update the version after successful migration
+            self.database.execute_sql(f'PRAGMA user_version = {self.CURRENT_DB_VERSION}')
+            logging.info(f"Database migrated to version {self.CURRENT_DB_VERSION}")
+        elif current_version > self.CURRENT_DB_VERSION:
+            fatal_error(
+                "Database Version Error",
+                "Database version mismatch",
+                f"The database file was created with a newer version of this application.\n\n"
+                f"Database version: {current_version}\n"
+                f"Application supports: {self.CURRENT_DB_VERSION}\n\n"
+                f"Please update the application to the latest version."
+            )
+        else:
+            logging.info(f"Database version is up to date: {current_version}")
+
+    def _run_database_migration(self, from_version: int, to_version: int):
+        """
+        Run database migration from one version to another.
+        This method should be implemented to handle specific migration steps.
+        """
+        logging.info(f"Running migration from version {from_version} to {to_version}")
+        # if from_version < 1:
+        #     self._migrate_to_version_1()
+        # if from_version < 2:
+        #     self._migrate_to_version_2()
+        # etc.
+        pass
 
 
 class Settings:
