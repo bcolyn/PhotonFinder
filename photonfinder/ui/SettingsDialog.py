@@ -31,13 +31,11 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
 
     def browse_astap_executable(self):
         """Open a file dialog to select the ASTAP executable."""
-        file_filter = ""
+        file_filter: str
         if platform.system() == "Windows":
-            file_filter = "Executable Files (*.exe);;All Files (*.*)"
-            default_name = "astap.exe"
+            file_filter = "astap.exe;;All Files (*.*)"
         else:
-            file_filter = "All Files (*)"
-            default_name = "astap"
+            file_filter = "astap;;All Files (*)"
 
         current_path = self.astap_path_edit.text()
         start_dir = os.path.dirname(current_path) if current_path else os.path.expanduser("~")
