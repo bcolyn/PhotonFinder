@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from enum import Enum
 from logging import DEBUG
@@ -655,8 +656,16 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filename = file.full_filename()
 
         if filename:
-            # Open the file with the associated application
-            QDesktopServices.openUrl(QUrl.fromLocalFile(filename))
+            # clean up the environment for PixInsight/QT - can't find it's plugins otherwise
+            old_env = os.environ.copy()
+            for var in ("QT_PLUGIN_PATH", "QML2_IMPORT_PATH"):
+                os.environ.pop(var, None)
+            try:
+                # Open the file with the associated application
+                QDesktopServices.openUrl(QUrl.fromLocalFile(filename))
+            finally:
+                os.environ.clear()
+                os.environ.update(old_env)
 
     def show_folder_location(self, root_and_path: RootAndPath):
         root = LibraryRoot.get_by_id(root_and_path.root_id)
