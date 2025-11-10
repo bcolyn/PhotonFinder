@@ -1,4 +1,4 @@
-name: Build and Release PhotonFinder
+name: Build and Release PhotonFinder for Windows
 
 on:
   push:
@@ -31,6 +31,9 @@ jobs:
 
       - name: Generate code from UI files
         run: python setup.py build_ui
+
+      - name: Run tests
+        run: pytest tests/
 
       - name: Build with PyInstaller
         run: pyinstaller --noconfirm photonfinder.spec
