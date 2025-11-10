@@ -1,4 +1,5 @@
 import logging
+import os
 from abc import abstractmethod
 from enum import Enum
 from pathlib import Path
@@ -71,7 +72,7 @@ class ApplicationContext:
 
     @staticmethod
     def create_in_app_data(app_data_path: str, settings) -> 'ApplicationContext':
-        if settings.get_last_database_path():
+        if settings.get_last_database_path() and os.path.exists(settings.get_last_database_path()):
             database_path = settings.get_last_database_path()
         else:
             database_path = Path(app_data_path) / "astroFileManager.db"
