@@ -39,6 +39,7 @@ jobs:
       # Test dataset download
       - name: Get dataset revision hash
         id: hf-hash
+        shell: bash
         run: |
           python - <<'EOF'
           from huggingface_hub import HfApi
@@ -59,6 +60,7 @@ jobs:
 
       - name: Download dataset from Hugging Face
         if: steps.cache-testdata.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           python - <<'EOF'
           from huggingface_hub import snapshot_download
