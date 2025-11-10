@@ -43,6 +43,7 @@ jobs:
         run: |
           python - <<'EOF'
           from huggingface_hub import HfApi
+          import os
           api = HfApi()
           repo = "bcolyn/PhotonFinder-test-data"
           info = api.dataset_info(repo)
