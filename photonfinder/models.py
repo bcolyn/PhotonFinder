@@ -60,8 +60,11 @@ class SearchCriteria:
 
     def __str__(self):
         result = []
-        if self.paths and len(self.paths) > 0:
-            result += list(map(str, self.paths))
+        if self.paths:
+            if len(self.paths) > 1:
+                result.append(str(self.paths[0]) + "+" + str(len(self.paths) - 1))
+            elif len(self.paths) > 0:
+                result.append(str(self.paths[0]))
 
         for text in [self.type, self.filter, self.camera, self.file_name, self.object_name, self.exposure,
                      self.telescope, self.binning, self.gain, self.temperature, self.header_text]:
