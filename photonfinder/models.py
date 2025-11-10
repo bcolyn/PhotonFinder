@@ -5,6 +5,7 @@ import typing
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import cmp_to_key
+from idlelib.browser import file_open
 from pathlib import Path
 from typing import Optional
 
@@ -152,8 +153,12 @@ class SearchCriteria:
 
     @staticmethod
     def _inflate_dict(data_dict):
-        if data_dict.get('reference_file'):  # re-inflate the reference file
-            data_dict['reference_file'] = File.get(File.rowid == data_dict['reference_file'])
+        if data_dict.get('reference_file'): # re-inflate the reference file
+            file_id =  data_dict['reference_file']
+            data_dict['reference_file'] = (File.select(File, Image, LibraryRoot)
+                       .join_from(File, LibraryRoot)
+                       .join_from(File, Image, JOIN.LEFT_OUTER)
+                       .where(File.rowid==file_id)).get()
         if data_dict.get('project'):  # re-inflate the project
             project_id = int(data_dict.get('project'))
             if project_id > 0:

@@ -107,13 +107,19 @@ class TestModels:
 
 
     def test_criteria_serde(self):
+        file_object = (File.select(File, Image, LibraryRoot)
+                       .join_from(File, LibraryRoot)
+                       .join_from(File, Image, JOIN.LEFT_OUTER)
+                       .where(File.rowid==1)).get()
+
         search_criteria = SearchCriteria(
             paths=[RootAndPath(1, "dummy", "subdir1")], paths_as_prefix=False, filter="Ha",
-            reference_file=File.get_by_id(1), start_datetime=datetime.now(), end_datetime=datetime.now(),
+            reference_file=file_object, start_datetime=datetime.now(), end_datetime=datetime.now(),
         )
         json_bytes = search_criteria.to_json()
         deser = SearchCriteria.from_json(json_bytes)
         assert deser == search_criteria
+        assert deser.reference_file.image.filter == "Red"
 
         empty_criteria = SearchCriteria()
         json_bytes = empty_criteria.to_json()
