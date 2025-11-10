@@ -1,7 +1,10 @@
 name: Build and Release PhotonFinder for Windows
 
 on:
+  pull_request:
   push:
+    branches:
+      - master
     tags:
       - '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'  # matches YYYYMMDD
 
@@ -28,9 +31,53 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements_dev.txt
           pip install pyinstaller
+          pip install huggingface_hub
 
       - name: Generate code from UI files
         run: python setup.py build_ui
+
+      # Test dataset download
+      - name: Get dataset revision hash
+        id: hf-hash
+        run: |
+          python - <<'EOF'
+          from huggingface_hub import HfApi
+          api = HfApi()
+          repo = "bcolyn/PhotonFinder-test-data"
+          info = api.dataset_info(repo)
+          print(f"revision={info.sha}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"revision={info.sha}\n")
+          EOF
+
+      - name: Cache Hugging Face dataset
+        id: cache-testdata
+        uses: actions/cache@v4
+        with:
+          path: tests/data
+          key: hfdata-${{ steps.hf-hash.outputs.revision }}-${{ runner.os }}
+
+      - name: Download dataset from Hugging Face
+        if: steps.cache-testdata.outputs.cache-hit != 'true'
+        run: |
+          python - <<'EOF'
+          from huggingface_hub import snapshot_download
+          import os
+
+          dataset_repo = "bcolyn/PhotonFinder-test-data"
+          target_dir = os.path.join("tests", "data")
+
+          os.makedirs(target_dir, exist_ok=True)
+
+          snapshot_download(
+              repo_id=dataset_repo,
+              repo_type="dataset",
+              local_dir=target_dir,
+              local_dir_use_symlinks=False
+          )
+
+          print(f"Downloaded {dataset_repo} into {target_dir}")
+          EOF
 
       - name: Run tests
         run: pytest tests/
@@ -53,6 +100,7 @@ jobs:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')  # Only run for tags
 
     steps:
       - name: Download build artifact
