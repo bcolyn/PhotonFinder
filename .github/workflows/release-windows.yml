@@ -1,0 +1,65 @@
+name: Build and Release PhotonFinder
+
+on:
+  push:
+    tags:
+      - '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'  # matches YYYYMMDD
+
+jobs:
+  build:
+    name: Build Windows Executable
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements_dev.txt
+          pip install pyinstaller
+
+      - name: Generate code from UI files
+        run: python setup.py build_ui
+
+      - name: Build with PyInstaller
+        run: pyinstaller --noconfirm photonfinder.spec
+
+      - name: Zip the build
+        run: |
+          cd dist
+          powershell Compress-Archive -Path main -DestinationPath photonfinder-${{ github.ref_name }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: photonfinder
+          path: dist/photonfinder-${{ github.ref_name }}.zip
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: photonfinder
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: PhotonFinder ${{ github.ref_name }}
+          files: dist/photonfinder-${{ github.ref_name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
