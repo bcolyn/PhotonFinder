@@ -1,17 +1,17 @@
 PySide6~=6.10.0
-pyinstaller==6.16.0
-pyinstaller-hooks-contrib==2025.9
+pyinstaller==6.18.0
+pyinstaller-hooks-contrib==2026.0
 pyqt-distutils==0.7.3
-peewee~=3.18.1
-astropy~=7.1.1
+peewee~=3.19.0
+astropy~=7.2.0
 astropy-healpix~=1.1.2
 astroquery~=0.4.11
 photutils~=2.3.0
 xisf~=0.9.5
 zstd~=1.5.7.2
-setuptools~=80.9.0
+setuptools<81 #pkg_resources is still needed
 fs~=2.4.16
 
-numpy~=2.3.4
-pillow~=12.0.0
+numpy~=2.4.2
+pillow~=12.1.0
 requests~=2.32.4

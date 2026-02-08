@@ -39,7 +39,6 @@ def main():
     os.makedirs(app_data_path, exist_ok=True)
     init_logging(app_data_path)
 
-    logging.info(f"sqlite3 module version: %s", sqlite3.version)
     logging.info(f"SQLite library version: %s", sqlite3.sqlite_version)
 
     if hasattr(Qt, 'HighDpiScaleFactorRoundingPolicy'):

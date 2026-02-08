@@ -18,24 +18,31 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "PySide6~=6.8.2.1",
-    "pyinstaller==6.14.1",
-    "pyinstaller-hooks-contrib==2025.5",
+    "PySide6~=6.10.0",
+    "pyinstaller==6.18.0",
+    "pyinstaller-hooks-contrib==2026.0",
     "pyqt-distutils==0.7.3",
-    "peewee~=3.17.0",
-    "setuptools~=80.4.0",
-    "fs~=2.4.16",
+    "peewee~=3.19.0",
+    "astropy~=7.2.0",
+    "astropy-healpix~=1.1.2",
+    "astroquery~=0.4.11",
+    "photutils~=2.3.0",
     "xisf~=0.9.5",
-    "astropy~=7.1.0",
-    "astropy-healpix~=1.1.2"
+    "zstd~=1.5.7.2",
+    "setuptools<81",
+    "fs~=2.4.16",
+    "numpy~=2.4.2",
+    "pillow~=12.1.0",
+    "requests~=2.32.4"
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
+    "pytest-dotenv>=0.5.2",
     "pytest-qt>=4.2.0",
     "pytest-mock>=3.10.0",
-    "pytest-cov>=4.1.0",
+    "pytest-cov>=4.1.0 ",
 ]
 
 #[project.urls]
