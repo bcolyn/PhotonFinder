@@ -26,6 +26,9 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.file_ignore_edit.setText(self.context.settings.get_bad_file_patterns())
         self.folder_ignore_edit.setText(self.context.settings.get_bad_dir_patterns())
 
+        # Initialize viewer settings
+        self.internal_viewer_check.setChecked(self.context.settings.get_use_internal_viewer())
+
         # Connect signals
         self.astap_browse_button.clicked.connect(self.browse_astap_executable)
 
@@ -62,6 +65,9 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         # Save file settings
         self.context.settings.set_bad_file_patterns(self.file_ignore_edit.text())
         self.context.settings.set_bad_dir_patterns(self.folder_ignore_edit.text())
+
+        # Save viewer settings
+        self.context.settings.set_use_internal_viewer(self.internal_viewer_check.isChecked())
 
         # Sync settings to ensure they are saved
         self.context.settings.sync()

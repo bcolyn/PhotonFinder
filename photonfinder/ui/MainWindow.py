@@ -12,6 +12,7 @@ from photonfinder.core import ApplicationContext, StatusReporter, backup_databas
 from photonfinder.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
 from photonfinder.models import SearchCriteria, Project, File, ProjectFile, RootAndPath, Image, LibraryRoot
 from .AboutDialog import AboutDialog
+from .ImageViewerWindow import ImageViewerWindow
 from .LibraryRootDialog import LibraryRootDialog
 from .LibraryTreeModel import AllLibrariesNode, LibraryRootNode
 from .LogWindow import LogWindow
@@ -38,6 +39,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.session_manager = SessionManager(context.get_session_file())
         self.scan_worker = None  # Initialize scan_worker attribute
         self.projects_window = None
+        self.image_viewer: ImageViewerWindow | None = None
 
         self.menuProject_Details.removeAction(self.actionLoading_2)
         self.menuSearch_Details.removeAction(self.actionLoading)
@@ -483,6 +485,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return
         # Open the file at the selected row
         current_panel.open_file(selected_rows[0])
+
+    def view_image(self, file):
+        """Open the file in the internal image viewer (single non-modal window)."""
+        if self.image_viewer is None or not self.image_viewer.isVisible():
+            self.image_viewer = ImageViewerWindow(parent=self)
+            self.image_viewer.destroyed.connect(
+                lambda: setattr(self, 'image_viewer', None)
+            )
+            self.image_viewer.show()
+        self.image_viewer.load_file(file)
+        self.image_viewer.raise_()
+        self.image_viewer.activateWindow()
 
     def show_file_location(self):
         """Open the file explorer showing the directory containing the selected file."""

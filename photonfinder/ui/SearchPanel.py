@@ -573,6 +573,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Create context menu
         menu = QMenu(self)
+        view_action = menu.addAction("View")
         open_action = menu.addAction("Open File")
         show_location_action = menu.addAction("Show location")
         select_path_action = menu.addAction("Select path")
@@ -625,7 +626,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # Show the menu and get the selected action
         action = menu.exec(self.dataView.viewport().mapToGlobal(position))
 
-        if action == open_action:
+        if action == view_action:
+            self.view_file(index)
+        elif action == open_action:
             self.open_file(index)
         elif action == show_location_action:
             self.show_file_location(index)
@@ -692,9 +695,20 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             # Open the directory in the file explorer
             QDesktopServices.openUrl(QUrl.fromLocalFile(directory))
 
+    def view_file(self, index):
+        """Open the file at the given index in the internal image viewer."""
+        name_index = self.dataView.model().index(index.row(), 0)
+        with self.context.database.bind_ctx(CORE_MODELS):
+            file = self.dataView.model().data(name_index, ROWID_ROLE)
+        if file and self.mainWindow:
+            self.mainWindow.view_image(file)
+
     def on_item_double_clicked(self, index):
         """Handle double-click on an item in the data view."""
-        self.open_file(index)
+        if self.context.settings.get_use_internal_viewer():
+            self.view_file(index)
+        else:
+            self.open_file(index)
 
     def select_path_in_tree(self, index):
         """Select the path in the tree view."""

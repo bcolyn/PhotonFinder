@@ -305,6 +305,12 @@ class Settings:
     def set_project_hidden_cols(self, value) -> str:
         self.settings.setValue("project_hidden_cols", value)
 
+    def get_use_internal_viewer(self) -> bool:
+        return self.settings.value("use_internal_viewer", True, bool)
+
+    def set_use_internal_viewer(self, value: bool):
+        self.settings.setValue("use_internal_viewer", value)
+
     def sync(self):
         """Ensure settings are saved to disk."""
         self.settings.setValue("known_fits_keywords", "|".join(self.known_fits_keywords))
