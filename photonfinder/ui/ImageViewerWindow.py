@@ -16,7 +16,46 @@ from photonfinder.models import File
 
 logger = logging.getLogger(__name__)
 
-_BLINK_INTERVALS = {'Off': 0, '0.5s': 500, '1s': 1000, '2s': 2000, '5s': 5000}
+_BLINK_INTERVALS = {'Off': 0, '0.25s': 250, '0.5s': 500, '1s': 1000, '2s': 2000, '5s': 5000}
+
+
+class PreloadWorker(QThread):
+    """Loads all given filenames into the image cache in parallel."""
+    progress = Signal(int, int)  # (done, total)
+
+    def __init__(self, filenames: list[str]):
+        super().__init__()
+        self.filenames = filenames
+        self._cancel = False
+
+    def cancel(self):
+        self._cancel = True
+
+    def run(self):
+        import os
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from photonfinder.image_processing import load_image_data
+        total = len(self.filenames)
+        done = 0
+        n_workers = min(4, os.cpu_count() or 1)
+        logger.debug("Using %d parallel workers for preloading.", n_workers)
+        executor = ThreadPoolExecutor(max_workers=n_workers)
+        futures = {executor.submit(load_image_data, fn): fn for fn in self.filenames}
+        for future in as_completed(futures):
+            fn = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                logger.warning("Preload failed for %s: %s", fn, exc)
+            done += 1
+            self.progress.emit(done, total)
+            if self._cancel:
+                for f in futures:
+                    f.cancel()
+                break
+        # cancel_futures=True drops queued work immediately so this QThread exits fast.
+        # Any already-running load_image_data calls finish on daemon threads in the background.
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 class ImageLoadWorker(QThread):
@@ -181,7 +220,7 @@ class ImageViewerWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Image Viewer")
-        self.resize(960, 720)
+        self.resize(1080, 720)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
         self._filename: str | None = None
@@ -216,6 +255,8 @@ class ImageViewerWindow(QMainWindow):
         self._cursor_overridden: bool = False
         self._prev_btn: QPushButton | None = None
         self._next_btn: QPushButton | None = None
+        self._preload_btn: QPushButton | None = None
+        self._preload_worker: PreloadWorker | None = None
 
         self._build_ui()
 
@@ -251,7 +292,7 @@ class ImageViewerWindow(QMainWindow):
         self._sigma_spin = QDoubleSpinBox()
         self._sigma_spin.setRange(0.5, 10.0)
         self._sigma_spin.setValue(2.8)
-        self._sigma_spin.setSingleStep(0.5)
+        self._sigma_spin.setSingleStep(0.1)
         self._sigma_spin.setDecimals(1)
         self._sigma_spin.setFixedWidth(60)
         self._sigma_spin.setToolTip("Clipping sigma for black point estimation")
@@ -313,6 +354,12 @@ class ImageViewerWindow(QMainWindow):
         self._blink_combo.setToolTip("Auto-advance interval for blinking between images")
         tb.addWidget(self._blink_combo)
 
+        self._preload_btn = QPushButton("Preload")
+        self._preload_btn.setToolTip("Load all images in the current result set into the cache")
+        self._preload_btn.setEnabled(False)
+        self._preload_btn.clicked.connect(self._on_preload_clicked)
+        tb.addWidget(self._preload_btn)
+
         tb.addSeparator()
 
         self._lock_stretch_check = QCheckBox("Lock stretch")
@@ -325,6 +372,8 @@ class ImageViewerWindow(QMainWindow):
         # --- Status bar ---
         sb = QStatusBar()
         self.setStatusBar(sb)
+        self._nav_label = QLabel()
+        sb.addPermanentWidget(self._nav_label)
         self._pixel_label = QLabel()
         sb.addPermanentWidget(self._pixel_label)
 
@@ -346,6 +395,9 @@ class ImageViewerWindow(QMainWindow):
         """Set the search panel and row index used for prev/next navigation."""
         self._nav_panel = panel
         self._nav_row = row
+        self._update_nav_label()
+        if self._preload_btn:
+            self._preload_btn.setEnabled(True)
 
     def load_file(self, file: File, preserve_view: bool = False):
         """Load and display the image associated with a File model instance."""
@@ -388,16 +440,27 @@ class ImageViewerWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._blink_timer.stop()
+        if self._preload_worker and self._preload_worker.isRunning():
+            self._preload_worker.cancel()
+            self._preload_worker.progress.disconnect()
+            self._preload_worker.finished.disconnect()
+            # Must wait: WA_DeleteOnClose destroys the C++ object after this returns,
+            # so any in-flight signal emission into self would be a use-after-free crash.
+            self._preload_worker.wait()
         if self._load_worker and self._load_worker.isRunning():
             self._load_worker.image_loaded.disconnect()
             self._load_worker.error.disconnect()
+            self._load_worker.wait()
         if self._process_worker and self._process_worker.isRunning():
             self._process_worker.result.disconnect()
             self._process_worker.error.disconnect()
             self._process_worker.finished.disconnect()
+            self._process_worker.wait()
         if self._cursor_overridden:
             QApplication.restoreOverrideCursor()
             self._cursor_overridden = False
+        from photonfinder.image_processing import image_cache
+        image_cache.clear()
         super().closeEvent(event)
 
     # ------------------------------------------------------------------
@@ -442,6 +505,7 @@ class ImageViewerWindow(QMainWindow):
             return
 
         self._nav_row = row
+        self._update_nav_label()
 
         # Record when the next auto-advance is due (for due-time blink logic)
         interval_ms = _BLINK_INTERVALS.get(self._blink_combo.currentText(), 0)
@@ -485,6 +549,52 @@ class ImageViewerWindow(QMainWindow):
 
     def _blink_interval_ms(self) -> int:
         return _BLINK_INTERVALS.get(self._blink_combo.currentText(), 0)
+
+    # ------------------------------------------------------------------
+    # Private: nav index label
+    # ------------------------------------------------------------------
+
+    def _update_nav_label(self):
+        if self._nav_panel is None or self._nav_row < 0:
+            self._nav_label.setText("")
+            return
+        total = self._nav_panel.dataView.model().rowCount()
+        self._nav_label.setText(f"{self._nav_row + 1} / {total}")
+
+    # ------------------------------------------------------------------
+    # Private: preload
+    # ------------------------------------------------------------------
+
+    def _on_preload_clicked(self):
+        if self._nav_panel is None:
+            return
+        if self._nav_panel.has_more_results:
+            self._nav_panel.load_all_remaining_data()
+        model = self._nav_panel.dataView.model()
+        filenames = [
+            fn for row in range(model.rowCount())
+            if (f := self._nav_panel.get_file_at_row(row)) and (fn := f.full_filename())
+        ]
+        if not filenames:
+            return
+        import psutil
+        from photonfinder.image_processing import image_cache
+        image_cache._max_bytes = int(psutil.virtual_memory().available * 0.90)
+        self._preload_worker = PreloadWorker(filenames)
+        self._preload_worker.progress.connect(self._on_preload_progress)
+        self._preload_worker.finished.connect(self._on_preload_finished)
+        self._preload_worker.start()
+        self._preload_btn.setEnabled(False)
+        self._preload_btn.setText("Preloading…")
+
+    def _on_preload_progress(self, done: int, total: int):
+        self.statusBar().showMessage(f"Preloading {done} / {total}…")
+
+    def _on_preload_finished(self):
+        self._preload_worker = None
+        self._preload_btn.setEnabled(True)
+        self._preload_btn.setText("Preload")
+        self.statusBar().showMessage("Preload complete", 3000)
 
     # ------------------------------------------------------------------
     # Private: lock stretch

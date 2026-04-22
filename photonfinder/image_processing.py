@@ -34,27 +34,75 @@ class StretchParams:
 # Image cache
 # ---------------------------------------------------------------------------
 
-class _ImageCache:
-    """Thread-safe LRU cache mapping filename → (raw_ndarray, header)."""
+def _ram_budget() -> int:
+    """25 % of total system RAM, used as the image cache byte budget."""
+    try:
+        import psutil
+        return int(psutil.virtual_memory().total * 0.25)
+    except Exception as e:
+        print(e)
+        return 2 * 1024 ** 3  # 2 GB fallback
 
-    def __init__(self, max_size: int = 5):
-        self._store: OrderedDict[str, tuple[np.ndarray, dict]] = OrderedDict()
-        self._max_size = max_size
+
+class _ImageCache:
+    """Thread-safe LRU cache bounded by RAM (uncompressed bytes).
+
+    Pixel arrays are stored LZ4-compressed to maximise the number of images
+    that fit within the budget.  The budget is checked against uncompressed
+    sizes so eviction decisions are free of extra decompression work.
+    """
+
+    # Store layout per entry: (compressed_bytes, dtype, shape, header, uncompressed_size)
+    _store: OrderedDict[str, tuple[bytes, np.dtype, tuple, dict, int]]
+
+    def __init__(self) -> None:
+        self._store = OrderedDict()
+        self._max_bytes: int = _ram_budget()
+        self._total_bytes: int = 0
         self._lock = threading.Lock()
 
     def get(self, filename: str) -> tuple[np.ndarray, dict] | None:
+        import zstd
         with self._lock:
-            if filename in self._store:
-                self._store.move_to_end(filename)
-                return self._store[filename]
-        return None
+            entry = self._store.get(filename)
+            if entry is None:
+                return None
+            self._store.move_to_end(filename)
+            compressed, dtype, shape, header, _ = entry
+        raw = zstd.decompress(compressed)
+        return np.frombuffer(raw, dtype=dtype).reshape(shape), header
 
     def put(self, filename: str, data: np.ndarray, header: dict) -> None:
+        import zstd
+        raw = np.ascontiguousarray(data).tobytes()
+        compressed = zstd.compress(raw, 1)
+        compressed_size = len(compressed)
         with self._lock:
-            self._store.pop(filename, None)
-            self._store[filename] = (data, header)
-            if len(self._store) > self._max_size:
-                self._store.popitem(last=False)
+            if filename in self._store:
+                self._total_bytes -= self._store[filename][4]
+                del self._store[filename]
+            self._store[filename] = (compressed, data.dtype, data.shape, header, compressed_size)
+            self._total_bytes += compressed_size
+            logger.debug(
+                "Cache put: %s (%.1f MB compressed) — total %.1f / %.1f MB",
+                filename, compressed_size / 1024**2,
+                self._total_bytes / 1024**2, self._max_bytes / 1024**2,
+            )
+            while self._total_bytes > self._max_bytes and self._store:
+                evicted_key, evicted = self._store.popitem(last=False)
+                self._total_bytes -= evicted[4]
+                logger.debug(
+                    "Cache evict: %s (%.1f MB) — total now %.1f MB",
+                    evicted_key, evicted[4] / 1024**2, self._total_bytes / 1024**2,
+                )
+
+    def clear(self) -> None:
+        with self._lock:
+            count = len(self._store)
+            total_mb = self._total_bytes / 1024**2
+            self._store.clear()
+            self._total_bytes = 0
+        logger.debug("Cache cleared: %d entries, %.1f MB freed", count, total_mb)
 
 
 image_cache = _ImageCache()
