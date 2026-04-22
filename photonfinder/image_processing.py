@@ -6,6 +6,8 @@ All internal pixel data is represented as uint16 [0, 65535].  Float32 is used on
 for the statistics samples (sub-sampled, so small) and the LUT build step.
 """
 import logging
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
@@ -15,17 +17,77 @@ logger = logging.getLogger(__name__)
 _BAYER_PATTERNS = {'RGGB', 'BGGR', 'GRBG', 'GBRG'}
 
 
+class StretchParams:
+    """MTF (black_point, midtone) parameters for one or three channels."""
+
+    def __init__(self, channels: list[tuple[float, float]]):
+        self.channels = channels
+
+    def __getitem__(self, i: int) -> tuple[float, float]:
+        return self.channels[i]
+
+    def __len__(self) -> int:
+        return len(self.channels)
+
+
+# ---------------------------------------------------------------------------
+# Image cache
+# ---------------------------------------------------------------------------
+
+class _ImageCache:
+    """Thread-safe LRU cache mapping filename → (raw_ndarray, header)."""
+
+    def __init__(self, max_size: int = 5):
+        self._store: OrderedDict[str, tuple[np.ndarray, dict]] = OrderedDict()
+        self._max_size = max_size
+        self._lock = threading.Lock()
+
+    def get(self, filename: str) -> tuple[np.ndarray, dict] | None:
+        with self._lock:
+            if filename in self._store:
+                self._store.move_to_end(filename)
+                return self._store[filename]
+        return None
+
+    def put(self, filename: str, data: np.ndarray, header: dict) -> None:
+        with self._lock:
+            self._store.pop(filename, None)
+            self._store[filename] = (data, header)
+            if len(self._store) > self._max_size:
+                self._store.popitem(last=False)
+
+
+image_cache = _ImageCache()
+
+
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
 
 def load_image_data(filename: str | Path) -> tuple[np.ndarray, dict]:
-    """Load pixel data and header dict from a FITS, compressed FITS, or XISF file."""
+    """Load pixel data and header dict from a FITS, compressed FITS, or XISF file.
+
+    Results are cached; repeated loads of the same path are free.
+    """
     from photonfinder.filesystem import Importer
     filename = str(filename)
+    cached = image_cache.get(filename)
+    if cached is not None:
+        logger.debug("Cache hit: %s", filename)
+        return cached
     if Importer.is_xisf_by_name(filename):
-        return _load_xisf(filename)
-    return _load_fits(filename)
+        result = _load_xisf(filename)
+    else:
+        result = _load_fits(filename)
+    image_cache.put(filename, *result)
+    return result
+
+
+def prefetch_image(filename: str) -> None:
+    """Load and cache an image in a background daemon thread if not already cached."""
+    if image_cache.get(filename) is None:
+        t = threading.Thread(target=load_image_data, args=(filename,), daemon=True)
+        t.start()
 
 
 def _load_fits(filename: str) -> tuple[np.ndarray, dict]:
@@ -245,19 +307,47 @@ def build_stretch_lut(black: float, midtone: float) -> np.ndarray:
     return (np.clip(result, 0.0, 1.0) * 255.0).astype(np.uint8)
 
 
+def compute_stretch_params(data: np.ndarray, target_bg: float, clip_sigma: float,
+                            linked: bool) -> StretchParams:
+    """Compute MTF (black, midtone) params without applying them.
+
+    Returns a StretchParams with one channel for mono, or three for RGB.
+    Pass the result to ``stretch_uint16_to_uint8`` as ``locked_params`` to
+    reproduce the same stretch on a different image.
+    """
+    if data.ndim == 2:
+        return StretchParams([compute_mtf_params(data, target_bg, clip_sigma)])
+    if linked:
+        p = compute_mtf_params(data[1], target_bg, clip_sigma)
+        return StretchParams([p, p, p])
+    return StretchParams([compute_mtf_params(data[i], target_bg, clip_sigma) for i in range(3)])
+
+
 def stretch_uint16_to_uint8(data: np.ndarray, target_bg: float,
-                             clip_sigma: float, linked: bool) -> np.ndarray:
+                             clip_sigma: float, linked: bool,
+                             locked_params: StretchParams | None = None,
+                             ) -> np.ndarray:
     """Stretch a uint16 image and produce a uint8 array suitable for QImage.
 
     Input:  (H, W) or (3, H, W) uint16.
     Output: (H, W) uint8 mono, or (H, W, 3) uint8 RGB (channels-last for QImage).
+
+    If ``locked_params`` is supplied (from a previous ``compute_stretch_params``
+    call) those params are used as-is instead of recomputing from ``data``.
     """
     if data.ndim == 2:
-        lut = build_stretch_lut(*compute_mtf_params(data, target_bg, clip_sigma))
-        return lut[data]
+        p = locked_params[0] if locked_params else compute_mtf_params(data, target_bg, clip_sigma)
+        return build_stretch_lut(*p)[data]
 
     # (3, H, W)
-    if linked:
+    if locked_params:
+        if len(locked_params) >= 3:
+            out = np.stack([build_stretch_lut(*locked_params[i])[data[i]] for i in range(3)], axis=0)
+        else:
+            # Mono params locked but image is now RGB — apply single param to all channels
+            lut = build_stretch_lut(*locked_params[0])
+            out = np.stack([lut[data[i]] for i in range(3)], axis=0)
+    elif linked:
         lut = build_stretch_lut(*compute_mtf_params(data[1], target_bg, clip_sigma))
         out = np.stack([lut[data[i]] for i in range(3)], axis=0)
     else:

@@ -701,7 +701,15 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         with self.context.database.bind_ctx(CORE_MODELS):
             file = self.dataView.model().data(name_index, ROWID_ROLE)
         if file and self.mainWindow:
-            self.mainWindow.view_image(file)
+            self.mainWindow.view_image(file, panel=self, row=index.row())
+
+    def get_file_at_row(self, row: int):
+        """Return the File object at the given proxy-model row, or None."""
+        if row < 0 or row >= self.dataView.model().rowCount():
+            return None
+        name_index = self.dataView.model().index(row, 0)
+        with self.context.database.bind_ctx(CORE_MODELS):
+            return self.dataView.model().data(name_index, ROWID_ROLE)
 
     def on_item_double_clicked(self, index):
         """Handle double-click on an item in the data view."""

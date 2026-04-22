@@ -4,10 +4,10 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtCore import Qt, Signal, QThread, QTimer
 from PySide6.QtGui import QColor, QImage, QPixmap, QPainter
 from PySide6.QtWidgets import (
-    QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
+    QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
     QToolBar, QLabel, QCheckBox, QDoubleSpinBox, QComboBox, QPushButton,
     QStatusBar,
 )
@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
 from photonfinder.models import File
 
 logger = logging.getLogger(__name__)
+
+_BLINK_INTERVALS = {'Off': 0, '0.5s': 500, '1s': 1000, '2s': 2000, '5s': 5000}
 
 
 class ImageLoadWorker(QThread):
@@ -39,12 +41,13 @@ class ImageLoadWorker(QThread):
 
 class ProcessWorker(QThread):
     """Applies debayer + stretch to uint16 image data in a background thread."""
-    result = Signal(object, object)  # (display_uint8 ndarray, src_uint16 ndarray)
+    result = Signal(object, object, object)  # (display_uint8, src_uint16, StretchParams | None)
     error = Signal(str)
 
     def __init__(self, raw_uint16: np.ndarray, img_type: str, debayer_on: bool,
                  pattern: str | None, stretch_on: bool, target_bg: float,
-                 clip_sigma: float, linked: bool, is_fits: bool = False):
+                 clip_sigma: float, linked: bool, is_fits: bool = False,
+                 locked_params=None):
         super().__init__()
         self.raw_uint16 = raw_uint16
         self.img_type = img_type
@@ -55,11 +58,13 @@ class ProcessWorker(QThread):
         self.clip_sigma = clip_sigma
         self.linked = linked
         self.is_fits = is_fits
+        self.locked_params = locked_params
 
     def run(self):
         try:
             from photonfinder.image_processing import (
                 debayer_opencv, stretch_uint16_to_uint8, uint16_to_uint8,
+                compute_stretch_params,
             )
             t0 = time.perf_counter()
 
@@ -76,8 +81,18 @@ class ProcessWorker(QThread):
                 data = np.flip(data, axis=-2).copy()
             t2 = time.perf_counter()
 
+            stretch_params = None
             if self.stretch_on:
-                display = stretch_uint16_to_uint8(data, self.target_bg, self.clip_sigma, self.linked)
+                if self.locked_params is not None:
+                    stretch_params = self.locked_params
+                else:
+                    stretch_params = compute_stretch_params(
+                        data, self.target_bg, self.clip_sigma, self.linked,
+                    )
+                display = stretch_uint16_to_uint8(
+                    data, self.target_bg, self.clip_sigma, self.linked,
+                    locked_params=stretch_params,
+                )
             else:
                 display = uint16_to_uint8(data)
             t3 = time.perf_counter()
@@ -87,7 +102,7 @@ class ProcessWorker(QThread):
                 (t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000, (t3 - t0) * 1000,
             )
 
-            self.result.emit(display, data)
+            self.result.emit(display, data, stretch_params)
         except Exception as exc:
             logger.error("Error processing image: %s", exc, exc_info=True)
             self.error.emit(str(exc))
@@ -181,6 +196,27 @@ class ImageViewerWindow(QMainWindow):
         self._load_worker: ImageLoadWorker | None = None
         self._process_worker: ProcessWorker | None = None
 
+        # Navigation state
+        self._nav_panel = None   # SearchPanel | None
+        self._nav_row: int = -1
+        self._preserve_view: bool = False
+
+        # Blink state
+        self._blink_timer = QTimer(self)
+        self._blink_timer.setSingleShot(True)
+        self._blink_timer.timeout.connect(self._nav_next)
+        self._blink_due_at: float = 0.0
+
+        # Stretch lock
+        self._locked_stretch = None   # StretchParams | None — applied to every subsequent image
+        self._last_stretch = None     # StretchParams | None — params from last completed image
+
+        # Loading / nav state
+        self._is_loading: bool = False
+        self._cursor_overridden: bool = False
+        self._prev_btn: QPushButton | None = None
+        self._next_btn: QPushButton | None = None
+
         self._build_ui()
 
     # ------------------------------------------------------------------
@@ -255,6 +291,37 @@ class ImageViewerWindow(QMainWindow):
         fit_btn.clicked.connect(self._canvas.fit_in_view)
         tb.addWidget(fit_btn)
 
+        tb.addSeparator()
+
+        # --- Navigation ---
+        self._prev_btn = QPushButton("←")
+        self._prev_btn.setFixedWidth(32)
+        self._prev_btn.setToolTip("Previous image (←)")
+        self._prev_btn.clicked.connect(self._nav_prev)
+        tb.addWidget(self._prev_btn)
+
+        self._next_btn = QPushButton("→")
+        self._next_btn.setFixedWidth(32)
+        self._next_btn.setToolTip("Next image (→)")
+        self._next_btn.clicked.connect(self._nav_next)
+        tb.addWidget(self._next_btn)
+
+        tb.addWidget(QLabel("  Blink:"))
+        self._blink_combo = QComboBox()
+        self._blink_combo.addItems(list(_BLINK_INTERVALS.keys()))
+        self._blink_combo.setFixedWidth(60)
+        self._blink_combo.setToolTip("Auto-advance interval for blinking between images")
+        tb.addWidget(self._blink_combo)
+
+        tb.addSeparator()
+
+        self._lock_stretch_check = QCheckBox("Lock stretch")
+        self._lock_stretch_check.setChecked(False)
+        self._lock_stretch_check.setToolTip(
+            "Freeze the current stretch and apply it to subsequent images"
+        )
+        tb.addWidget(self._lock_stretch_check)
+
         # --- Status bar ---
         sb = QStatusBar()
         self.setStatusBar(sb)
@@ -268,12 +335,19 @@ class ImageViewerWindow(QMainWindow):
         self._linked_check.toggled.connect(self._on_controls_changed)
         self._debayer_check.toggled.connect(self._on_controls_changed)
         self._pattern_combo.currentTextChanged.connect(self._on_controls_changed)
+        self._blink_combo.currentTextChanged.connect(self._on_blink_changed)
+        self._lock_stretch_check.toggled.connect(self._on_lock_stretch_toggled)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def load_file(self, file: File):
+    def set_nav_context(self, panel, row: int):
+        """Set the search panel and row index used for prev/next navigation."""
+        self._nav_panel = panel
+        self._nav_row = row
+
+    def load_file(self, file: File, preserve_view: bool = False):
         """Load and display the image associated with a File model instance."""
         from photonfinder.filesystem import Importer
         filename = file.full_filename()
@@ -281,10 +355,22 @@ class ImageViewerWindow(QMainWindow):
             return
         self._filename = filename
         self._is_fits = Importer.is_fits_by_name(filename)
-        self._fitted = False
+        self._preserve_view = preserve_view
+        if not preserve_view:
+            self._fitted = False
 
+        self._is_loading = True
+        self._update_nav_state()
         self.statusBar().showMessage(f"Loading {Path(filename).name}…")
         self.setWindowTitle(f"Image Viewer — {Path(filename).name}")
+
+        # Check cache first — on a hit we can skip the worker entirely
+        from photonfinder.image_processing import image_cache
+        cached = image_cache.get(filename)
+        if cached is not None:
+            logger.debug("Cache hit — loading inline: %s", filename)
+            self._on_raw_loaded(cached[0], cached[1], self._is_fits)
+            return
 
         # Discard any in-flight load worker
         if self._load_worker and self._load_worker.isRunning():
@@ -295,6 +381,120 @@ class ImageViewerWindow(QMainWindow):
         self._load_worker.image_loaded.connect(self._on_raw_loaded)
         self._load_worker.error.connect(self._on_load_error)
         self._load_worker.start()
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def closeEvent(self, event):
+        self._blink_timer.stop()
+        if self._load_worker and self._load_worker.isRunning():
+            self._load_worker.image_loaded.disconnect()
+            self._load_worker.error.disconnect()
+        if self._process_worker and self._process_worker.isRunning():
+            self._process_worker.result.disconnect()
+            self._process_worker.error.disconnect()
+            self._process_worker.finished.disconnect()
+        if self._cursor_overridden:
+            QApplication.restoreOverrideCursor()
+            self._cursor_overridden = False
+        super().closeEvent(event)
+
+    # ------------------------------------------------------------------
+    # Private: keyboard navigation
+    # ------------------------------------------------------------------
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key == Qt.Key.Key_Escape:
+            self.close()
+        elif key == Qt.Key.Key_Right:
+            self._nav_next()
+        elif key == Qt.Key.Key_Left:
+            self._nav_prev()
+        else:
+            super().keyPressEvent(event)
+
+    def _nav_next(self):
+        self._blink_timer.stop()
+        self._navigate(self._nav_row + 1)
+
+    def _nav_prev(self):
+        self._blink_timer.stop()
+        self._navigate(self._nav_row - 1)
+
+    def _navigate(self, row: int):
+        if self._nav_panel is None or self._nav_row < 0:
+            return
+        model = self._nav_panel.dataView.model()
+        total = model.rowCount()
+        if total == 0:
+            return
+
+        # If stepping past the loaded rows and more exist, load them first
+        if row >= total and self._nav_panel.has_more_results:
+            self._nav_panel.load_all_remaining_data()
+            total = model.rowCount()
+
+        row = row % total  # wrap around
+        file = self._nav_panel.get_file_at_row(row)
+        if not file:
+            return
+
+        self._nav_row = row
+
+        # Record when the next auto-advance is due (for due-time blink logic)
+        interval_ms = _BLINK_INTERVALS.get(self._blink_combo.currentText(), 0)
+        self._blink_due_at = time.monotonic() + interval_ms / 1000.0
+
+        self.load_file(file, preserve_view=self._fitted)
+
+        # Pre-fetch the next image into cache
+        from photonfinder.image_processing import prefetch_image
+        next_file = self._nav_panel.get_file_at_row((row + 1) % total)
+        if next_file:
+            prefetch_image(next_file.full_filename())
+
+    # ------------------------------------------------------------------
+    # Private: nav state (loading indicator + button enable)
+    # ------------------------------------------------------------------
+
+    def _update_nav_state(self):
+        is_blinking = self._blink_interval_ms() > 0
+        nav_enabled = not self._is_loading and not is_blinking
+        self._prev_btn.setEnabled(nav_enabled)
+        self._next_btn.setEnabled(nav_enabled)
+        if self._is_loading and not self._cursor_overridden:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            self._cursor_overridden = True
+        elif not self._is_loading and self._cursor_overridden:
+            QApplication.restoreOverrideCursor()
+            self._cursor_overridden = False
+
+    # ------------------------------------------------------------------
+    # Private: blink
+    # ------------------------------------------------------------------
+
+    def _on_blink_changed(self, text: str):
+        if text == 'Off':
+            self._blink_timer.stop()
+            self._update_nav_state()
+        else:
+            self._update_nav_state()
+            self._nav_next()
+
+    def _blink_interval_ms(self) -> int:
+        return _BLINK_INTERVALS.get(self._blink_combo.currentText(), 0)
+
+    # ------------------------------------------------------------------
+    # Private: lock stretch
+    # ------------------------------------------------------------------
+
+    def _on_lock_stretch_toggled(self, checked: bool):
+        if checked:
+            self._locked_stretch = self._last_stretch  # may be None if no image processed yet
+        else:
+            self._locked_stretch = None
 
     # ------------------------------------------------------------------
     # Private: loading pipeline
@@ -327,11 +527,12 @@ class ImageViewerWindow(QMainWindow):
         else:
             self._debayer_check.setChecked(False)
 
-        # Disable debayer for native RGB images
         self._debayer_check.setEnabled(self._image_type != 'rgb')
         self._pattern_combo.setEnabled(self._image_type != 'rgb')
 
-        self._stretch_check.setChecked(is_linear(self._raw_uint16))
+        # Only update auto-stretch detection when stretch is not locked and not navigating
+        if not self._lock_stretch_check.isChecked() and not self._preserve_view:
+            self._stretch_check.setChecked(is_linear(self._raw_uint16))
 
         for w in (self._debayer_check, self._pattern_combo, self._stretch_check):
             w.blockSignals(False)
@@ -342,6 +543,8 @@ class ImageViewerWindow(QMainWindow):
         self._run_processing()
 
     def _on_load_error(self, msg: str):
+        self._is_loading = False
+        self._update_nav_state()
         self.statusBar().showMessage(f"Error: {msg}")
 
     # ------------------------------------------------------------------
@@ -349,6 +552,17 @@ class ImageViewerWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_controls_changed(self):
+        self._blink_timer.stop()
+        self._blink_combo.blockSignals(True)
+        self._blink_combo.setCurrentText('Off')
+        self._blink_combo.blockSignals(False)
+        self._update_nav_state()
+        # Any manual control change clears the locked stretch
+        if self._lock_stretch_check.isChecked():
+            self._lock_stretch_check.blockSignals(True)
+            self._lock_stretch_check.setChecked(False)
+            self._lock_stretch_check.blockSignals(False)
+            self._locked_stretch = None
         if self._raw_uint16 is not None:
             self._run_processing()
 
@@ -371,6 +585,7 @@ class ImageViewerWindow(QMainWindow):
             clip_sigma=self._sigma_spin.value(),
             linked=self._linked_check.isChecked(),
             is_fits=self._is_fits,
+            locked_params=self._locked_stretch,
         )
         worker.result.connect(self._on_processed)
         worker.error.connect(lambda msg: self.statusBar().showMessage(f"Processing error: {msg}"))
@@ -383,10 +598,14 @@ class ImageViewerWindow(QMainWindow):
         if self._pending_process:
             self._run_processing()
 
-    def _on_processed(self, display_uint8: np.ndarray, src_uint16: np.ndarray):
+    def _on_processed(self, display_uint8: np.ndarray, src_uint16: np.ndarray, stretch_params):
         self._display_src = src_uint16
-        # Keep buffer alive — QImage does not own the data
         self._display_buffer = np.ascontiguousarray(display_uint8)
+        if stretch_params is not None:
+            self._last_stretch = stretch_params
+
+        self._is_loading = False
+        self._update_nav_state()
 
         h, w = self._display_buffer.shape[:2]
         if self._display_buffer.ndim == 2:
@@ -406,6 +625,12 @@ class ImageViewerWindow(QMainWindow):
         name = Path(self._filename).name if self._filename else ""
         self.statusBar().showMessage(f"{name}  |  {w}×{h}")
 
+        # Blink: start timer for remaining time (0 if load already exceeded interval)
+        interval_ms = self._blink_interval_ms()
+        if interval_ms > 0:
+            remaining_ms = max(0, int((self._blink_due_at - time.monotonic()) * 1000))
+            self._blink_timer.start(remaining_ms)
+
     # ------------------------------------------------------------------
     # Private: pixel info
     # ------------------------------------------------------------------
@@ -418,7 +643,6 @@ class ImageViewerWindow(QMainWindow):
                 val = self._display_src[y, x] / 65535.0
                 self._pixel_label.setText(f"x={x}, y={y}: {val:.4f}")
             else:
-                # (3, H, W) uint16
                 r = self._display_src[0, y, x] / 65535.0
                 g = self._display_src[1, y, x] / 65535.0
                 b = self._display_src[2, y, x] / 65535.0
