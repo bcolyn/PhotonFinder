@@ -110,12 +110,24 @@ def filesystem():
         mem_fs.close()
 
 
+_HF_REPO = "bcolyn/PhotonFinder-test-data"
+
+
 @pytest.fixture(scope="session", autouse=True)
-def _warn_missing_test_data():
-    if not _test_data_available():
+def _ensure_test_data():
+    if _test_data_available():
+        return
+    data_dir = Path(__file__).parent / "data"
+    try:
+        from huggingface_hub import snapshot_download
+        print(f"\nTest data not found — downloading {_HF_REPO} from Hugging Face...")
+        data_dir.mkdir(exist_ok=True)
+        snapshot_download(repo_id=_HF_REPO, repo_type="dataset", local_dir=data_dir)
+    except Exception as e:
         warnings.warn(
-            "tests/data/ is empty — tests requiring sample image files will be skipped. "
-            "Download from Hugging Face: bcolyn/PhotonFinder-test-data",
+            f"Could not download test data ({e}) — "
+            "tests requiring sample image files will be skipped. "
+            f"Download manually from Hugging Face: {_HF_REPO}",
             stacklevel=1,
         )
 
