@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,11 @@ from peewee import SqliteDatabase
 
 from photonfinder.core import ApplicationContext, Settings, StatusReporter, decompress, register_udfs
 from photonfinder.models import CORE_MODELS
+
+
+def _test_data_available() -> bool:
+    data_dir = Path(__file__).parent / "data"
+    return data_dir.exists() and any(data_dir.iterdir())
 
 
 class DynamicSettings:
@@ -104,12 +110,23 @@ def filesystem():
         mem_fs.close()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _warn_missing_test_data():
+    if not _test_data_available():
+        warnings.warn(
+            "tests/data/ is empty — tests requiring sample image files will be skipped. "
+            "Download from Hugging Face: bcolyn/PhotonFinder-test-data",
+            stacklevel=1,
+        )
+
+
 @pytest.fixture(scope="session")
 def global_test_data_dir() -> Path:
-    """
-    Provides a Path object pointing to the global test data directory.
-    """
-    return Path(__file__).parent / "data"
+    """Provides the test data directory; skips the test if data files are absent."""
+    data_dir = Path(__file__).parent / "data"
+    if not _test_data_available():
+        pytest.skip("Test data files not available (see tests/data/)")
+    return data_dir
 
 
 @pytest.fixture(autouse=True)

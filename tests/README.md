@@ -1,84 +1,75 @@
-# AstroFileManager Testing
+# PhotonFinder — Tests
 
-This directory contains tests for the AstroFileManager application. The tests are written using pytest and are organized by component.
+Tests are written with pytest and organised by component.
 
-## Test Structure
+## Test structure
 
-- `conftest.py`: Contains shared fixtures and test configuration
-- `test_models.py`: Tests for database models
-- `test_filesystem.py`: Tests for filesystem operations
+| File / folder | What it covers |
+|---|---|
+| `conftest.py` | Shared fixtures and configuration |
+| `test_core.py` | ApplicationContext, settings, SQLite UDFs |
+| `test_models.py` | Peewee ORM models and search criteria |
+| `test_filesystem.py` | File scanning, FITS/XISF header reading, Importer |
+| `test_fits_handlers.py` | FITS header normalisation per capture software |
+| `test_export_dialog.py` | Export worker logic |
+| `test_platesolver.py` | Plate-solver helpers |
+| `test_session.py` | Session state persistence |
+| `ui/` | Qt GUI tests (pytest-qt) |
 
-## Running Tests
-
-### Prerequisites
-
-Make sure you have the required testing dependencies installed:
-
-```bash
-pip install -r requirements_dev.txt
-```
-
-### Running All Tests
-
-To run all tests:
+## Prerequisites
 
 ```bash
-pytest tests/
+uv sync --extra dev
 ```
 
-### Running Specific Test Files
-
-To run tests from a specific file:
+## Running tests
 
 ```bash
-pytest tests/test_models.py
+# Default run — slow and internet-dependent tests excluded
+uv run pytest tests/
+
+# Include slow tests
+uv run pytest tests/ -m ""
+
+# Single file
+uv run pytest tests/test_models.py
+
+# With coverage
+uv run pytest --cov=photonfinder tests/
 ```
 
-### Running Specific Test Functions
+## Test markers
 
-To run a specific test function:
+| Marker | Meaning | Included by default |
+|---|---|---|
+| *(none)* | Fast unit tests | yes |
+| `slow` | Plate-solving and other long-running tests | no |
+| `internet` | Tests that call external services | no |
 
-```bash
-pytest tests/test_models.py::TestLibraryRoot::test_is_valid_path
-```
+## Sample data files
 
-### Test Coverage
+Several tests require large astronomical image files (FITS, XISF) that are not
+checked into the repository. They are stored separately on Hugging Face:
+`bcolyn/PhotonFinder-test-data`.
 
-To run tests with coverage reporting:
+When `tests/data/` is empty those tests are **automatically skipped** and a
+warning is printed at the end of the run pointing to the download location.
+No flags or markers are needed.
 
-```bash
-pip install pytest-cov
-pytest --cov=photonfinder tests/
-```
+## Fixtures
 
-## Writing New Tests
+| Fixture | Scope | Description |
+|---|---|---|
+| `app_context` | class | In-memory SQLite database with full schema |
+| `database` | function | Bare in-memory database (no app context) |
+| `filesystem` | function | In-memory PyFilesystem2 tree with dummy FITS files |
+| `global_test_data_dir` | session | Path to `tests/data/`; skips if data absent |
+| `settings` | class | `DynamicSettings` mock (no persistent storage) |
 
-### Model Tests
+## Writing new tests
 
-When writing tests for models:
-- Use the `app_context` fixture to get a test database
-- Create temporary data for testing
-- Test model methods and database operations
-
-### Filesystem Tests
-
-When writing tests for filesystem operations:
-- Use mocks to avoid actual filesystem operations
-- Use temporary directories for tests that need real files
-- Test file filtering and import logic
-
-### UI Tests
-
-When writing tests for UI components:
-- Use `pytest-qt` for testing Qt applications
-- Use mocks for dependencies
-- For interactive tests, use the `qtbot` fixture to simulate user actions
-
-Example:
-```python
-def test_button_click(qtbot):
-    widget = MyWidget()
-    qtbot.addWidget(widget)
-    qtbot.mouseClick(widget.button, Qt.LeftButton)
-    assert widget.label.text() == "Expected Result"
-```
+- Use `app_context` for tests that need the full ORM.
+- Use `filesystem` for importer/scanner tests — avoids real disk I/O.
+- Use `global_test_data_dir` only when a real image file is required; the test
+  will be skipped automatically on machines without the data.
+- Use `qtbot` (from pytest-qt) for UI interaction tests.

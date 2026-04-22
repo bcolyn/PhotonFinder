@@ -12,25 +12,25 @@ authors = [
 ]
 license = "MIT"
 
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
-    "PySide6~=6.10.0",
-    "pyinstaller==6.18.0",
-    "pyinstaller-hooks-contrib==2026.0",
+    "PySide6~=6.11.0",
+    "pyinstaller==6.19.0",
+    "pyinstaller-hooks-contrib==2026.4",
     "pyqt-distutils==0.7.3",
-    "peewee~=3.19.0",
+    "peewee~=4.0.0",
     "astropy~=7.2.0",
-    "astropy-healpix~=1.1.2",
+    "astropy-healpix~=1.1.3",
     "astroquery~=0.4.11",
-    "photutils~=2.3.0",
-    "xisf~=0.9.5",
-    "zstd~=1.5.7.2",
+    "photutils~=3.0.0",
+    "xisf~=0.9.6",
+    "zstd~=1.5.7.3",
     "setuptools<81",
     "fs~=2.4.16",
     "numpy~=2.4.2",
-    "pillow~=12.1.0",
-    "psutil~=7.0.0",
-    "requests~=2.32.4",
+    "pillow~=12.2.0",
+    "psutil~=7.2.0",
+    "requests~=2.33.0",
     "opencv-python~=4.13.0.92",
 ]
 
@@ -42,6 +42,11 @@ dev = [
     "pytest-mock>=3.10.0",
     "pytest-cov>=4.1.0",
     "tzdata",
+]
+build = [
+    # Required during PyInstaller analysis: astropy/photutils submodules import
+    # matplotlib at collection time, causing a startup failure if it's absent.
+    # It is excluded from the bundle via photonfinder.spec; only needed at build time.
     "matplotlib",
 ]
 

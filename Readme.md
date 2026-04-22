@@ -94,7 +94,7 @@ uv run pytest tests/
 To create a standalone executable:
 
 ```bash
-uv run pyinstaller --noconfirm photonfinder.spec
+uv run --extra build pyinstaller --noconfirm photonfinder.spec
 ```
 
 ## 🤝 Contributing
