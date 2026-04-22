@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import subprocess
+import sys
 from datetime import datetime, timezone
 from enum import Enum
 from logging import DEBUG
@@ -679,21 +681,23 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
 
     def show_file_location(self, index):
-        """Open the file explorer showing the directory containing the file."""
-        # Get the name item from the first column
+        """Reveal the file in the system file manager."""
         name_index = self.dataView.model().index(index.row(), 0)
-
-        # Get the full filename from the name item's data
         with self.context.database.bind_ctx(CORE_MODELS):
             file = self.dataView.model().data(name_index, ROWID_ROLE)
             filename = file.full_filename()
 
-        if filename:
-            import os
-            # Get the directory containing the file
-            directory = os.path.dirname(filename)
-            # Open the directory in the file explorer
-            QDesktopServices.openUrl(QUrl.fromLocalFile(directory))
+        if not filename:
+            return
+
+        if sys.platform == 'win32':
+            norm = os.path.normpath(filename)
+            try:
+                subprocess.Popen(["explorer", "/select,", norm])
+            except OSError as e:
+                logging.getLogger(__name__).warning("Could not open Explorer for %r: %s", norm, e)
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(filename)))
 
     def view_file(self, index):
         """Open the file at the given index in the internal image viewer."""
