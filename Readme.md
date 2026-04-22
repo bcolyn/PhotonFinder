@@ -45,10 +45,10 @@ A versatile desktop application for managing and organizing astronomical image f
 
 ## 📋 Requirements
 
-- Python 3.8+
+- Python 3.12+
 - PySide6 (Qt for Python)
 - SQLite
-- Additional dependencies listed in `requirements.txt`
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
 
 ## 🚀 Installation
 
@@ -62,18 +62,17 @@ Binary releases are published on GitHub. Those are the recommended way to run Ph
 ```bash
 git clone https://github.com/your-repo/PhotonFinder.git
 cd PhotonFinder
-pip install -r requirements.txt
-pip install -r requirements_dev.txt
+uv sync --extra dev
 ```
 
 2. Build UI files:
 ```bash
-python setup.py build_ui
+uv run python setup.py build_ui
 ```
 
 3. Run tests:
 ```bash
-pytest tests/
+uv run pytest tests/
 ```
 
 ## 🏁 Quick Start
@@ -95,7 +94,7 @@ pytest tests/
 To create a standalone executable:
 
 ```bash
-pyinstaller --noconfirm photonfinder.spec
+uv run pyinstaller --noconfirm photonfinder.spec
 ```
 
 ## 🤝 Contributing

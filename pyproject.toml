@@ -6,17 +6,13 @@ build-backend = "setuptools.build_meta"
 name = "PhotonFinder"
 version = "1.0.0"
 description = "Desktop application for managing astronomical files"
-readme = "README.md"
+readme = "Readme.md"
 authors = [
-    { name = "benny", email = "benny.colyn@gmail.com" }
+    { name = "Benny Colyn", email = "benny.colyn@gmail.com" }
 ]
 license = "MIT"
 
 requires-python = ">=3.12"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
-]
 dependencies = [
     "PySide6~=6.10.0",
     "pyinstaller==6.18.0",
@@ -33,8 +29,9 @@ dependencies = [
     "fs~=2.4.16",
     "numpy~=2.4.2",
     "pillow~=12.1.0",
+    "psutil~=7.0.0",
     "requests~=2.32.4",
-    "opencv-python~=4.13.0.92"
+    "opencv-python~=4.13.0.92",
 ]
 
 [project.optional-dependencies]
@@ -43,12 +40,13 @@ dev = [
     "pytest-dotenv>=0.5.2",
     "pytest-qt>=4.2.0",
     "pytest-mock>=3.10.0",
-    "pytest-cov>=4.1.0 ",
+    "pytest-cov>=4.1.0",
+    "tzdata",
+    "matplotlib",
 ]
 
-#[project.urls]
-#"Homepage" = ""
-#"Bug Tracker" = ""
+[tool.uv]
+package = false
 
 [tool.setuptools]
 packages = ["photonfinder"]
