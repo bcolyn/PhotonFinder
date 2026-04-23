@@ -14,7 +14,7 @@ from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeade
     Project
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
 from photonfinder.platesolver import ASTAPSolver, get_image_center_coords, SolverType, AstrometryNetSolver, \
-    has_been_plate_solved, extract_wcs_cards, SolverFailure
+    WSLSolveFieldSolver, has_been_plate_solved, extract_wcs_cards, SolverFailure
 
 
 class BackgroundLoaderBase(QObject):
@@ -381,6 +381,12 @@ class PlateSolveTask(FileProcessingTask):
             case SolverType.ASTROMETRY_NET:
                 self.solver = AstrometryNetSolver(api_key=settings.get_astrometry_net_api_key(),
                                                   force_image_upload=settings.get_astrometry_net_force_image_upload())
+            case SolverType.WSL_SOLVE_FIELD:
+                self.solver = WSLSolveFieldSolver(
+                    scale_low=settings.get_wsl_solver_scale_low(),
+                    scale_high=settings.get_wsl_solver_scale_high(),
+                    timeout=settings.get_wsl_solver_timeout(),
+                )
 
     def get_tables(self) -> List:
         tables = super().get_tables()

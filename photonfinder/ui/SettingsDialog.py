@@ -22,6 +22,11 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.astrometry_api_key_edit.setText(self.context.settings.get_astrometry_net_api_key())
         self.astrometry_image_upload_check.setChecked(self.context.settings.get_astrometry_net_force_image_upload())
 
+        # Initialize WSL solve-field settings
+        self.wsl_scale_low_spin.setValue(self.context.settings.get_wsl_solver_scale_low())
+        self.wsl_scale_high_spin.setValue(self.context.settings.get_wsl_solver_scale_high())
+        self.wsl_timeout_spin.setValue(self.context.settings.get_wsl_solver_timeout())
+
         # Initialize file settings
         self.file_ignore_edit.setText(self.context.settings.get_bad_file_patterns())
         self.folder_ignore_edit.setText(self.context.settings.get_bad_dir_patterns())
@@ -61,6 +66,11 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.context.settings.set_astap_fallback_fov(self.astap_fov_edit.text())
         self.context.settings.set_astrometry_net_api_key(self.astrometry_api_key_edit.text())
         self.context.settings.set_astrometry_net_force_image_upload(self.astrometry_image_upload_check.isChecked())
+
+        # Save WSL solve-field settings
+        self.context.settings.set_wsl_solver_scale_low(self.wsl_scale_low_spin.value())
+        self.context.settings.set_wsl_solver_scale_high(self.wsl_scale_high_spin.value())
+        self.context.settings.set_wsl_solver_timeout(self.wsl_timeout_spin.value())
 
         # Save file settings
         self.context.settings.set_bad_file_patterns(self.file_ignore_edit.text())

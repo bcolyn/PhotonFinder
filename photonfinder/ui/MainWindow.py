@@ -109,6 +109,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionSelect_path.triggered.connect(self.select_path_in_tree)
         self.actionPlate_solve_files.triggered.connect(self.plate_solve_files)
         self.actionPlate_Solve_Astrometry_net.triggered.connect(self.plate_solve_files_astrometry)
+        self.actionPlate_Solve_WSL.triggered.connect(self.plate_solve_files_wsl)
         self.actionList_Files.triggered.connect(self.report_list_files)
         self.actionHeader_Text.triggered.connect(self.add_header_text_filter)
         self.actionMetadata_Report.triggered.connect(self.report_metadata)
@@ -538,6 +539,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def plate_solve_files_astrometry(self):
         self.get_current_search_panel().plate_solve_files(SolverType.ASTROMETRY_NET)
 
+    def plate_solve_files_wsl(self):
+        self.get_current_search_panel().plate_solve_files(SolverType.WSL_SOLVE_FIELD)
+
     def report_list_files(self):
         """
         Show a file save dialog to select an output filename (.txt|.lst),
@@ -574,6 +578,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             is_light = not current_type or "LIGHT" in current_type
             self.actionPlate_solve_files.setEnabled(is_light and not has_wcs)
             self.actionPlate_Solve_Astrometry_net.setEnabled(is_light and not has_wcs)
+            self.actionPlate_Solve_WSL.setEnabled(is_light and not has_wcs)
 
         self.actionExposure.setChecked(AdvancedFilter.EXPOSURE in current_panel.advanced_options)
         self.actionCoordinates.setChecked(AdvancedFilter.COORDINATES in current_panel.advanced_options)

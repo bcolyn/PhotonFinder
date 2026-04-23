@@ -167,6 +167,106 @@
         </item>
        </layout>
       </item>
+      <item>
+       <widget class="Line" name="line_wsl">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="wsl_scale_layout">
+        <item>
+         <widget class="QLabel" name="wsl_scale_label">
+          <property name="text">
+           <string>solve-field (WSL) pixel scale (arcsec/px):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="wsl_scale_low_spin">
+          <property name="toolTip">
+           <string>Lower bound of pixel scale range for solve-field</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="minimum">
+           <double>0.100000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>100.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>2.273</double>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="wsl_scale_to_label">
+          <property name="text">
+           <string>to</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="wsl_scale_high_spin">
+          <property name="toolTip">
+           <string>Upper bound of pixel scale range for solve-field</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="minimum">
+           <double>0.100000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>100.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>2.513</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="wsl_timeout_layout">
+        <item>
+         <widget class="QLabel" name="wsl_timeout_label">
+          <property name="text">
+           <string>solve-field (WSL) CPU time limit (seconds):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="wsl_timeout_spin">
+          <property name="toolTip">
+           <string>Maximum CPU seconds solve-field may spend per image</string>
+          </property>
+          <property name="minimum">
+           <number>10</number>
+          </property>
+          <property name="maximum">
+           <number>600</number>
+          </property>
+          <property name="value">
+           <number>120</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="wsl_hint_label">
+          <property name="text">
+           <string>solve-field runs via WSL. Adjust the pixel scale range to match your camera (focal length and pixel size).</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

@@ -588,6 +588,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         menu.addSeparator()
         menu.addAction(self.mainWindow.actionPlate_solve_files)
         menu.addAction(self.mainWindow.actionPlate_Solve_Astrometry_net)
+        menu.addAction(self.mainWindow.actionPlate_Solve_WSL)
         menu.addSeparator()
         new_project_action = menu.addAction("Add to New Project")
         new_project_action.setData(Project())

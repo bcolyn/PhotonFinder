@@ -263,6 +263,24 @@ class Settings:
     def set_astrometry_net_force_image_upload(self, value):
         return self.settings.setValue('astrometry_net_force_image_upload', value)
 
+    def get_wsl_solver_scale_low(self) -> float:
+        return self.settings.value('wsl_solver_scale_low', 0.5, float)
+
+    def set_wsl_solver_scale_low(self, value: float):
+        self.settings.setValue('wsl_solver_scale_low', value)
+
+    def get_wsl_solver_scale_high(self) -> float:
+        return self.settings.value('wsl_solver_scale_high', 4, float)
+
+    def set_wsl_solver_scale_high(self, value: float):
+        self.settings.setValue('wsl_solver_scale_high', value)
+
+    def get_wsl_solver_timeout(self) -> int:
+        return self.settings.value('wsl_solver_timeout', 300, int)
+
+    def set_wsl_solver_timeout(self, value: int):
+        self.settings.setValue('wsl_solver_timeout', value)
+
     def get_last_export_xisf_as_fits(self):
         return self.settings.value("last_export_xisf_as_fits", False, bool)
 

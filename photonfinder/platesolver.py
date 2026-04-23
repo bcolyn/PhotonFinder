@@ -11,6 +11,7 @@ from pathlib import Path
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.io.fits import Header
+from astropy.wcs import WCS
 from PIL import Image
 import numpy as np
 from astroquery.astrometry_net import AstrometryNet
@@ -24,6 +25,7 @@ from photonfinder.fits_handlers import hp
 class SolverType(Enum):
     ASTAP = 1
     ASTROMETRY_NET = 2
+    WSL_SOLVE_FIELD = 3
 
 
 class SolverBase(metaclass=ABCMeta):
@@ -249,6 +251,121 @@ class AstrometryNetSolver(SolverBase):
         return result
 
 
+def _to_wsl_path(path: Path) -> str:
+    result = subprocess.run(
+        ["wsl", "wslpath", str(path).replace("\\", "/")],
+        capture_output=True, text=True, timeout=10,
+    )
+    return result.stdout.strip()
+
+
+class WSLSolveFieldSolver(SolverBase):
+    """Plate solver using astrometry.net's solve-field tool running under WSL."""
+
+    def __init__(self, scale_low: float = None, scale_high: float = None, timeout: int = 300):
+        super().__init__()
+        self._scale_low = scale_low
+        self._scale_high = scale_high
+        self._timeout = timeout
+
+    @staticmethod
+    def _derive_scale(header: Header):
+        """Return (scale_low, scale_high) in arcsec/px derived from header, or (None, None)."""
+        scale = header.get("SCALE") or header.get("PIXSCALE")
+        if scale is None:
+            focal_len = header.get("FOCALLEN")
+            pix_size = header.get("YPIXSZ")
+            if focal_len and pix_size:
+                scale = 206.265 * float(pix_size) / float(focal_len)
+        if scale is None:
+            return None, None
+        scale = float(scale)
+        return scale * 0.5, scale * 2
+
+    def solve(self, image_path: Path, image=None) -> Header:
+        if not image_path.is_file():
+            raise FileNotFoundError(f"Image file not found: {image_path}")
+        if not self.tmp_dir:
+            raise FileNotFoundError("Temporary directory not found, use with statement to create one.")
+
+        header = None
+        try:
+            from astropy.io import fits as _fits
+            with _fits.open(image_path, memmap=False) as hdul:
+                header = hdul[0].header
+        except Exception:
+            pass
+
+        if header is not None and ASTAPSolver.is_pre_solved(header):
+            return extract_wcs_cards(header)
+
+        temp_image = self._create_temp_fits(image_path)
+
+        temp_wsl = _to_wsl_path(temp_image)
+        tmp_wsl = _to_wsl_path(temp_image.parent)
+
+        scale_low = self._scale_low
+        scale_high = self._scale_high
+        if scale_low is None and header is not None:
+            scale_low, scale_high = self._derive_scale(header)
+
+        cmd = [
+            "wsl", "solve-field",
+            "--no-plots", "--overwrite",
+            "--downsample", "2",
+            "--dir", tmp_wsl,
+            "--cpulimit", str(self._timeout),
+        ]
+        if scale_low is not None:
+            cmd += ["--scale-units", "arcsecperpix", "--scale-low", str(scale_low), "--scale-high", str(scale_high)]
+
+        hint_ra = None
+        hint_dec = None
+        if image and image.coord_ra:
+            hint_ra = image.coord_ra
+            hint_dec = image.coord_dec
+        elif header is not None:
+            hint_ra = header.get("RA") or header.get("CRVAL1")
+            hint_dec = header.get("DEC") or header.get("CRVAL2")
+
+        if hint_ra is not None and hint_dec is not None:
+            cmd += ["--ra", str(hint_ra), "--dec", str(hint_dec), "--radius", "2.0"]
+
+        cmd.append(temp_wsl)
+
+        logging.info("solve-field command: %s", " ".join(cmd))
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=self._timeout + 15)
+        except subprocess.TimeoutExpired as e:
+            output = (e.stdout or "") + (e.stderr or "")
+            logging.error("solve-field timed out for %s:\n%s", image_path.name, output)
+            raise SolverFailure(f"solve-field timed out on {image_path.name}", None)
+
+        solved_marker = temp_image.with_suffix(".solved")
+        if not solved_marker.exists():
+            output = (result.stdout or "") + (result.stderr or "")
+            logging.error("solve-field failed for %s:\n%s", image_path.name, output)
+            raise SolverFailure(f"solve-field could not solve {image_path.name}", None)
+
+        wcs_file = temp_image.with_suffix(".wcs")
+        if not wcs_file.exists():
+            raise SolverFailure(f"solve-field produced no .wcs file for {image_path.name}", None)
+
+        from astropy.io import fits as _fits
+        with _fits.open(wcs_file, memmap=False) as hdul:
+            wcs_header = hdul[0].header
+
+        result = extract_wcs_cards(wcs_header)
+        original_header = header or {}
+        naxis1 = (original_header.get("NAXIS1") if hasattr(original_header, "get") else None)
+        naxis2 = (original_header.get("NAXIS2") if hasattr(original_header, "get") else None)
+        if naxis1:
+            result["NAXIS1"] = naxis1
+        if naxis2:
+            result["NAXIS2"] = naxis2
+        return result
+
+
 class SolverError(Exception):
     pass
 
@@ -265,9 +382,16 @@ class SolverFailure(Exception):
 def get_image_center_coords(header):
     assert has_minimal_wcs(header)
     import astropy.units as u
-    ra = header.get("CRVAL1")
-    dec = header.get("CRVAL2")
-    coords = SkyCoord(ra, dec, unit=(u.deg, u.deg), frame='icrs')
+    naxis1 = header.get('NAXIS1')
+    naxis2 = header.get('NAXIS2')
+    if naxis1 and naxis2:
+        coords = WCS(header).pixel_to_world((naxis1 - 1) / 2.0, (naxis2 - 1) / 2.0)
+        ra = coords.ra.deg
+        dec = coords.dec.deg
+    else:
+        ra = header.get("CRVAL1")
+        dec = header.get("CRVAL2")
+        coords = SkyCoord(ra, dec, unit=(u.deg, u.deg), frame='icrs')
     healpix_index = int(hp.skycoord_to_healpix(coords))
     return ra, dec, healpix_index
 
