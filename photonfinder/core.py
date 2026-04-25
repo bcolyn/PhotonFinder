@@ -243,12 +243,6 @@ class Settings:
         """Set the path to the ASTAP executable."""
         self.settings.setValue("astap_path", value)
 
-    def get_astap_fallback_fov(self):
-        return self.settings.value("astap_fov", "1;3;0.66", str)
-
-    def set_astap_fallback_fov(self, value):
-        self.settings.setValue("astap_fov", value)
-
     def get_astrometry_net_api_key(self):
         """Get the API key for astrometry.net."""
         return self.settings.value("astrometry_net_api_key", "", str)
@@ -263,23 +257,47 @@ class Settings:
     def set_astrometry_net_force_image_upload(self, value):
         return self.settings.setValue('astrometry_net_force_image_upload', value)
 
-    def get_wsl_solver_scale_low(self) -> float:
-        return self.settings.value('wsl_solver_scale_low', 0.5, float)
-
-    def set_wsl_solver_scale_low(self, value: float):
-        self.settings.setValue('wsl_solver_scale_low', value)
-
-    def get_wsl_solver_scale_high(self) -> float:
-        return self.settings.value('wsl_solver_scale_high', 4, float)
-
-    def set_wsl_solver_scale_high(self, value: float):
-        self.settings.setValue('wsl_solver_scale_high', value)
-
     def get_wsl_solver_timeout(self) -> int:
         return self.settings.value('wsl_solver_timeout', 300, int)
 
     def set_wsl_solver_timeout(self, value: int):
         self.settings.setValue('wsl_solver_timeout', value)
+
+    def get_plate_solve_primary_solver(self) -> int:
+        return self.settings.value('plate_solve_primary_solver', 0, int)
+
+    def set_plate_solve_primary_solver(self, value: int):
+        self.settings.setValue('plate_solve_primary_solver', value)
+
+    def get_plate_solve_backup_solver(self) -> int:
+        return self.settings.value('plate_solve_backup_solver', -1, int)
+
+    def set_plate_solve_backup_solver(self, value: int):
+        self.settings.setValue('plate_solve_backup_solver', value)
+
+    def get_plate_solve_hint_ra(self) -> str:
+        return self.settings.value('plate_solve_hint_ra', '', str)
+
+    def set_plate_solve_hint_ra(self, value: str):
+        self.settings.setValue('plate_solve_hint_ra', value)
+
+    def get_plate_solve_hint_dec(self) -> str:
+        return self.settings.value('plate_solve_hint_dec', '', str)
+
+    def set_plate_solve_hint_dec(self, value: str):
+        self.settings.setValue('plate_solve_hint_dec', value)
+
+    def get_plate_solve_hint_scale(self) -> float:
+        return self.settings.value('plate_solve_hint_scale', 0.0, float)
+
+    def set_plate_solve_hint_scale(self, value: float):
+        self.settings.setValue('plate_solve_hint_scale', value)
+
+    def get_plate_solve_hint_mode(self) -> str:
+        return self.settings.value('plate_solve_hint_mode', 'fallback', str)
+
+    def set_plate_solve_hint_mode(self, value: str):
+        self.settings.setValue('plate_solve_hint_mode', value)
 
     def get_last_export_xisf_as_fits(self):
         return self.settings.value("last_export_xisf_as_fits", False, bool)

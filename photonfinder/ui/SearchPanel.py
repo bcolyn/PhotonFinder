@@ -16,9 +16,9 @@ from photonfinder.core import ApplicationContext, decompress, Change
 from photonfinder.filesystem import Importer, header_from_xisf_dict, parse_FITS_header
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
     FileWCS, ProjectFile, LibraryRoot
-from photonfinder.platesolver import SolverType
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
 from .DateRangeDialog import DateRangeDialog
+from .PlateSolveDialog import PlateSolveDialog
 from .HeaderDialog import HeaderDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .MetadataReportDialog import MetadataReportDialog
@@ -587,8 +587,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         find_flats_action = menu.addAction("Find matching flats")
         menu.addSeparator()
         menu.addAction(self.mainWindow.actionPlate_solve_files)
-        menu.addAction(self.mainWindow.actionPlate_Solve_Astrometry_net)
-        menu.addAction(self.mainWindow.actionPlate_Solve_WSL)
         menu.addSeparator()
         new_project_action = menu.addAction("Add to New Project")
         new_project_action.setData(Project())
@@ -1262,35 +1260,29 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button.on_remove_filter.connect(self.reset_project_criteria)
             self.add_filter_button_control(filter_button)
 
-    def plate_solve_files(self, solver_type: SolverType = SolverType.ASTAP):
+    def plate_solve_files(self):
         selected_files = self.get_selected_files()
-        # If no files are selected, use the search criteria
-        if not selected_files:
-            # Get the total number of files matching the current filters
-            # If there are too many files, ask for confirmation
-            if self.total_files > 100:
-                response = QMessageBox.question(
-                    self,
-                    "Plate solving confirmation",
-                    f"No files are selected. Are you sure you want to plate solve all files matching the current filters?",
-                    QMessageBox.Yes | QMessageBox.No
-                )
-                if response == QMessageBox.No:
-                    return
+        if not selected_files and self.total_files > 100:
+            response = QMessageBox.question(
+                self,
+                "Plate solving confirmation",
+                "No files are selected. Are you sure you want to plate solve all files matching the current filters?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if response == QMessageBox.No:
+                return
 
-        # Pass the search criteria instead of loading all files
-        task = PlateSolveTask(context=self.context, search_criteria=self.search_criteria,
-                              files=selected_files if selected_files else None, solver_type=solver_type)
-        dialog = ProgressDialog("Loading", "Plate solving", task, parent=self)
+        dialog = PlateSolveDialog(
+            context=self.context,
+            files=selected_files if selected_files else None,
+            search_criteria=self.search_criteria,
+            parent=self
+        )
         dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.solving_complete.connect(self.on_files_solved)
         dialog.show()
-        task.message.connect(self.context.status_reporter.update_status)
-        task.finished.connect(self.on_files_solved)
-        task.finished.connect(self.print_task_complete)
-        task.start()
 
-    def on_files_solved(self):
-        task: PlateSolveTask = self.sender()
+    def on_files_solved(self, task: PlateSolveTask):
         solved_files = set(task.solved_files)
         model = self.dataView.model()
         for row in range(model.rowCount()):

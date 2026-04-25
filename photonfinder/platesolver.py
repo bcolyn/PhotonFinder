@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import typing
 from abc import ABCMeta, abstractmethod
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
@@ -28,6 +29,14 @@ class SolverType(Enum):
     WSL_SOLVE_FIELD = 3
 
 
+@dataclass
+class SolverHint:
+    ra: float | None = None    # degrees
+    dec: float | None = None   # degrees
+    scale: float | None = None  # arcsec/px
+    mode: str = 'fallback'     # 'fallback' or 'override'
+
+
 class SolverBase(metaclass=ABCMeta):
     keep_headers = {
         'CRPIX1', 'CRPIX2', 'CRVAL1', 'CRVAL2', 'CDELT1', 'CDELT2', 'CROTA1', 'CROTA2', 'CD1_1', 'CD1_2',
@@ -49,7 +58,7 @@ class SolverBase(metaclass=ABCMeta):
             logging.error(str(e), exc_info=True)
 
     @abstractmethod
-    def solve(self, image_path, image: Image = None):
+    def solve(self, image_path, image=None, hint: SolverHint = None):
         pass
 
     def _create_temp_fits(self, input_image) -> Path:
@@ -91,11 +100,10 @@ class ASTAPSolver(SolverBase):
     _exe: str
     _log: bool
 
-    def __init__(self, exe=get_default_astap_path(), fallback_fovs: str = "1.0"):
+    def __init__(self, exe=get_default_astap_path()):
         super().__init__()
         self._exe = exe
         self._log = True
-        self.fallback_fovs = list(map(float, fallback_fovs.split(";"))) if fallback_fovs else None
 
     def _solve(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None) -> Header:
 
@@ -103,36 +111,12 @@ class ASTAPSolver(SolverBase):
         ini = tmp_image_file.with_suffix(".ini")
         log = tmp_image_file.with_suffix(".log")
 
-        # Determine FOV values to try
-        if hint and '-fov' in hint:
-            # Use the FOV from metadata
-            fovs_to_try = [hint['-fov']]
-        elif self.fallback_fovs:
-            # Use fallback FOVs
-            fovs_to_try = [str(fov) for fov in self.fallback_fovs]
-        else:
-            # No FOV specified
-            fovs_to_try = [None]
+        if ini.exists():
+            ini.unlink()
+        if log.exists():
+            log.unlink()
 
-        # Try each FOV value
-        for fov in fovs_to_try:
-            # Clean up old files from previous attempts
-            if ini.exists():
-                ini.unlink()
-            if log.exists():
-                log.unlink()
-
-            # Prepare hint with current FOV
-            current_hint = hint.copy() if hint else {}
-            if fov is not None:
-                current_hint['-fov'] = fov
-            else:
-                current_hint.pop('-fov', None)
-
-            self._run_astap(tmp_image_file, current_hint)
-
-            if wcs.exists():
-                break
+        self._run_astap(tmp_image_file, hint)
 
         if not wcs.exists() and ini.exists():
             self._raise_error(ini, log, tmp_image_file)
@@ -161,7 +145,7 @@ class ASTAPSolver(SolverBase):
     def is_pre_solved(header):
         return ASTAPSolver.keep_headers.issubset(header.keys()) and has_valid_scale(header)
 
-    def solve(self, image_path: Path, image: Image = None) -> Header:
+    def solve(self, image_path: Path, image=None, hint: SolverHint = None) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self._exe:
@@ -169,8 +153,25 @@ class ASTAPSolver(SolverBase):
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
         temp_image = self._create_temp_fits(image_path)
-        hint = self.extract_hint(fits.getheader(temp_image), image)
-        return self._solve(temp_image, hint)
+        header = fits.getheader(temp_image)
+        astap_hint = self.extract_hint(header, image)
+
+        if hint:
+            naxis2 = header.get('NAXIS2')
+            if hint.mode == 'override':
+                if hint.ra is not None and hint.dec is not None:
+                    astap_hint['-ra'] = str(float(hint.ra) / 15)
+                    astap_hint['-spd'] = str(90 + float(hint.dec))
+                if hint.scale is not None and naxis2:
+                    astap_hint['-fov'] = str(int(naxis2) * hint.scale / 3600)
+            else:  # fallback
+                if hint.ra is not None and hint.dec is not None and '-ra' not in astap_hint:
+                    astap_hint['-ra'] = str(float(hint.ra) / 15)
+                    astap_hint['-spd'] = str(90 + float(hint.dec))
+                if hint.scale is not None and '-fov' not in astap_hint and naxis2:
+                    astap_hint['-fov'] = str(int(naxis2) * hint.scale / 3600)
+
+        return self._solve(temp_image, astap_hint)
 
     @staticmethod
     def create_hint(ra, dec, fov=None) -> typing.Dict[str, str]:
@@ -234,13 +235,12 @@ class AstrometryNetSolver(SolverBase):
         self.ast.api_key = api_key
         self.force_image_upload = force_image_upload
 
-    def solve(self, image_path, image: Image = None) -> Header:
+    def solve(self, image_path, image=None, hint: SolverHint = None) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
         temp_image = self._create_temp_fits(image_path)
-        #TODO make solve_timeout configurable
         wcs_header: Header = self.ast.solve_from_image(temp_image, verbose=False, crpix_center=True,
                                                        solve_timeout=5*60,
                                                        force_image_upload=self.force_image_upload)
@@ -254,7 +254,7 @@ class AstrometryNetSolver(SolverBase):
 def _to_wsl_path(path: Path) -> str:
     result = subprocess.run(
         ["wsl", "wslpath", str(path).replace("\\", "/")],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, timeout=30,
     )
     return result.stdout.strip()
 
@@ -262,10 +262,8 @@ def _to_wsl_path(path: Path) -> str:
 class WSLSolveFieldSolver(SolverBase):
     """Plate solver using astrometry.net's solve-field tool running under WSL."""
 
-    def __init__(self, scale_low: float = None, scale_high: float = None, timeout: int = 300):
+    def __init__(self, timeout: int = 300):
         super().__init__()
-        self._scale_low = scale_low
-        self._scale_high = scale_high
         self._timeout = timeout
 
     @staticmethod
@@ -282,7 +280,7 @@ class WSLSolveFieldSolver(SolverBase):
         scale = float(scale)
         return scale * 0.5, scale * 2
 
-    def solve(self, image_path: Path, image=None) -> Header:
+    def solve(self, image_path: Path, image=None, hint: SolverHint = None) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self.tmp_dir:
@@ -304,9 +302,21 @@ class WSLSolveFieldSolver(SolverBase):
         temp_wsl = _to_wsl_path(temp_image)
         tmp_wsl = _to_wsl_path(temp_image.parent)
 
-        scale_low = self._scale_low
-        scale_high = self._scale_high
-        if scale_low is None and header is not None:
+        # Scale range
+        scale_low = None
+        scale_high = None
+        if hint and hint.scale is not None:
+            if hint.mode == 'override':
+                scale_low = hint.scale * 0.9
+                scale_high = hint.scale * 1.1
+            else:  # fallback
+                derived_low, derived_high = self._derive_scale(header) if header is not None else (None, None)
+                if derived_low is not None:
+                    scale_low, scale_high = derived_low, derived_high
+                else:
+                    scale_low = hint.scale * 0.5
+                    scale_high = hint.scale * 2.0
+        elif header is not None:
             scale_low, scale_high = self._derive_scale(header)
 
         cmd = [
@@ -319,14 +329,22 @@ class WSLSolveFieldSolver(SolverBase):
         if scale_low is not None:
             cmd += ["--scale-units", "arcsecperpix", "--scale-low", str(scale_low), "--scale-high", str(scale_high)]
 
+        # RA/Dec hint
         hint_ra = None
         hint_dec = None
-        if image and image.coord_ra:
-            hint_ra = image.coord_ra
-            hint_dec = image.coord_dec
-        elif header is not None:
-            hint_ra = header.get("RA") or header.get("CRVAL1")
-            hint_dec = header.get("DEC") or header.get("CRVAL2")
+        if hint and hint.ra is not None and hint.dec is not None and hint.mode == 'override':
+            hint_ra = hint.ra
+            hint_dec = hint.dec
+        else:
+            if image and image.coord_ra:
+                hint_ra = image.coord_ra
+                hint_dec = image.coord_dec
+            elif header is not None:
+                hint_ra = header.get("RA") or header.get("CRVAL1")
+                hint_dec = header.get("DEC") or header.get("CRVAL2")
+            if hint_ra is None and hint and hint.ra is not None:
+                hint_ra = hint.ra
+                hint_dec = hint.dec
 
         if hint_ra is not None and hint_dec is not None:
             cmd += ["--ra", str(hint_ra), "--dec", str(hint_dec), "--radius", "2.0"]

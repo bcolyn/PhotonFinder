@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PlateSolveDialog</class>
+ <widget class="QDialog" name="PlateSolveDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>540</width>
+    <height>500</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Plate Solve</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="solver_group">
+     <property name="title">
+      <string>Solver</string>
+     </property>
+     <layout class="QFormLayout" name="solver_form">
+      <item row="0" column="0">
+       <widget class="QLabel" name="primary_label">
+        <property name="text">
+         <string>Primary:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="primary_solver_combo"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="backup_label">
+        <property name="text">
+         <string>Backup solver:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="backup_solver_combo"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="hints_group">
+     <property name="title">
+      <string>Hints</string>
+     </property>
+     <layout class="QVBoxLayout" name="hints_layout">
+      <item>
+       <layout class="QHBoxLayout" name="coord_layout">
+        <item>
+         <widget class="QLabel" name="ra_label">
+          <property name="text">
+           <string>RA (°):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="hint_ra_edit">
+          <property name="toolTip">
+           <string>Right Ascension in decimal degrees</string>
+          </property>
+          <property name="placeholderText">
+           <string>e.g. 83.82</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="dec_label">
+          <property name="text">
+           <string>Dec (°):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="hint_dec_edit">
+          <property name="toolTip">
+           <string>Declination in decimal degrees</string>
+          </property>
+          <property name="placeholderText">
+           <string>e.g. -5.39</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="scale_layout">
+        <item>
+         <widget class="QLabel" name="scale_label">
+          <property name="text">
+           <string>Scale (arcsec/px):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="hint_scale_spin">
+          <property name="toolTip">
+           <string>Pixel scale in arcseconds per pixel. Set to 0 to leave unspecified.</string>
+          </property>
+          <property name="specialValueText">
+           <string>Not set</string>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="minimum">
+           <double>0.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>100.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="scale_spacer">
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="mode_layout">
+        <item>
+         <widget class="QRadioButton" name="hint_fallback_radio">
+          <property name="text">
+           <string>Fallback – use only if file has no values</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="hint_override_radio">
+          <property name="text">
+           <string>Override – always use these hints</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QProgressBar" name="progressBar">
+     <property name="value">
+      <number>0</number>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPlainTextEdit" name="log_edit">
+     <property name="readOnly">
+      <bool>true</bool>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>120</height>
+      </size>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="button_layout">
+     <item>
+      <spacer name="button_spacer">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="start_button">
+       <property name="text">
+        <string>Start</string>
+       </property>
+       <property name="default">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="close_button">
+       <property name="text">
+        <string>Close</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

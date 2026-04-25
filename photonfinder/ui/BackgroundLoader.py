@@ -13,8 +13,8 @@ from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, ProjectFile, \
     Project
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
-from photonfinder.platesolver import ASTAPSolver, get_image_center_coords, SolverType, AstrometryNetSolver, \
-    WSLSolveFieldSolver, has_been_plate_solved, extract_wcs_cards, SolverFailure
+from photonfinder.platesolver import SolverBase, get_image_center_coords, SolverHint, \
+    has_been_plate_solved, extract_wcs_cards, SolverFailure, SolverError
 
 
 class BackgroundLoaderBase(QObject):
@@ -371,27 +371,75 @@ class FileProcessingTask(ProgressBackgroundTask):
 class PlateSolveTask(FileProcessingTask):
 
     def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File],
-                 solver_type: SolverType):
+                 solver: SolverBase, backup_solver: SolverBase = None, hint: SolverHint = None):
         super().__init__(context, search_criteria, files)
-        settings = self.context.settings
         self.solved_files = list()
-        match solver_type:
-            case SolverType.ASTAP:
-                self.solver = ASTAPSolver(exe=settings.get_astap_path(), fallback_fovs=settings.get_astap_fallback_fov())
-            case SolverType.ASTROMETRY_NET:
-                self.solver = AstrometryNetSolver(api_key=settings.get_astrometry_net_api_key(),
-                                                  force_image_upload=settings.get_astrometry_net_force_image_upload())
-            case SolverType.WSL_SOLVE_FIELD:
-                self.solver = WSLSolveFieldSolver(
-                    scale_low=settings.get_wsl_solver_scale_low(),
-                    scale_high=settings.get_wsl_solver_scale_high(),
-                    timeout=settings.get_wsl_solver_timeout(),
-                )
+        self.solver = solver
+        self.backup_solver = backup_solver
+        self.hint = hint
+
+    def _solver_name(self, solver: SolverBase) -> str:
+        from photonfinder.platesolver import ASTAPSolver, AstrometryNetSolver, WSLSolveFieldSolver
+        if isinstance(solver, ASTAPSolver):
+            return "ASTAP"
+        if isinstance(solver, AstrometryNetSolver):
+            return "Astrometry.net"
+        if isinstance(solver, WSLSolveFieldSolver):
+            return "WSL solve-field"
+        return type(solver).__name__
 
     def get_tables(self) -> List:
         tables = super().get_tables()
         tables.append(FileWCS)
         return tables
+
+    def _process_files(self):
+        primary_name = self._solver_name(self.solver)
+        backup_name = self._solver_name(self.backup_solver) if self.backup_solver else None
+        header = f"Solver: {primary_name}"
+        if backup_name:
+            header += f"  |  Backup: {backup_name}"
+        if self.hint:
+            parts = []
+            if self.hint.ra is not None:
+                parts.append(f"RA {self.hint.ra:.3f}°")
+            if self.hint.dec is not None:
+                parts.append(f"Dec {self.hint.dec:.3f}°")
+            if self.hint.scale is not None:
+                parts.append(f"scale {self.hint.scale:.3f} arcsec/px")
+            if parts:
+                header += f"  |  Hints ({self.hint.mode}): {', '.join(parts)}"
+        self.message.emit(header)
+        self.message.emit("")
+        try:
+            if self.files is not None and len(self.files) > 0:
+                self.total = len(self.files)
+                self.total_found.emit(self.total)
+                for i, file in enumerate(self.files):
+                    if self.cancelled:
+                        break
+                    self._process_file(file, i)
+            else:
+                with self.context.database.bind_ctx([File, Image]):
+                    query = self.create_query()
+                    self.total = query.count()
+                    self.total_found.emit(self.total)
+                    for i, file in enumerate(query):
+                        if self.cancelled:
+                            break
+                        self._process_file(file, i)
+            solved = len(self.solved_files)
+            self.message.emit("")
+            if self.total == 0:
+                self.message.emit("No files to solve.")
+            elif solved == self.total:
+                self.message.emit(f"Done: all {solved} file(s) solved.")
+            else:
+                self.message.emit(f"Done: {solved}/{self.total} file(s) solved.")
+            self.finished.emit()
+        except Exception as e:
+            logging.error(f"Error processing files: {e}", exc_info=True)
+            self.error.emit(str(e))
 
     def create_query(self):
         query = super().create_query()
@@ -412,21 +460,34 @@ class PlateSolveTask(FileProcessingTask):
             else:
                 self.message.emit(message)
 
+        def _try_solve(solver):
+            with solver:
+                return solver.solve(Path(file.full_filename()), file.image, self.hint)
+
         try:
-            with (self.solver):
-                solution = self.solver.solve(Path(file.full_filename()), file.image)
-                if solution:
-                    self.context.status_reporter.update_status(f"Solved file {file.full_filename()}")
-                    wcs = FileWCS(file=file, wcs=compress(solution.tostring().encode()))
-                    FileWCS.insert(wcs.__data__).on_conflict_replace().execute()
-                    ra, dec, healpix = get_image_center_coords(solution)
-                    Image.update(coord_ra=ra, coord_dec=dec, coord_pix256=healpix
-                                 ).where(Image.file == file).execute()
-                    file.has_wcs = True
-                    file.image.coord_ra = ra
-                    file.image.coord_dec = dec
-                    file.image.coord_pix256 = healpix
-                    self.solved_files.append(file)
+            solution = None
+            try:
+                solution = _try_solve(self.solver)
+            except (SolverFailure, SolverError) as primary_error:
+                if self.backup_solver:
+                    self.message.emit(f"  → {self._solver_name(self.solver)} failed ({primary_error}), trying {self._solver_name(self.backup_solver)}…")
+                    solution = _try_solve(self.backup_solver)
+                else:
+                    raise
+
+            if solution:
+                self.context.status_reporter.update_status(f"Solved file {file.full_filename()}")
+                wcs = FileWCS(file=file, wcs=compress(solution.tostring().encode()))
+                FileWCS.insert(wcs.__data__).on_conflict_replace().execute()
+                ra, dec, healpix = get_image_center_coords(solution)
+                Image.update(coord_ra=ra, coord_dec=dec, coord_pix256=healpix
+                             ).where(Image.file == file).execute()
+                file.has_wcs = True
+                file.image.coord_ra = ra
+                file.image.coord_dec = dec
+                file.image.coord_pix256 = healpix
+                self.solved_files.append(file)
+                self.message.emit(f"  ✓ Solved: RA {ra:.4f}°  Dec {dec:.4f}°")
         except SolverFailure as failure:
             if failure.log:
                 if isinstance(failure.log, Iterable):

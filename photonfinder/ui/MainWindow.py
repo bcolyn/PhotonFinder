@@ -24,7 +24,6 @@ from .common import create_colored_svg_icon
 from .generated.MainWindow_ui import Ui_MainWindow
 import photonfinder.ui.generated.resources_rc
 from .session import SessionManager, Session
-from ..platesolver import SolverType
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -108,8 +107,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionShow_Details.triggered.connect(self.show_file_details)
         self.actionSelect_path.triggered.connect(self.select_path_in_tree)
         self.actionPlate_solve_files.triggered.connect(self.plate_solve_files)
-        self.actionPlate_Solve_Astrometry_net.triggered.connect(self.plate_solve_files_astrometry)
-        self.actionPlate_Solve_WSL.triggered.connect(self.plate_solve_files_wsl)
         self.actionList_Files.triggered.connect(self.report_list_files)
         self.actionHeader_Text.triggered.connect(self.add_header_text_filter)
         self.actionMetadata_Report.triggered.connect(self.report_metadata)
@@ -536,12 +533,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def plate_solve_files(self):
         self.get_current_search_panel().plate_solve_files()
 
-    def plate_solve_files_astrometry(self):
-        self.get_current_search_panel().plate_solve_files(SolverType.ASTROMETRY_NET)
-
-    def plate_solve_files_wsl(self):
-        self.get_current_search_panel().plate_solve_files(SolverType.WSL_SOLVE_FIELD)
-
     def report_list_files(self):
         """
         Show a file save dialog to select an output filename (.txt|.lst),
@@ -574,11 +565,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             current_type = selected_image.image_type
             self.actionFind_matching_darks.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
             self.actionFind_matching_flats.setEnabled(current_type == "LIGHT")
-            has_wcs = hasattr(file, 'has_wcs') and file.has_wcs
             is_light = not current_type or "LIGHT" in current_type
-            self.actionPlate_solve_files.setEnabled(is_light and not has_wcs)
-            self.actionPlate_Solve_Astrometry_net.setEnabled(is_light and not has_wcs)
-            self.actionPlate_Solve_WSL.setEnabled(is_light and not has_wcs)
+            self.actionPlate_solve_files.setEnabled(is_light)
 
         self.actionExposure.setChecked(AdvancedFilter.EXPOSURE in current_panel.advanced_options)
         self.actionCoordinates.setChecked(AdvancedFilter.COORDINATES in current_panel.advanced_options)

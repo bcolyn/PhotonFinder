@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 import pytest
 from astropy import units as u
@@ -7,6 +8,16 @@ from astropy_healpix import HEALPix
 from photonfinder.platesolver import *
 from photonfinder.platesolver import _create_temp_jpeg
 from tests.sample_headers import *
+
+
+def _wsl_available() -> bool:
+    try:
+        result = subprocess.run(["wsl", "echo", "ok"], capture_output=True, text=True, timeout=30)
+        return result.returncode == 0 and "ok" in result.stdout
+    except Exception:
+        return False
+
+wsl_available = pytest.mark.skipif(not _wsl_available(), reason="WSL not available")
 
 # Center (RA, hms):	12h 18m 56.659s
 # Center (Dec, dms):+47° 18' 49.201"
@@ -54,6 +65,7 @@ def test_solve_image_astrometry_offline():
     assert healpix in reference_cone_pixels
 
 @pytest.mark.slow
+@wsl_available
 def test_solve_image_wsl(global_test_data_dir):
     file_path = global_test_data_dir / "M106_2020-03-17T024357_60sec_LP__-15C_frame11.fit.xz"
     wcs_str = solve_image_wsl(file_path)
@@ -107,7 +119,13 @@ def solve_image_astap(image_path) -> str:
 
 
 def solve_image_wsl(image_path) -> str:
-    # Test image (M106, 400mm FL) has pixel scale ~1.24 arcsec/px
+    # Test image: M106, 400mm FL, pixel scale ~1.24 arcsec/px
+    hint = SolverHint(
+        ra=reference_center.ra.deg,
+        dec=reference_center.dec.deg,
+        scale=1.24,
+        mode='fallback',
+    )
     with WSLSolveFieldSolver() as solver:
-        header = solver.solve(image_path)
+        header = solver.solve(image_path, hint=hint)
     return header.tostring()

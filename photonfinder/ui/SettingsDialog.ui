@@ -88,37 +88,6 @@
        </layout>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="horizontalLayout">
-        <property name="topMargin">
-         <number>0</number>
-        </property>
-        <item>
-         <widget class="QLabel" name="label_4">
-          <property name="text">
-           <string>ASTAP Fallback FoV (degrees)</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="astap_fov_edit">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-            <horstretch>1</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <widget class="QLabel" name="label_5">
-        <property name="text">
-         <string>Used when FoV can't be determined from metadata. Separate multiple values with ';'</string>
-        </property>
-       </widget>
-      </item>
-      <item>
        <widget class="Line" name="line">
         <property name="orientation">
          <enum>Qt::Orientation::Horizontal</enum>
@@ -175,62 +144,6 @@
        </widget>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="wsl_scale_layout">
-        <item>
-         <widget class="QLabel" name="wsl_scale_label">
-          <property name="text">
-           <string>solve-field (WSL) pixel scale (arcsec/px):</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="wsl_scale_low_spin">
-          <property name="toolTip">
-           <string>Lower bound of pixel scale range for solve-field</string>
-          </property>
-          <property name="decimals">
-           <number>3</number>
-          </property>
-          <property name="minimum">
-           <double>0.100000000000000</double>
-          </property>
-          <property name="maximum">
-           <double>100.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>2.273</double>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="wsl_scale_to_label">
-          <property name="text">
-           <string>to</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QDoubleSpinBox" name="wsl_scale_high_spin">
-          <property name="toolTip">
-           <string>Upper bound of pixel scale range for solve-field</string>
-          </property>
-          <property name="decimals">
-           <number>3</number>
-          </property>
-          <property name="minimum">
-           <double>0.100000000000000</double>
-          </property>
-          <property name="maximum">
-           <double>100.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>2.513</double>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
        <layout class="QHBoxLayout" name="wsl_timeout_layout">
         <item>
          <widget class="QLabel" name="wsl_timeout_label">
@@ -259,12 +172,12 @@
       </item>
       <item>
        <widget class="QLabel" name="wsl_hint_label">
-          <property name="text">
-           <string>solve-field runs via WSL. Adjust the pixel scale range to match your camera (focal length and pixel size).</string>
-          </property>
-          <property name="wordWrap">
-           <bool>true</bool>
-          </property>
+        <property name="text">
+         <string>solve-field runs via WSL. Use the Plate Solve dialog to set pixel scale hints.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
        </widget>
       </item>
      </layout>
