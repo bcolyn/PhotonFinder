@@ -254,14 +254,33 @@ def detect_bayer_pattern(header: dict) -> str | None:
     return None
 
 
+_BRIGHT_GAP      = 0.05   # normalised offset above background to be "extended content"
+_BRIGHT_FRACTION = 0.01   # if more than this fraction exceeds the threshold → not linear
+
+
 def is_linear(data: np.ndarray) -> bool:
-    """Heuristic linearity check: low median implies unprocessed linear data."""
+    """Heuristic: fraction of pixels significantly above background.
+
+    Linear images have a sharp background peak with very few pixels beyond it
+    (just stars, typically < 0.5 %).  Processed images have the same peak but
+    substantially more pixels in the extended wings (galaxies, nebulae, general
+    lifted sky).  This metric is unaffected by noise reduction, which collapses
+    MAD without changing the tail fraction.
+
+    Counts the fraction of pixels more than _BRIGHT_GAP (in normalised [0, 1]
+    units) above the median background.  If that fraction exceeds _BRIGHT_FRACTION
+    the image is considered already stretched.
+    """
     flat = data.ravel()
     step = max(1, len(flat) // 50_000)
-    median = float(np.median(flat[::step]))
+    sample = flat[::step].astype(np.float64)
+
     if data.dtype.kind in ('u', 'i'):
-        return median < 0.1 * 65535.0
-    return median < 0.1
+        sample /= 65535.0
+
+    bg = float(np.median(sample))
+    bright_fraction = float(np.mean(sample > bg + _BRIGHT_GAP))
+    return bright_fraction < _BRIGHT_FRACTION
 
 
 # ---------------------------------------------------------------------------
