@@ -484,7 +484,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Open the file at the selected row
         current_panel.open_file(selected_rows[0])
 
-    def view_image(self, file, panel=None, row: int = -1):
+    def view_image(self, file, panel=None, row: int = -1, rows: list[int] | None = None):
         """Open the file in the internal image viewer (single non-modal window)."""
         if self.image_viewer is None or not self.image_viewer.isVisible():
             self.image_viewer = ImageViewerWindow(parent=self)
@@ -492,7 +492,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 lambda: setattr(self, 'image_viewer', None)
             )
             self.image_viewer.show()
-        self.image_viewer.set_nav_context(panel, row)
+        self.image_viewer.set_nav_context(panel, row, rows)
         self.image_viewer.load_file(file)
         self.image_viewer.raise_()
         self.image_viewer.activateWindow()

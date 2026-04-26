@@ -40,6 +40,7 @@ def _not_empty(current_text):
 
 class SearchPanel(QFrame, Ui_SearchPanel):
     search_criteria_changed = Signal()
+    data_fully_loaded = Signal()  # emitted when the last batch arrives (has_more → False)
 
     def __init__(self, context: ApplicationContext, mainWindow: 'MainWindow', parent=None) -> None:
         super(SearchPanel, self).__init__(parent)
@@ -491,6 +492,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 self.dataView.selectAll()
                 self.context.status_reporter.update_status(f"All {self.total_files} files selected", bulk=False)
 
+        if not self.has_more_results:
+            self.data_fully_loaded.emit()
+
     def resize_columns(self):
         self.dataView.resizeColumnsToContents()
         ensure_header_widths(self.dataView)
@@ -704,7 +708,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         with self.context.database.bind_ctx(CORE_MODELS):
             file = self.dataView.model().data(name_index, ROWID_ROLE)
         if file and self.mainWindow:
-            self.mainWindow.view_image(file, panel=self, row=index.row())
+            selected = self.dataView.selectionModel().selectedRows()
+            rows = sorted(i.row() for i in selected) if len(selected) > 1 else None
+            self.mainWindow.view_image(file, panel=self, row=index.row(), rows=rows)
 
     def get_file_at_row(self, row: int):
         """Return the File object at the given proxy-model row, or None."""

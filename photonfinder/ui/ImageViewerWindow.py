@@ -234,10 +234,15 @@ class ImageViewerWindow(QMainWindow):
         self._pending_process = False
         self._load_worker: ImageLoadWorker | None = None
         self._process_worker: ProcessWorker | None = None
+        self._nav_tb: QToolBar | None = None
+        self._view_tb: QToolBar | None = None
+        self._toolbar_broken: bool = False
 
         # Navigation state
-        self._nav_panel = None   # SearchPanel | None
-        self._nav_row: int = -1
+        self._nav_panel = None         # SearchPanel | None
+        self._nav_row: int = -1        # index into _nav_rows (or model row when _nav_rows is None)
+        self._nav_rows: list[int] | None = None  # model rows to navigate; None = all rows
+        self._pending_nav_row: int | None = None  # target row deferred until async load completes
         self._preserve_view: bool = False
 
         # Blink state
@@ -250,11 +255,17 @@ class ImageViewerWindow(QMainWindow):
         self._locked_stretch = None   # StretchParams | None — applied to every subsequent image
         self._last_stretch = None     # StretchParams | None — params from last completed image
 
+        # User overrides for debayer controls (None = follow auto-detection)
+        self._debayer_override: bool | None = None
+        self._pattern_override: str | None = None
+
         # Loading / nav state
         self._is_loading: bool = False
         self._cursor_overridden: bool = False
+        self._first_btn: QPushButton | None = None
         self._prev_btn: QPushButton | None = None
         self._next_btn: QPushButton | None = None
+        self._last_btn: QPushButton | None = None
         self._preload_btn: QPushButton | None = None
         self._preload_worker: PreloadWorker | None = None
 
@@ -269,105 +280,127 @@ class ImageViewerWindow(QMainWindow):
         self._canvas.pixel_hovered.connect(self._on_pixel_hover)
         self.setCentralWidget(self._canvas)
 
-        tb = QToolBar("Controls", self)
-        tb.setMovable(False)
-        self.addToolBar(tb)
+        # --- Navigation toolbar ---
+        nav_tb = QToolBar("Navigation", self)
+        nav_tb.setObjectName("nav_toolbar")
+        self._nav_tb = nav_tb
+        self.addToolBar(nav_tb)
 
-        # --- Stretch ---
-        self._stretch_check = QCheckBox("Auto-stretch")
-        self._stretch_check.setChecked(True)
-        tb.addWidget(self._stretch_check)
+        self._first_btn = QPushButton("|←")
+        self._first_btn.setFixedWidth(36)
+        self._first_btn.setToolTip("First image (Home)")
+        self._first_btn.clicked.connect(self._nav_first)
+        nav_tb.addWidget(self._first_btn)
 
-        tb.addWidget(QLabel("  BG%:"))
-        self._bg_spin = QDoubleSpinBox()
-        self._bg_spin.setRange(0.01, 0.99)
-        self._bg_spin.setValue(0.25)
-        self._bg_spin.setSingleStep(0.05)
-        self._bg_spin.setDecimals(2)
-        self._bg_spin.setFixedWidth(70)
-        self._bg_spin.setToolTip("Target background level after stretch (0–1)")
-        tb.addWidget(self._bg_spin)
-
-        tb.addWidget(QLabel("  σ:"))
-        self._sigma_spin = QDoubleSpinBox()
-        self._sigma_spin.setRange(0.5, 10.0)
-        self._sigma_spin.setValue(2.8)
-        self._sigma_spin.setSingleStep(0.1)
-        self._sigma_spin.setDecimals(1)
-        self._sigma_spin.setFixedWidth(60)
-        self._sigma_spin.setToolTip("Clipping sigma for black point estimation")
-        tb.addWidget(self._sigma_spin)
-
-        self._linked_check = QCheckBox("  Linked")
-        self._linked_check.setChecked(False)
-        self._linked_check.setToolTip("Linked: derive stretch from green channel and apply to all")
-        tb.addWidget(self._linked_check)
-
-        tb.addSeparator()
-
-        # --- Debayer ---
-        self._debayer_check = QCheckBox("Debayer")
-        self._debayer_check.setChecked(False)
-        self._debayer_check.setToolTip("Apply Bayer demosaicing to single-channel image")
-        tb.addWidget(self._debayer_check)
-
-        tb.addWidget(QLabel("  Pattern:"))
-        self._pattern_combo = QComboBox()
-        self._pattern_combo.addItems(['RGGB', 'BGGR', 'GRBG', 'GBRG'])
-        self._pattern_combo.setFixedWidth(80)
-        self._pattern_combo.setToolTip("Bayer matrix pattern (override auto-detected value)")
-        tb.addWidget(self._pattern_combo)
-
-        tb.addSeparator()
-
-        # --- Zoom ---
-        for label, zoom in [('50%', 0.5), ('100%', 1.0), ('200%', 2.0)]:
-            btn = QPushButton(label)
-            btn.setFixedWidth(46)
-            btn.clicked.connect(lambda _checked, z=zoom: self._canvas.set_zoom(z))
-            tb.addWidget(btn)
-
-        fit_btn = QPushButton("Fit")
-        fit_btn.setFixedWidth(40)
-        fit_btn.clicked.connect(self._canvas.fit_in_view)
-        tb.addWidget(fit_btn)
-
-        tb.addSeparator()
-
-        # --- Navigation ---
         self._prev_btn = QPushButton("←")
         self._prev_btn.setFixedWidth(32)
         self._prev_btn.setToolTip("Previous image (←)")
         self._prev_btn.clicked.connect(self._nav_prev)
-        tb.addWidget(self._prev_btn)
+        nav_tb.addWidget(self._prev_btn)
 
         self._next_btn = QPushButton("→")
         self._next_btn.setFixedWidth(32)
         self._next_btn.setToolTip("Next image (→)")
         self._next_btn.clicked.connect(self._nav_next)
-        tb.addWidget(self._next_btn)
+        nav_tb.addWidget(self._next_btn)
 
-        tb.addWidget(QLabel("  Blink:"))
+        self._last_btn = QPushButton("→|")
+        self._last_btn.setFixedWidth(36)
+        self._last_btn.setToolTip("Last image (End)")
+        self._last_btn.clicked.connect(self._nav_last)
+        nav_tb.addWidget(self._last_btn)
+
+        nav_tb.addSeparator()
+
+        nav_tb.addWidget(QLabel("Blink:"))
         self._blink_combo = QComboBox()
         self._blink_combo.addItems(list(_BLINK_INTERVALS.keys()))
         self._blink_combo.setFixedWidth(60)
         self._blink_combo.setToolTip("Auto-advance interval for blinking between images")
-        tb.addWidget(self._blink_combo)
+        nav_tb.addWidget(self._blink_combo)
+
+        nav_tb.addSeparator()
 
         self._preload_btn = QPushButton("Preload")
         self._preload_btn.setToolTip("Load all images in the current result set into the cache")
         self._preload_btn.setEnabled(False)
         self._preload_btn.clicked.connect(self._on_preload_clicked)
-        tb.addWidget(self._preload_btn)
+        nav_tb.addWidget(self._preload_btn)
 
-        tb.addSeparator()
+        nav_tb.addSeparator()
 
         self._lock_stretch_check = QCheckBox("Lock stretch")
         self._lock_stretch_check.setChecked(False)
         self._lock_stretch_check.setToolTip(
             "Freeze the current stretch and apply it to subsequent images"
         )
-        tb.addWidget(self._lock_stretch_check)
+        nav_tb.addWidget(self._lock_stretch_check)
+
+        # --- View toolbar (shares the top row when there is room) ---
+        view_tb = QToolBar("View", self)
+        view_tb.setObjectName("view_toolbar")
+        self._view_tb = view_tb
+        self.addToolBar(view_tb)
+
+        # --- Stretch ---
+        self._stretch_check = QCheckBox("Stretch")
+        self._stretch_check.setChecked(True)
+        self._stretch_check.setToolTip("Apply auto-stretch")
+        view_tb.addWidget(self._stretch_check)
+
+        view_tb.addWidget(QLabel(" BG%:"))
+        self._bg_spin = QDoubleSpinBox()
+        self._bg_spin.setRange(0.01, 0.99)
+        self._bg_spin.setValue(0.25)
+        self._bg_spin.setSingleStep(0.05)
+        self._bg_spin.setDecimals(2)
+        self._bg_spin.setFixedWidth(90)
+        self._bg_spin.setToolTip("Target background level after stretch (0–1)")
+        view_tb.addWidget(self._bg_spin)
+
+        view_tb.addWidget(QLabel(" σ:"))
+        self._sigma_spin = QDoubleSpinBox()
+        self._sigma_spin.setRange(0.5, 10.0)
+        self._sigma_spin.setValue(2.8)
+        self._sigma_spin.setSingleStep(0.1)
+        self._sigma_spin.setDecimals(1)
+        self._sigma_spin.setFixedWidth(80)
+        self._sigma_spin.setToolTip("Clipping sigma for black point estimation")
+        view_tb.addWidget(self._sigma_spin)
+
+        self._linked_check = QCheckBox(" Linked")
+        self._linked_check.setChecked(False)
+        self._linked_check.setToolTip("Linked: derive stretch from green channel and apply to all")
+        view_tb.addWidget(self._linked_check)
+
+        view_tb.addSeparator()
+
+        # --- Debayer ---
+        self._debayer_check = QCheckBox("Debayer")
+        self._debayer_check.setChecked(False)
+        self._debayer_check.setToolTip("Apply Bayer demosaicing to single-channel image")
+        view_tb.addWidget(self._debayer_check)
+
+        view_tb.addWidget(QLabel(" Pattern:"))
+        self._pattern_combo = QComboBox()
+        self._pattern_combo.addItems(['RGGB', 'BGGR', 'GRBG', 'GBRG'])
+        self._pattern_combo.setFixedWidth(75)
+        self._pattern_combo.setToolTip("Bayer matrix pattern (override auto-detected value)")
+        view_tb.addWidget(self._pattern_combo)
+
+        view_tb.addSeparator()
+
+        # --- Zoom ---
+        for label, zoom in [('50%', 0.5), ('100%', 1.0), ('200%', 2.0)]:
+            btn = QPushButton(label)
+            btn.setFixedWidth(42)
+            btn.clicked.connect(lambda _checked, z=zoom: self._canvas.set_zoom(z))
+            view_tb.addWidget(btn)
+
+        fit_btn = QPushButton("Fit")
+        fit_btn.setFixedWidth(36)
+        fit_btn.clicked.connect(self._canvas.fit_in_view)
+        view_tb.addWidget(fit_btn)
 
         # --- Status bar ---
         sb = QStatusBar()
@@ -391,10 +424,22 @@ class ImageViewerWindow(QMainWindow):
     # Public API
     # ------------------------------------------------------------------
 
-    def set_nav_context(self, panel, row: int):
-        """Set the search panel and row index used for prev/next navigation."""
+    def set_nav_context(self, panel, row: int, rows: list[int] | None = None):
+        """Set the search panel and row index used for prev/next navigation.
+
+        rows: if given, navigation is restricted to those model row indices.
+              row must be the model row of the initially displayed file.
+        """
+        if self._nav_panel is not None and self._nav_panel is not panel:
+            try:
+                self._nav_panel.data_fully_loaded.disconnect(self._on_nav_data_loaded)
+            except RuntimeError:
+                pass
         self._nav_panel = panel
-        self._nav_row = row
+        self._nav_rows = rows if rows and len(rows) > 1 else None
+        self._nav_row = self._nav_rows.index(row) if self._nav_rows and row in self._nav_rows else row
+        self._pending_nav_row = None
+        panel.data_fully_loaded.connect(self._on_nav_data_loaded)
         self._update_nav_label()
         if self._preload_btn:
             self._preload_btn.setEnabled(True)
@@ -438,6 +483,29 @@ class ImageViewerWindow(QMainWindow):
     # Lifecycle
     # ------------------------------------------------------------------
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._reflow_toolbars()
+
+    def _reflow_toolbars(self):
+        if self._nav_tb is None or self._view_tb is None:
+            return
+        needs_break = (
+            self._nav_tb.sizeHint().width() + self._view_tb.sizeHint().width()
+            > self.width()
+        )
+        if needs_break == self._toolbar_broken:
+            return
+        self._toolbar_broken = needs_break
+        self.removeToolBar(self._nav_tb)
+        self.removeToolBar(self._view_tb)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self._nav_tb)
+        self._nav_tb.show()
+        if needs_break:
+            self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self._view_tb)
+        self._view_tb.show()
+
     def closeEvent(self, event):
         self._blink_timer.stop()
         if self._preload_worker and self._preload_worker.isRunning():
@@ -475,8 +543,26 @@ class ImageViewerWindow(QMainWindow):
             self._nav_next()
         elif key == Qt.Key.Key_Left:
             self._nav_prev()
+        elif key == Qt.Key.Key_Home:
+            self._nav_first()
+        elif key == Qt.Key.Key_End:
+            self._nav_last()
         else:
             super().keyPressEvent(event)
+
+    def _nav_first(self):
+        self._blink_timer.stop()
+        self._navigate(0)
+
+    def _nav_last(self):
+        self._blink_timer.stop()
+        if self._nav_rows is not None:
+            self._navigate(len(self._nav_rows) - 1)
+        elif self._nav_panel and self._nav_panel.has_more_results:
+            # Not all rows loaded yet — go to a row past the end so _navigate defers via pending
+            self._navigate(self._nav_panel.total_files - 1)
+        elif self._nav_panel:
+            self._navigate(self._nav_panel.dataView.model().rowCount() - 1)
 
     def _nav_next(self):
         self._blink_timer.stop()
@@ -489,18 +575,31 @@ class ImageViewerWindow(QMainWindow):
     def _navigate(self, row: int):
         if self._nav_panel is None or self._nav_row < 0:
             return
-        model = self._nav_panel.dataView.model()
-        total = model.rowCount()
-        if total == 0:
-            return
 
-        # If stepping past the loaded rows and more exist, load them first
-        if row >= total and self._nav_panel.has_more_results:
-            self._nav_panel.load_all_remaining_data()
+        if self._nav_rows is not None:
+            # Navigate within the fixed selection list
+            total = len(self._nav_rows)
+            if total == 0:
+                return
+            row = row % total
+            model_row = self._nav_rows[row]
+            next_model_row = self._nav_rows[(row + 1) % total]
+        else:
+            # Navigate through all model rows
+            model = self._nav_panel.dataView.model()
             total = model.rowCount()
+            if total == 0:
+                return
+            if row >= total and self._nav_panel.has_more_results:
+                # Data isn't fully loaded yet — kick off the load and defer navigation.
+                self._pending_nav_row = row
+                self._nav_panel.load_all_remaining_data()
+                return
+            row = row % total
+            model_row = row
+            next_model_row = (row + 1) % total
 
-        row = row % total  # wrap around
-        file = self._nav_panel.get_file_at_row(row)
+        file = self._nav_panel.get_file_at_row(model_row)
         if not file:
             return
 
@@ -515,9 +614,16 @@ class ImageViewerWindow(QMainWindow):
 
         # Pre-fetch the next image into cache
         from photonfinder.image_processing import prefetch_image
-        next_file = self._nav_panel.get_file_at_row((row + 1) % total)
+        next_file = self._nav_panel.get_file_at_row(next_model_row)
         if next_file:
             prefetch_image(next_file.full_filename())
+
+    def _on_nav_data_loaded(self):
+        """Called when the panel finishes loading all remaining rows."""
+        if self._pending_nav_row is not None:
+            target = self._pending_nav_row
+            self._pending_nav_row = None
+            self._navigate(target)
 
     # ------------------------------------------------------------------
     # Private: nav state (loading indicator + button enable)
@@ -526,8 +632,10 @@ class ImageViewerWindow(QMainWindow):
     def _update_nav_state(self):
         is_blinking = self._blink_interval_ms() > 0
         nav_enabled = not self._is_loading and not is_blinking
+        self._first_btn.setEnabled(nav_enabled)
         self._prev_btn.setEnabled(nav_enabled)
         self._next_btn.setEnabled(nav_enabled)
+        self._last_btn.setEnabled(nav_enabled)
         if self._is_loading and not self._cursor_overridden:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             self._cursor_overridden = True
@@ -558,8 +666,12 @@ class ImageViewerWindow(QMainWindow):
         if self._nav_panel is None or self._nav_row < 0:
             self._nav_label.setText("")
             return
-        total = self._nav_panel.dataView.model().rowCount()
-        self._nav_label.setText(f"{self._nav_row + 1} / {total}")
+        if self._nav_rows is not None:
+            total = len(self._nav_rows)
+            self._nav_label.setText(f"{self._nav_row + 1} / {total} (selection)")
+        else:
+            total = self._nav_panel.total_files
+            self._nav_label.setText(f"{self._nav_row + 1} / {total}")
 
     # ------------------------------------------------------------------
     # Private: preload
@@ -568,11 +680,12 @@ class ImageViewerWindow(QMainWindow):
     def _on_preload_clicked(self):
         if self._nav_panel is None:
             return
-        if self._nav_panel.has_more_results:
+        if self._nav_rows is None and self._nav_panel.has_more_results:
             self._nav_panel.load_all_remaining_data()
         model = self._nav_panel.dataView.model()
+        rows = self._nav_rows if self._nav_rows is not None else range(model.rowCount())
         filenames = [
-            fn for row in range(model.rowCount())
+            fn for row in rows
             if (f := self._nav_panel.get_file_at_row(row)) and (fn := f.full_filename())
         ]
         if not filenames:
@@ -628,14 +741,21 @@ class ImageViewerWindow(QMainWindow):
         for w in (self._debayer_check, self._pattern_combo, self._stretch_check):
             w.blockSignals(True)
 
-        if self._image_type == 'bayer':
+        if self._debayer_override is not None:
+            self._debayer_check.setChecked(self._debayer_override)
+        elif self._image_type == 'bayer':
             self._debayer_check.setChecked(True)
-            if detected_pattern:
-                idx = self._pattern_combo.findText(detected_pattern)
-                if idx >= 0:
-                    self._pattern_combo.setCurrentIndex(idx)
         else:
             self._debayer_check.setChecked(False)
+
+        if self._pattern_override is not None:
+            idx = self._pattern_combo.findText(self._pattern_override)
+            if idx >= 0:
+                self._pattern_combo.setCurrentIndex(idx)
+        elif detected_pattern:
+            idx = self._pattern_combo.findText(detected_pattern)
+            if idx >= 0:
+                self._pattern_combo.setCurrentIndex(idx)
 
         self._debayer_check.setEnabled(self._image_type != 'rgb')
         self._pattern_combo.setEnabled(self._image_type != 'rgb')
@@ -662,6 +782,12 @@ class ImageViewerWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_controls_changed(self):
+        sender = self.sender()
+        if sender is self._debayer_check:
+            self._debayer_override = self._debayer_check.isChecked()
+        elif sender is self._pattern_combo:
+            self._pattern_override = self._pattern_combo.currentText()
+
         self._blink_timer.stop()
         self._blink_combo.blockSignals(True)
         self._blink_combo.setCurrentText('Off')
