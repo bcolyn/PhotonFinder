@@ -267,6 +267,7 @@ class ImageViewerWindow(QMainWindow):
         self._next_btn: QPushButton | None = None
         self._last_btn: QPushButton | None = None
         self._preload_btn: QPushButton | None = None
+        self._mark_bad_btn: QPushButton | None = None
         self._preload_worker: PreloadWorker | None = None
 
         self._build_ui()
@@ -326,6 +327,14 @@ class ImageViewerWindow(QMainWindow):
         self._preload_btn.setEnabled(False)
         self._preload_btn.clicked.connect(self._on_preload_clicked)
         nav_tb.addWidget(self._preload_btn)
+
+        nav_tb.addSeparator()
+
+        self._mark_bad_btn = QPushButton("✗ Bad")
+        self._mark_bad_btn.setToolTip("Mark as bad — rename file BAD_…, remove from library [Del]")
+        self._mark_bad_btn.setEnabled(False)
+        self._mark_bad_btn.clicked.connect(self._mark_current_as_bad)
+        nav_tb.addWidget(self._mark_bad_btn)
 
         nav_tb.addSeparator()
 
@@ -443,6 +452,8 @@ class ImageViewerWindow(QMainWindow):
         self._update_nav_label()
         if self._preload_btn:
             self._preload_btn.setEnabled(True)
+        if self._mark_bad_btn:
+            self._mark_bad_btn.setEnabled(True)
 
     def load_file(self, file: File, preserve_view: bool = False):
         """Load and display the image associated with a File model instance."""
@@ -547,6 +558,8 @@ class ImageViewerWindow(QMainWindow):
             self._nav_first()
         elif key == Qt.Key.Key_End:
             self._nav_last()
+        elif key == Qt.Key.Key_Delete:
+            self._mark_current_as_bad()
         else:
             super().keyPressEvent(event)
 
@@ -625,6 +638,40 @@ class ImageViewerWindow(QMainWindow):
             self._pending_nav_row = None
             self._navigate(target)
 
+    def _mark_current_as_bad(self):
+        """Rename the current file with BAD_ prefix and advance to the next image."""
+        if self._nav_panel is None or self._nav_row < 0:
+            return
+
+        if self._nav_rows is not None:
+            model_row = self._nav_rows[self._nav_row]
+            nav_idx = self._nav_row
+        else:
+            model_row = self._nav_row
+            nav_idx = self._nav_row
+
+        file = self._nav_panel.get_file_at_row(model_row)
+        if file is None:
+            return
+
+        if not self._nav_panel.mark_file_as_bad(file, model_row):
+            return  # error dialog already shown by mark_file_as_bad
+
+        # Update restricted navlist: remove entry and shift indices above model_row
+        if self._nav_rows is not None:
+            self._nav_rows.pop(nav_idx)
+            self._nav_rows = [r - 1 if r > model_row else r for r in self._nav_rows]
+
+        total = len(self._nav_rows) if self._nav_rows is not None \
+                else self._nav_panel.dataView.model().rowCount()
+
+        if total == 0:
+            self.close()
+            return
+
+        # nav_idx now points to what was the next item; _navigate wraps and resets _nav_row
+        self._navigate(nav_idx)
+
     # ------------------------------------------------------------------
     # Private: nav state (loading indicator + button enable)
     # ------------------------------------------------------------------
@@ -636,6 +683,8 @@ class ImageViewerWindow(QMainWindow):
         self._prev_btn.setEnabled(nav_enabled)
         self._next_btn.setEnabled(nav_enabled)
         self._last_btn.setEnabled(nav_enabled)
+        if self._mark_bad_btn and self._nav_panel is not None:
+            self._mark_bad_btn.setEnabled(nav_enabled)
         if self._is_loading and not self._cursor_overridden:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             self._cursor_overridden = True

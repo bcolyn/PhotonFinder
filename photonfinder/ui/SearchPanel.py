@@ -592,6 +592,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         menu.addSeparator()
         menu.addAction(self.mainWindow.actionPlate_solve_files)
         menu.addSeparator()
+        mark_bad_action = menu.addAction("Mark as bad")
+        menu.addSeparator()
         new_project_action = menu.addAction("Add to New Project")
         new_project_action.setData(Project())
 
@@ -649,6 +651,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         elif action == find_flats_action:
             if self.mainWindow:
                 self.mainWindow.find_matching_flats()
+        elif action == mark_bad_action:
+            file = self.get_file_at_row(index.row())
+            if file:
+                self.mark_file_as_bad(file, index.row())
         elif action in project_actions:
             project = action.data()
             self.mainWindow.add_selection_to_project(project)
@@ -719,6 +725,36 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         name_index = self.dataView.model().index(row, 0)
         with self.context.database.bind_ctx(CORE_MODELS):
             return self.dataView.model().data(name_index, ROWID_ROLE)
+
+    def mark_file_as_bad(self, file: File, model_row: int) -> bool:
+        """Rename the file with BAD_ prefix and remove it from the database and grid."""
+        import fnmatch
+        new_name = "BAD_" + file.name
+        old_path = file.full_filename()
+        new_path = os.path.join(os.path.dirname(old_path), new_name)
+        try:
+            os.rename(old_path, new_path)
+        except OSError as e:
+            QMessageBox.warning(self, "Mark as Bad", f"Could not rename file:\n{e}")
+            return False
+        patterns = self.context.settings.get_bad_file_patterns().split("|")
+        if not any(fnmatch.fnmatch(new_name.lower(), p) for p in patterns):
+            QMessageBox.warning(
+                self, "Mark as Bad",
+                f"The file was renamed to:\n{new_name}\n\n"
+                f"However, your current bad-file filter pattern ({self.context.settings.get_bad_file_patterns()!r}) "
+                f"does not match this name. The file will be re-imported on the next library scan.\n\n"
+                f"Go to Settings and add a pattern that matches 'bad*' to prevent this."
+            )
+        with self.context.database.bind_ctx(CORE_MODELS):
+            file.delete_instance()
+        self.data_model.removeRow(model_row)
+        self.total_files -= 1
+        if self.search_criteria.is_empty():
+            self.set_title(f"{self.total_files} files (All)")
+        else:
+            self.set_title(f"{self.total_files} files [{str(self.search_criteria)}]")
+        return True
 
     def on_item_double_clicked(self, index):
         """Handle double-click on an item in the data view."""
