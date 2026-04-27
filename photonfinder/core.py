@@ -347,6 +347,18 @@ class Settings:
     def set_use_internal_viewer(self, value: bool):
         self.settings.setValue("use_internal_viewer", value)
 
+    def get_compress_parallelism(self) -> int:
+        return self.settings.value('compress_parallelism', 2, int)
+
+    def set_compress_parallelism(self, value: int):
+        self.settings.setValue('compress_parallelism', value)
+
+    def get_compress_level(self) -> int:
+        return self.settings.value('compress_level', 9, int)
+
+    def set_compress_level(self, value: int):
+        self.settings.setValue('compress_level', value)
+
     def sync(self):
         """Ensure settings are saved to disk."""
         self.settings.setValue("known_fits_keywords", "|".join(self.known_fits_keywords))

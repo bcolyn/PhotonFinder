@@ -107,6 +107,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionShow_Details.triggered.connect(self.show_file_details)
         self.actionSelect_path.triggered.connect(self.select_path_in_tree)
         self.actionPlate_solve_files.triggered.connect(self.plate_solve_files)
+        self.actionCompress_files.triggered.connect(self.compress_files)
         self.actionList_Files.triggered.connect(self.report_list_files)
         self.actionHeader_Text.triggered.connect(self.add_header_text_filter)
         self.actionMetadata_Report.triggered.connect(self.report_metadata)
@@ -532,6 +533,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def plate_solve_files(self):
         self.get_current_search_panel().plate_solve_files()
+
+    def compress_files(self):
+        self.get_current_search_panel().compress_files()
 
     def report_list_files(self):
         """

@@ -1,11 +1,18 @@
+import bz2
+import gzip
 import logging
+import lzma
+import os
 import sys
 from pathlib import Path
 from typing import Iterable
+from unittest.mock import patch
 
+import pytest
 from astropy.io.fits import Header
 
-from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_xisf_dict
+from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_xisf_dict, \
+    compress_file
 from photonfinder.models import LibraryRoot, File, Image, FitsHeader
 from photonfinder.filesystem import update_fits_header_cache, check_missing_header_cache
 from photonfinder.fits_handlers import normalize_fits_header, NINAHandler, _normalize_image_type
@@ -203,3 +210,82 @@ def test_header_from_xisf_dict():
     assert reloaded_header.get("OBJECT") == "D183MC_WB5050"
     for card1, card2 in zip(header.cards, reloaded_header.cards):
         assert card1.image == card2.image
+
+
+class TestCompressFile:
+
+    @pytest.mark.parametrize("ext,open_fn", [
+        (".bz2", bz2.open),
+        (".gz",  gzip.open),
+        (".xz",  lzma.open),
+    ])
+    def test_round_trip(self, tmp_path, ext, open_fn):
+        data = b"SIMPLE  =                    T" + b"\x00" * 200
+        src = tmp_path / "test.fits"
+        src.write_bytes(data)
+
+        dest_path, new_size = compress_file(str(src), ext, verify=False)
+
+        assert dest_path == str(src) + ext
+        assert not src.exists()
+        assert new_size == os.path.getsize(dest_path)
+        with open_fn(dest_path, "rb") as f:
+            assert f.read() == data
+
+    def test_mtime_preserved(self, tmp_path):
+        src = tmp_path / "test.fits"
+        src.write_bytes(b"\x00" * 512)
+        mtime = src.stat().st_mtime
+
+        dest_path, _ = compress_file(str(src), ".bz2", verify=False)
+
+        assert os.path.getmtime(dest_path) == pytest.approx(mtime, abs=1)
+
+    def test_verify_passes(self, tmp_path):
+        src = tmp_path / "test.fits"
+        src.write_bytes(b"\x00" * 1024)
+
+        dest_path, _ = compress_file(str(src), ".bz2", verify=True)
+
+        assert os.path.exists(dest_path)
+        assert not src.exists()
+
+    def test_verify_failure_raises_and_cleans_up(self, tmp_path):
+        src = tmp_path / "test.fits"
+        data = b"\x00" * 512
+        src.write_bytes(data)
+        dest_path = str(src) + ".bz2"
+
+        # Lie about the original size so the byte count can't match.
+        with patch("photonfinder.filesystem.os.path.getsize", return_value=len(data) + 1):
+            with pytest.raises(ValueError, match="Verification failed"):
+                compress_file(str(src), ".bz2", verify=True)
+
+        assert not os.path.exists(dest_path)  # partial output cleaned up
+        assert src.exists()                   # original untouched
+
+    @pytest.mark.parametrize("level", [1, 9])
+    def test_level_affects_output_size(self, tmp_path, level):
+        # Compressible data where level makes a measurable difference.
+        data = (b"ABCDEFGH" * 256) * 8
+        src = tmp_path / f"test_l{level}.fits"
+        src.write_bytes(data)
+
+        dest_path, new_size = compress_file(str(src), ".bz2", verify=False, level=level)
+
+        assert new_size == os.path.getsize(dest_path)
+        with bz2.open(dest_path, "rb") as f:
+            assert f.read() == data
+
+    def test_level_9_smaller_than_level_1(self, tmp_path):
+        data = (b"ABCDEFGH" * 256) * 8
+        for level in (1, 9):
+            src = tmp_path / f"test_l{level}.fits"
+            src.write_bytes(data)
+
+        sizes = {}
+        for level in (1, 9):
+            src = tmp_path / f"test_l{level}.fits"
+            _, sizes[level] = compress_file(str(src), ".bz2", verify=False, level=level)
+
+        assert sizes[9] <= sizes[1]

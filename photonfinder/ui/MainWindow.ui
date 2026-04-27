@@ -115,6 +115,7 @@
     <addaction name="actionShow_Details"/>
     <addaction name="separator"/>
     <addaction name="action_Export_Data"/>
+    <addaction name="actionCompress_files"/>
     <addaction name="actionPlate_solve_files"/>
     <addaction name="separator"/>
     <addaction name="actionFind_matching_darks"/>
@@ -434,6 +435,11 @@
   <action name="actionPlate_solve_files">
    <property name="text">
     <string>Plate Solve…</string>
+   </property>
+  </action>
+  <action name="actionCompress_files">
+   <property name="text">
+    <string>Compress Files…</string>
    </property>
   </action>
   <action name="actionList_Files">

@@ -5,6 +5,7 @@ import json
 import logging
 import lzma
 import os
+import shutil
 import typing
 from logging import log, INFO, DEBUG, ERROR, WARN
 from pathlib import Path
@@ -271,6 +272,43 @@ def possible_compressed_variants(filename: str):
     for ext in compressed_exts.keys():
         variants.add(basename + ext)
     return list(variants)
+
+
+def is_compressible(name: str) -> bool:
+    """True for uncompressed FITS files that can be externally compressed."""
+    return Importer.is_fits_by_name(name) and not is_compressed(name)
+
+
+def compress_file(src_path: str, ext: str, verify: bool, level: int = 9) -> tuple[str, int]:
+    """Compress *src_path* in-place using the compression format identified by *ext*.
+
+    Writes <src_path>+ext, optionally verifies the round-trip byte count,
+    preserves mtime, deletes the original, and returns (dest_path, compressed_size).
+    Raises ValueError on verification failure (compressed file is cleaned up).
+    """
+    open_fn = compressed_exts[ext]
+    dest_path = src_path + ext
+    write_kwargs = {'preset': level} if ext == '.xz' else {'compresslevel': level}
+
+    with open(src_path, 'rb') as src, open_fn(dest_path, 'wb', **write_kwargs) as dst:
+        shutil.copyfileobj(src, dst)
+
+    if verify:
+        original_size = os.path.getsize(src_path)
+        read_back = 0
+        with open_fn(dest_path, 'rb') as f:
+            while chunk := f.read(65536):
+                read_back += len(chunk)
+        if read_back != original_size:
+            os.unlink(dest_path)
+            raise ValueError(
+                f"Verification failed: decompressed {read_back} bytes, "
+                f"expected {original_size}")
+
+    shutil.copystat(src_path, dest_path)
+    new_size = os.path.getsize(dest_path)
+    os.unlink(src_path)
+    return dest_path, new_size
 
 
 class Importer:

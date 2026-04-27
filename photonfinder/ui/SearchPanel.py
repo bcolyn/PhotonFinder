@@ -13,7 +13,7 @@ from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext, decompress, Change
-from photonfinder.filesystem import Importer, header_from_xisf_dict, parse_FITS_header
+from photonfinder.filesystem import Importer, is_compressed, is_compressible, header_from_xisf_dict, parse_FITS_header
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
     FileWCS, ProjectFile, LibraryRoot
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
@@ -586,6 +586,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         show_header_action = menu.addAction("Show details")
         menu.addSeparator()
         export_action = menu.addAction("Export files")
+        compress_action = menu.addAction("Compress files")
         menu.addSeparator()
         find_darks_action = menu.addAction("Find matching darks")
         find_flats_action = menu.addAction("Find matching flats")
@@ -630,6 +631,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             find_darks_action.setEnabled(False)
             find_flats_action.setEnabled(False)
 
+        compress_action.setEnabled(
+            selected_file is not None and is_compressible(selected_file.name)
+        )
+
         # Show the menu and get the selected action
         action = menu.exec(self.dataView.viewport().mapToGlobal(position))
 
@@ -645,6 +650,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.show_file_details(index)
         elif action == export_action:
             self.export_data()
+        elif action == compress_action:
+            self.compress_files()
         elif action == find_darks_action:
             if self.mainWindow:
                 self.mainWindow.find_matching_darks()
@@ -1181,6 +1188,19 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # Pass the search criteria instead of loading all files
         from .ExportDialog import ExportDialog
         dialog = ExportDialog(self.context, self.search_criteria, selected_files, parent=self)
+        dialog.exec()
+
+    def compress_files(self):
+        from .CompressFilesDialog import CompressFilesDialog
+        selected = self.get_selected_files()
+        if selected:
+            dialog = CompressFilesDialog(
+                context=self.context, files=selected, search_criteria=None, parent=self)
+        else:
+            dialog = CompressFilesDialog(
+                context=self.context, files=None, search_criteria=self.search_criteria, parent=self)
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.compression_complete.connect(self.refresh_data_grid)
         dialog.exec()
 
     def _set_combo_value(self, combo: QComboBox, value: str | None):
