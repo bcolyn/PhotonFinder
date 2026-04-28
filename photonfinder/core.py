@@ -314,6 +314,18 @@ class Settings:
     def set_last_export_override_platesolve(self, value: bool):
         self.settings.setValue("last_export_override_platesolve", value)
 
+    def get_last_export_use_master(self):
+        return self.settings.value("last_export_use_master", False, bool)
+
+    def set_last_export_use_master(self, value: bool):
+        self.settings.setValue("last_export_use_master", value)
+
+    def get_last_export_shared_session(self) -> bool:
+        return self.settings.value("last_export_shared_session", False, bool)
+
+    def set_last_export_shared_session(self, value: bool):
+        self.settings.setValue("last_export_shared_session", value)
+
     def set_last_export_custom_headers(self, value: str):
         self.settings.setValue("last_export_custom_headers", value)
 
@@ -358,6 +370,13 @@ class Settings:
 
     def set_compress_level(self, value: int):
         self.settings.setValue('compress_level', value)
+
+    def get_obs_timezone(self) -> str:
+        """Get the configured observatory timezone name (e.g. 'Europe/Brussels'). Empty = system default."""
+        return self.settings.value('obs_timezone', '', str)
+
+    def set_obs_timezone(self, value: str):
+        self.settings.setValue('obs_timezone', value)
 
     def sync(self):
         """Ensure settings are saved to disk."""

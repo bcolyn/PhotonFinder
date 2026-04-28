@@ -7,6 +7,8 @@ datas = [('icon.png', '.')]
 datas += copy_metadata('xisf')
 datas += collect_data_files('astroquery')
 datas += collect_data_files('photutils')
+datas += collect_data_files('timezonefinder')
+datas += collect_data_files('tzdata')
 
 block_cipher = None
 

@@ -200,6 +200,32 @@
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="observatory_group">
+     <property name="title">
+      <string>Observatory</string>
+     </property>
+     <layout class="QVBoxLayout" name="observatory_layout">
+      <item>
+       <widget class="QLabel" name="obs_tz_label">
+        <property name="text">
+         <string>Timezone:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="obs_timezone_edit">
+        <property name="toolTip">
+         <string>IANA timezone name used to map UTC capture times to local observing nights (e.g. Europe/Brussels). Leave blank to use the system timezone.</string>
+        </property>
+        <property name="placeholderText">
+         <string>e.g. Europe/Brussels — leave blank for system default</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Orientation::Vertical</enum>

@@ -32,6 +32,8 @@ dependencies = [
     "psutil~=7.2.0",
     "requests~=2.33.0",
     "opencv-python~=4.13.0.92",
+    "timezonefinder>=6.0.0",
+    "tzdata",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +43,6 @@ dev = [
     "pytest-qt>=4.2.0",
     "pytest-mock>=3.10.0",
     "pytest-cov>=4.1.0",
-    "tzdata",
     "huggingface-hub>=0.27.0",
 ]
 build = [

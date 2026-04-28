@@ -54,6 +54,8 @@ class SearchCriteria:
     project: 'Project' = None
     sorting_index: int | None = None
     sorting_desc: bool = True
+    exposure_tolerance: float | None = None   # ±seconds; None = exact match
+    temperature_tolerance: float | None = None  # ±°C; None = exact match
 
     def is_empty(self):
         return self == SearchCriteria()
@@ -96,13 +98,13 @@ class SearchCriteria:
 
         criteria.type = "DARK"
 
-        reference_file = reference_frame.file
-        reference_file.image = reference_frame
-        criteria.reference_file = reference_file
+        if reference_file := reference_frame.file:
+            reference_file.image = reference_frame
+            criteria.reference_file = reference_file
         return criteria
 
     @classmethod
-    def find_flat(cls, reference_frame: 'Image') -> 'SearchCriteria':
+    def find_flat(cls, reference_frame: 'Image', timedelta_days=7) -> 'SearchCriteria':
         criteria = cls()
         if reference_frame.camera:
             criteria.camera = str(reference_frame.camera)
@@ -111,13 +113,94 @@ class SearchCriteria:
         if reference_frame.binning:
             criteria.binning = str(reference_frame.binning)
         if reference_frame.date_obs:
-            criteria.start_datetime = reference_frame.date_obs - timedelta(days=1)
-            criteria.end_datetime = reference_frame.date_obs + timedelta(days=1)
+            criteria.start_datetime = reference_frame.date_obs - timedelta(days=timedelta_days)
+            criteria.end_datetime = reference_frame.date_obs + timedelta(days=timedelta_days)
         criteria.type = "FLAT"
 
-        reference_file = reference_frame.file
-        reference_file.image = reference_frame
-        criteria.reference_file = reference_file
+        if reference_file := reference_frame.file:
+            reference_file.image = reference_frame
+            criteria.reference_file = reference_file
+        return criteria
+
+    @classmethod
+    def find_bias(cls, reference_frame: 'Image') -> 'SearchCriteria':
+        criteria = cls()
+        if reference_frame.camera:
+            criteria.camera = str(reference_frame.camera)
+        if reference_frame.gain:
+            criteria.gain = str(reference_frame.gain)
+        if reference_frame.binning:
+            criteria.binning = str(reference_frame.binning)
+        if reference_frame.offset:
+            criteria.offset = int(reference_frame.offset)
+        # note: bias should be temperature-independent, so don't match thatfor
+        criteria.type = "BIAS"
+        if reference_file := reference_frame.file:
+            reference_file.image = reference_frame
+            criteria.reference_file = reference_file
+        return criteria
+
+    @classmethod
+    def find_dark_flat(cls, flat_frame: 'Image') -> 'SearchCriteria':
+        """Find DarkFlat frames matching a given FLAT frame."""
+        return SearchCriteria.find_dark(flat_frame)
+
+    @classmethod
+    def find_light(cls, reference_frame: 'Image') -> 'SearchCriteria':
+        """Find LIGHT frames matching camera, filter, binning, and object."""
+        criteria = cls()
+        if reference_frame.camera:
+            criteria.camera = str(reference_frame.camera)
+        if reference_frame.filter:
+            criteria.filter = str(reference_frame.filter)
+        if reference_frame.binning:
+            criteria.binning = str(reference_frame.binning)
+        if reference_frame.object_name:
+            criteria.object_name = str(reference_frame.object_name)
+        criteria.type = "LIGHT"
+        if reference_file := reference_frame.file:
+            reference_file.image = reference_frame
+            criteria.reference_file = reference_file
+        return criteria
+
+    @classmethod
+    def find_master(cls, subs: list['Image'],
+                    margin: timedelta = timedelta(minutes=5)) -> 'SearchCriteria':
+        """Find master calibration frames for a set of sub calibration frames. Relies on the stacking software
+        propagating some header values from the subs to the integrated master.
+        """
+        if not subs:
+            return cls()
+        ref = subs[0]
+        itype = (ref.image_type or "").upper()
+        _finders = {
+            "DARK": cls.find_dark,
+            "FLAT": cls.find_flat,
+            "BIAS": cls.find_bias,
+            "LIGHT": cls.find_light,
+        }
+        finder = _finders.get(itype)
+        if finder is None:
+            return cls()
+        criteria = finder(ref)
+        criteria.type = f"MASTER {itype}"
+
+        # Stacking software does not propagate these to the master frames
+        criteria.temperature = None
+        criteria.temperature_tolerance = None
+        criteria.offset = None
+        criteria.gain = None # For MASTER DARK, it seems these are missing sometimes
+
+        # date_obs is assumed to be preserved, and the main link on how to find a master from its subs
+        # date_obs point to the start of the "observation" so for an integration it is the date_obs of the
+        # earliest sub, give or take a bit of rounding.
+        dates = [s.date_obs for s in subs if s.date_obs is not None]
+        if dates:
+            criteria.start_datetime = min(dates) - margin
+            criteria.end_datetime = min(dates) + margin
+        else:
+            criteria.start_datetime = None
+            criteria.end_datetime = None
         return criteria
 
     @staticmethod
@@ -369,7 +452,11 @@ class Image(Model):
         if criteria.exposure and exclude_ref is not Image.exposure:
             try:
                 exp = float(criteria.exposure)
-                conditions.append(Image.exposure == exp)
+                if criteria.exposure_tolerance is not None:
+                    tol = criteria.exposure_tolerance
+                    conditions.append(Image.exposure.between(exp - tol, exp + tol))
+                else:
+                    conditions.append(Image.exposure == exp)
             except (ValueError, TypeError):
                 pass
 
@@ -400,7 +487,11 @@ class Image(Model):
         if criteria.temperature and exclude_ref is not Image.set_temp:
             try:
                 temp_val = float(criteria.temperature)
-                conditions.append(Image.set_temp == temp_val)
+                if criteria.temperature_tolerance is not None:
+                    tol = criteria.temperature_tolerance
+                    conditions.append(Image.set_temp.between(temp_val - tol, temp_val + tol))
+                else:
+                    conditions.append(Image.set_temp == temp_val)
             except (ValueError, TypeError):
                 pass
 

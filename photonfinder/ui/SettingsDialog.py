@@ -22,6 +22,8 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
 
         self.internal_viewer_check.setChecked(self.context.settings.get_use_internal_viewer())
 
+        self.obs_timezone_edit.setText(self.context.settings.get_obs_timezone())
+
         self.astap_browse_button.clicked.connect(self.browse_astap_executable)
 
     def browse_astap_executable(self):
@@ -49,6 +51,8 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.context.settings.set_bad_dir_patterns(self.folder_ignore_edit.text())
 
         self.context.settings.set_use_internal_viewer(self.internal_viewer_check.isChecked())
+
+        self.context.settings.set_obs_timezone(self.obs_timezone_edit.text().strip())
 
         self.context.settings.sync()
         super(SettingsDialog, self).accept()

@@ -1175,7 +1175,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if not selected_files:
             # Get the total number of files matching the current filters
             # If there are too many files, ask for confirmation
-            if self.total_files > 100:
+            if self.total_files > 400:
                 response = QMessageBox.question(
                     self,
                     "Export Confirmation",
@@ -1188,7 +1188,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # Pass the search criteria instead of loading all files
         from .ExportDialog import ExportDialog
         dialog = ExportDialog(self.context, self.search_criteria, selected_files, parent=self)
-        dialog.exec()
+        dialog.show()
 
     def compress_files(self):
         from .CompressFilesDialog import CompressFilesDialog
