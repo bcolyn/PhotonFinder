@@ -80,7 +80,7 @@ def template_filename(file: File, template: string.Template, settings: Settings,
         'set_temp': image.set_temp if image else None,
         'telescope': image.telescope if image else None,
         'object_name': image.object_name if image else None,
-        'date_obs': image.date_obs.isoformat() if image else None
+        'date_obs': image.date_obs.isoformat() if image and image.date_obs else None
     }
     if image and image.date_obs:
         mapping['date_minus12'] = session_date_for(image.date_obs).isoformat()
