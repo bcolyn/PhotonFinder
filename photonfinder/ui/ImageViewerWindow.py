@@ -4,12 +4,13 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import Qt, Signal, QThread, QTimer
-from PySide6.QtGui import QColor, QImage, QPixmap, QPainter
+from PySide6.QtCore import Qt, Signal, QThread, QTimer, QRectF, QPointF
+from PySide6.QtGui import QColor, QImage, QPixmap, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
-    QToolBar, QLabel, QCheckBox, QDoubleSpinBox, QComboBox, QPushButton,
-    QStatusBar,
+    QGraphicsObject, QToolBar, QLabel, QCheckBox, QDoubleSpinBox, QComboBox, QPushButton,
+    QStatusBar, QMessageBox, QSplitter, QTreeWidget, QTreeWidgetItem, QAbstractItemView,
+    QHeaderView,
 )
 
 from photonfinder.models import File
@@ -112,13 +113,7 @@ class ProcessWorker(QThread):
 
             if img_type in ('mono', 'bayer') and self.debayer_on and self.pattern:
                 data = debayer_opencv(data, self.pattern)
-                img_type = 'rgb'
             t1 = time.perf_counter()
-
-            # FITS is stored bottom-up; flip after debayering so BAYERPAT is applied correctly
-            if self.is_fits:
-                data = np.flip(data, axis=-2).copy()
-            t2 = time.perf_counter()
 
             stretch_params = None
             if self.stretch_on:
@@ -137,14 +132,86 @@ class ProcessWorker(QThread):
             t3 = time.perf_counter()
 
             logger.debug(
-                "debayer %.0fms  flip %.0fms  stretch %.0fms  total %.0fms",
-                (t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000, (t3 - t0) * 1000,
+                "debayer %.0fms  stretch %.0fms  total %.0fms",
+                (t1 - t0) * 1000, (t3 - t1) * 1000, (t3 - t0) * 1000,
             )
 
             self.result.emit(display, data, stretch_params)
         except Exception as exc:
             logger.error("Error processing image: %s", exc, exc_info=True)
             self.error.emit(str(exc))
+
+
+class CatalogAnnotationItem(QGraphicsObject):
+    """Overlay marker for a single catalog object — ellipse or crosshair tickmark."""
+    hovered   = Signal(object)
+    unhovered = Signal(object)
+    clicked   = Signal(object)
+
+    _PEN_NORMAL   = QPen(QColor(255, 200, 0), 1.5)
+    _PEN_HOVER    = QPen(QColor(255, 100, 0), 2.5)
+    _PEN_SELECTED = QPen(QColor(0, 200, 255), 2.5)
+    _TICK_LEN   = 10   # half-arm length of crosshair in scene pixels
+    _MIN_RADIUS = 4.0  # smallest ellipse semi-axis in scene pixels
+
+    def __init__(self, entry, scene_x: float, scene_y: float,
+                 semi_major_px: float, semi_minor_px: float, rotation_deg: float,
+                 parent=None):
+        super().__init__(parent)
+        self._entry = entry
+        self._semi_a = max(semi_major_px, self._MIN_RADIUS) if semi_major_px > 0 else 0.0
+        self._semi_b = max(semi_minor_px, self._MIN_RADIUS) if semi_major_px > 0 else 0.0
+        self._hovering = False
+        self._selected = False
+        self.setPos(scene_x, scene_y)
+        self.setRotation(rotation_deg)
+        self.setAcceptHoverEvents(True)
+        self.setZValue(10)
+
+    @property
+    def entry(self):
+        return self._entry
+
+    def boundingRect(self) -> QRectF:
+        pad = 4.0
+        if self._semi_a > 0:
+            a, b = self._semi_a + pad, self._semi_b + pad
+            return QRectF(-a, -b, 2 * a, 2 * b)
+        t = self._TICK_LEN + pad
+        return QRectF(-t, -t, 2 * t, 2 * t)
+
+    def set_selected(self, selected: bool):
+        self._selected = selected
+        self.update()
+
+    def paint(self, painter, option, widget=None):
+        if self._selected:
+            pen = self._PEN_SELECTED
+        elif self._hovering:
+            pen = self._PEN_HOVER
+        else:
+            pen = self._PEN_NORMAL
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        if self._semi_a > 0:
+            painter.drawEllipse(QRectF(-self._semi_a, -self._semi_b,
+                                        2 * self._semi_a, 2 * self._semi_b))
+        else:
+            t = float(self._TICK_LEN)
+            painter.drawLine(QPointF(-t, 0.0), QPointF(t, 0.0))
+            painter.drawLine(QPointF(0.0, -t), QPointF(0.0, t))
+
+    def hoverEnterEvent(self, event):
+        self._hovering = True
+        self.update()
+        self.hovered.emit(self)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self._hovering = False
+        self.update()
+        self.unhovered.emit(self)
+        super().hoverLeaveEvent(event)
 
 
 class ImageCanvas(QGraphicsView):
@@ -169,12 +236,21 @@ class ImageCanvas(QGraphicsView):
         self._fit_mode = True  # re-fit on resize until user manually zooms
 
     def set_pixmap(self, pixmap: QPixmap, image_w: int, image_h: int):
+        self.clear_annotations()
         if self._pixmap_item:
             self._scene.removeItem(self._pixmap_item)
         self._pixmap_item = self._scene.addPixmap(pixmap)
         self._scene.setSceneRect(self._pixmap_item.boundingRect())
         self._image_w = image_w
         self._image_h = image_h
+
+    def add_annotation(self, item: CatalogAnnotationItem):
+        self._scene.addItem(item)
+
+    def clear_annotations(self):
+        for item in list(self._scene.items()):
+            if isinstance(item, CatalogAnnotationItem):
+                self._scene.removeItem(item)
 
     def fit_in_view(self):
         if not self._pixmap_item:
@@ -204,6 +280,16 @@ class ImageCanvas(QGraphicsView):
         if self._fit_mode and self._pixmap_item:
             self.fitInView(self._pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            sp = self.mapToScene(event.pos())
+            for item in self._scene.items(sp):
+                if isinstance(item, CatalogAnnotationItem):
+                    item.clicked.emit(item)
+                    event.accept()
+                    return
+        super().mousePressEvent(event)
+
     def mouseMoveEvent(self, event):
         if self._pixmap_item:
             scene_pos = self.mapToScene(event.pos())
@@ -217,18 +303,20 @@ class ImageCanvas(QGraphicsView):
 class ImageViewerWindow(QMainWindow):
     """Single non-modal viewer window; MainWindow holds one reference."""
 
-    def __init__(self, parent=None):
+    def __init__(self, context=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Image Viewer")
         self.resize(1080, 720)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
+        self._context = context
+        self._current_file = None
         self._filename: str | None = None
         self._raw_uint16: np.ndarray | None = None
         self._header: dict = {}
         self._image_type: str = 'mono'
         self._is_fits: bool = True
-        self._display_src: np.ndarray | None = None  # post-debayer/flip uint16, for hover
+        self._display_src: np.ndarray | None = None  # post-debayer uint16, for hover
         self._display_buffer: np.ndarray | None = None  # keeps buffer alive for QImage
         self._fitted = False
         self._pending_process = False
@@ -259,6 +347,11 @@ class ImageViewerWindow(QMainWindow):
         self._debayer_override: bool | None = None
         self._pattern_override: str | None = None
 
+        # Annotation state
+        self._annotation_items: list = []
+        self._item_to_tree: dict = {}   # id(CatalogAnnotationItem) -> QTreeWidgetItem
+        self._tree_to_item: dict = {}   # id(QTreeWidgetItem) -> CatalogAnnotationItem
+
         # Loading / nav state
         self._is_loading: bool = False
         self._cursor_overridden: bool = False
@@ -268,6 +361,11 @@ class ImageViewerWindow(QMainWindow):
         self._last_btn: QPushButton | None = None
         self._preload_btn: QPushButton | None = None
         self._mark_bad_btn: QPushButton | None = None
+        self._plate_solve_btn: QPushButton | None = None
+        self._plate_solve_action = None   # QAction from addWidget — used for setVisible
+        self._annotate_btn: QPushButton | None = None
+        self._annotate_action = None      # QAction from addWidget — used for setVisible
+        self._metadata_btn: QPushButton | None = None
         self._preload_worker: PreloadWorker | None = None
 
         self._build_ui()
@@ -279,7 +377,28 @@ class ImageViewerWindow(QMainWindow):
     def _build_ui(self):
         self._canvas = ImageCanvas(self)
         self._canvas.pixel_hovered.connect(self._on_pixel_hover)
-        self.setCentralWidget(self._canvas)
+
+        self._catalog_tree = QTreeWidget()
+        self._catalog_tree.setHeaderLabels(["Object", "Mag", "Size"])
+        self._catalog_tree.setColumnCount(3)
+        self._catalog_tree.setMinimumWidth(160)
+        header = self._catalog_tree.header()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        self._catalog_tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._catalog_tree.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self._catalog_tree.itemClicked.connect(self._on_tree_item_clicked)
+        self._catalog_tree.setVisible(False)
+
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter.addWidget(self._catalog_tree)
+        self._splitter.addWidget(self._canvas)
+        self._splitter.setStretchFactor(0, 0)
+        self._splitter.setStretchFactor(1, 1)
+        self._splitter.setSizes([0, 10000])
+        self.setCentralWidget(self._splitter)
 
         # --- Navigation toolbar ---
         nav_tb = QToolBar("Navigation", self)
@@ -344,6 +463,27 @@ class ImageViewerWindow(QMainWindow):
             "Freeze the current stretch and apply it to subsequent images"
         )
         nav_tb.addWidget(self._lock_stretch_check)
+
+        nav_tb.addSeparator()
+
+        self._plate_solve_btn = QPushButton("Plate Solve")
+        self._plate_solve_btn.setToolTip("Plate-solve this image")
+        self._plate_solve_btn.clicked.connect(self._on_plate_solve)
+        self._plate_solve_action = nav_tb.addWidget(self._plate_solve_btn)
+        self._plate_solve_action.setVisible(False)
+
+        self._annotate_btn = QPushButton("Annotate")
+        self._annotate_btn.setToolTip("Annotate image with catalog objects")
+        self._annotate_btn.setCheckable(True)
+        self._annotate_btn.toggled.connect(self._on_annotate_toggled)
+        self._annotate_action = nav_tb.addWidget(self._annotate_btn)
+        self._annotate_action.setVisible(False)
+
+        self._metadata_btn = QPushButton("Metadata")
+        self._metadata_btn.setToolTip("Show FITS header metadata")
+        self._metadata_btn.setEnabled(False)
+        self._metadata_btn.clicked.connect(self._on_show_metadata)
+        nav_tb.addWidget(self._metadata_btn)
 
         # --- View toolbar (shares the top row when there is room) ---
         view_tb = QToolBar("View", self)
@@ -461,6 +601,8 @@ class ImageViewerWindow(QMainWindow):
         filename = file.full_filename()
         if not filename:
             return
+        self._current_file = file
+        self._update_solve_buttons()
         self._filename = filename
         self._is_fits = Importer.is_fits_by_name(filename)
         self._preserve_view = preserve_view
@@ -769,6 +911,248 @@ class ImageViewerWindow(QMainWindow):
             self._locked_stretch = None
 
     # ------------------------------------------------------------------
+    # Private: plate solve / annotate / metadata buttons
+    # ------------------------------------------------------------------
+
+    def _update_solve_buttons(self):
+        file = self._current_file
+        has_file = file is not None
+        is_solved = has_file and getattr(file, 'has_wcs', False)
+        has_context = self._context is not None
+        if self._plate_solve_action:
+            self._plate_solve_action.setVisible(has_file and has_context and not is_solved)
+        if self._annotate_action:
+            self._annotate_action.setVisible(bool(is_solved))
+        if self._metadata_btn:
+            self._metadata_btn.setEnabled(has_file and has_context)
+
+    def _on_plate_solve(self):
+        if self._current_file is None or self._context is None:
+            return
+        from photonfinder.models import SearchCriteria
+        from PySide6.QtCore import Qt
+        from .PlateSolveDialog import PlateSolveDialog
+        dialog = PlateSolveDialog(
+            context=self._context,
+            files=[self._current_file],
+            search_criteria=SearchCriteria(),
+            parent=self,
+        )
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.solving_complete.connect(self._on_plate_solve_complete)
+        dialog.show()
+
+    def _on_plate_solve_complete(self, task):
+        solved = set(task.solved_files)
+        if self._current_file and self._current_file in solved:
+            self._current_file.has_wcs = True
+        self._update_solve_buttons()
+        if self._nav_panel is not None:
+            self._nav_panel.on_files_solved(task)
+
+    def _on_annotate_toggled(self, checked: bool):
+        if checked:
+            self._on_annotate()
+        else:
+            self._clear_annotations()
+
+    def _on_annotate(self):
+        from astropy.io.fits import Header
+        from astropy.wcs import WCS
+        from astropy.wcs.utils import proj_plane_pixel_scales
+        import astropy.units as u
+        from astropy.coordinates import SkyCoord
+        from collections import defaultdict
+        from photonfinder.models import FileWCS, CatalogEntry, hp
+        from photonfinder.core import decompress
+
+        file = self._current_file
+        if not file or not self._context:
+            return
+
+        self._clear_annotations()
+
+        wcs_record = FileWCS.get_or_none(FileWCS.file == file)
+        if not wcs_record:
+            logger.warning("No WCS record found for current file")
+            return
+
+        wcs_header = Header.fromstring(decompress(wcs_record.wcs).decode())
+        naxis1 = wcs_header.get('NAXIS1', 0)
+        naxis2 = wcs_header.get('NAXIS2', 0)
+        if (not naxis1 or not naxis2) and self._raw_uint16 is not None:
+            naxis2, naxis1 = self._raw_uint16.shape[-2], self._raw_uint16.shape[-1]
+            logger.debug("WCS header missing NAXIS1/NAXIS2, using image shape %dx%d", naxis1, naxis2)
+        if not naxis1 or not naxis2:
+            logger.warning("Cannot determine image dimensions for annotation")
+            return
+
+        wcs = WCS(wcs_header)
+        wcs.array_shape = (naxis2, naxis1)
+
+        # Image centre in sky coordinates
+        cx, cy = (naxis1 - 1) / 2.0, (naxis2 - 1) / 2.0
+        center = wcs.pixel_to_world(cx, cy)
+
+        # Cone search radius = furthest corner from centre + 5% margin
+        corner_coords = wcs.pixel_to_world(
+            [0, naxis1 - 1, 0, naxis1 - 1],
+            [0, 0, naxis2 - 1, naxis2 - 1],
+        )
+        radius_deg = float(center.separation(corner_coords).max().deg) * 1.05
+
+        # Broad HEALPix candidate search
+        pixels = hp.cone_search_skycoord(center, radius_deg * u.deg)
+        candidates = (CatalogEntry
+                      .select()
+                      .where(CatalogEntry.healpix.in_(pixels.tolist()))
+                      .order_by(CatalogEntry.magnitude))
+
+        # Refine with exact WCS footprint
+        found = []
+        for obj in candidates:
+            coord = SkyCoord(obj.ra, obj.dec, unit=u.deg, frame='icrs')
+            if wcs.footprint_contains(coord):
+                found.append(obj)
+
+        if not found:
+            logger.info("No catalog objects found in image footprint")
+            self._clear_annotations()
+            return
+
+        # Pixel scale and north-angle for ellipse sizing and rotation
+        pixel_scales_deg = proj_plane_pixel_scales(wcs)
+        arcmin_per_px = pixel_scales_deg.mean() * 60.0
+        from photonfinder.annotation_math import cd_matrix, north_angle_scene, annotation_rotation
+        cd = cd_matrix(wcs)
+        _north = north_angle_scene(cd)
+
+        # Group by catalog and build tree + scene items
+        by_catalog: dict = defaultdict(list)
+        for obj in found:
+            by_catalog[obj.catalog].append(obj)
+
+        self._catalog_tree.setVisible(True)
+        self._splitter.setSizes([220, max(0, self._splitter.width() - 220)])
+
+        for catalog_name in sorted(by_catalog):
+            entries = by_catalog[catalog_name]
+            top_node = QTreeWidgetItem(self._catalog_tree,
+                                       [f"{catalog_name} ({len(entries)})", "", ""])
+            top_node.setExpanded(True)
+
+            for entry in entries:
+                sky = SkyCoord(entry.ra, entry.dec, unit=u.deg, frame='icrs')
+                fits_x, fits_y = wcs.world_to_pixel(sky)
+                if np.isnan(fits_x) or np.isnan(fits_y):
+                    continue
+                scene_x = float(fits_x)
+                scene_y = float(fits_y)
+
+                if entry.size > 0:
+                    semi_a = (entry.size / 2.0) / arcmin_per_px
+                    ratio  = entry.axis_ratio if entry.axis_ratio else 1.0
+                    semi_b = semi_a * ratio
+                    rotation = annotation_rotation(_north, entry.angle or 0.0, cd)
+                else:
+                    semi_a = semi_b = 0.0
+                    rotation = 0.0
+
+                mag_str  = f"{entry.magnitude:.1f}" if entry.magnitude is not None and entry.magnitude < 99 else ""
+                size_str = f"{entry.size:.1f}'" if entry.size else "pt"
+                child = QTreeWidgetItem(top_node, [entry.catalog_id, mag_str, size_str])
+
+                ann_item = CatalogAnnotationItem(
+                    entry, scene_x, scene_y, semi_a, semi_b, rotation,
+                )
+                ann_item.hovered.connect(self._on_annotation_hovered)
+                ann_item.unhovered.connect(self._on_annotation_unhovered)
+                ann_item.clicked.connect(self._on_annotation_clicked)
+                self._canvas.add_annotation(ann_item)
+
+                self._annotation_items.append(ann_item)
+                self._item_to_tree[id(ann_item)] = child
+                self._tree_to_item[id(child)] = ann_item
+
+        for col in range(self._catalog_tree.columnCount()):
+            self._catalog_tree.resizeColumnToContents(col)
+
+    def _clear_annotations(self):
+        self._canvas.clear_annotations()
+        self._annotation_items.clear()
+        self._item_to_tree.clear()
+        self._tree_to_item.clear()
+        self._catalog_tree.clear()
+        self._catalog_tree.setVisible(False)
+        self._splitter.setSizes([0, self._splitter.width()])
+
+    def _on_annotation_hovered(self, item):
+        tree_node = self._item_to_tree.get(id(item))
+        if tree_node:
+            self._catalog_tree.setCurrentItem(tree_node)
+            parent = tree_node.parent()
+            if parent:
+                parent.setExpanded(True)
+
+    def _on_annotation_unhovered(self, item):
+        tree_node = self._item_to_tree.get(id(item))
+        if tree_node and self._catalog_tree.currentItem() is tree_node:
+            self._catalog_tree.setCurrentItem(None)
+
+    def _on_annotation_clicked(self, item):
+        tree_node = self._item_to_tree.get(id(item))
+        if tree_node:
+            self._catalog_tree.setCurrentItem(tree_node)
+            self._catalog_tree.scrollToItem(
+                tree_node, QAbstractItemView.ScrollHint.EnsureVisible,
+            )
+            parent = tree_node.parent()
+            if parent:
+                parent.setExpanded(True)
+
+    def _on_tree_item_clicked(self, tree_node: QTreeWidgetItem, column: int):
+        ann_item = self._tree_to_item.get(id(tree_node))
+        for item in self._annotation_items:
+            item.set_selected(item is ann_item)
+        if ann_item:
+            self._canvas.centerOn(ann_item)
+
+    def _on_show_metadata(self):
+        if self._current_file is None or self._context is None:
+            return
+        import json
+        from PySide6.QtCore import Qt
+        from photonfinder.models import CORE_MODELS, FitsHeader, FileWCS
+        from photonfinder.filesystem import Importer, parse_FITS_header, header_from_xisf_dict
+        from photonfinder.core import decompress
+        from .HeaderDialog import HeaderDialog
+        file = self._current_file
+        with self._context.database.bind_ctx(CORE_MODELS):
+            try:
+                fits_header = FitsHeader.get(FitsHeader.file == file)
+                wcs = FileWCS.get_or_none(FileWCS.file == file)
+                header_bytes = decompress(fits_header.header)
+                if Importer.is_fits_by_name(file.name):
+                    header = parse_FITS_header(header_bytes)
+                else:
+                    header_dict = json.loads(header_bytes.decode('utf-8'))
+                    header = header_from_xisf_dict(header_dict)
+                wcs_header = None
+                if wcs:
+                    wcs_header = parse_FITS_header(decompress(wcs.wcs))
+                dialog = HeaderDialog(header, wcs_header, parent=self)
+                dialog.setAttribute(Qt.WA_DeleteOnClose)
+                dialog.setWindowFlags(Qt.Window)
+                dialog.show()
+            except FitsHeader.DoesNotExist:
+                QMessageBox.information(
+                    self, "No Cached Header", f"No cached header found for file: {file.name}"
+                )
+            except Exception as e:
+                logger.error(e, exc_info=True)
+                QMessageBox.critical(self, "Error", f"Error reading cached header: {str(e)}")
+
+    # ------------------------------------------------------------------
     # Private: loading pipeline
     # ------------------------------------------------------------------
 
@@ -884,6 +1268,11 @@ class ImageViewerWindow(QMainWindow):
             self._run_processing()
 
     def _on_processed(self, display_uint8: np.ndarray, src_uint16: np.ndarray, stretch_params):
+        self._clear_annotations()
+        if self._annotate_btn and self._annotate_btn.isChecked():
+            self._annotate_btn.blockSignals(True)
+            self._annotate_btn.setChecked(False)
+            self._annotate_btn.blockSignals(False)
         self._display_src = src_uint16
         self._display_buffer = np.ascontiguousarray(display_uint8)
         if stretch_params is not None:

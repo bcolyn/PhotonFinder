@@ -116,3 +116,5 @@ For questions, issues, or feature requests, please:
 
 - ASTAP and Astrometry.net for plate solving capabilities
 - Telescopius for target list integration
+- OpenNGC for NGC/IC object database (see Mattia Verga https://github.com/mattiaverga/OpenNGC)
+- 

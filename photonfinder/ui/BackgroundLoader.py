@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Callable, List
@@ -15,6 +16,8 @@ from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeade
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
 from photonfinder.platesolver import SolverBase, get_image_center_coords, SolverHint, \
     has_been_plate_solved, extract_wcs_cards, SolverFailure, SolverError
+
+logger = logging.getLogger(__name__)
 
 
 class BackgroundLoaderBase(QObject):
@@ -487,6 +490,13 @@ class PlateSolveTask(FileProcessingTask):
                 file.image.coord_dec = dec
                 file.image.coord_pix256 = healpix
                 self.solved_files.append(file)
+                cd11 = solution.get('CD1_1') or solution.get('CDELT1') or 0
+                cd21 = solution.get('CD2_1', 0)
+                scale_arcsec = math.hypot(cd11, cd21) * 3600
+                logger.info(
+                    "Solved %s: RA=%.4f°  Dec=%.4f°  scale=%.2f\"/px",
+                    file.name, ra, dec, scale_arcsec,
+                )
                 self.message.emit(f"  ✓ Solved: RA {ra:.4f}°  Dec {dec:.4f}°")
         except SolverFailure as failure:
             if failure.log:
@@ -495,10 +505,11 @@ class PlateSolveTask(FileProcessingTask):
                         self.message.emit(str(i).strip())
                 else:
                     self.message.emit(failure.log)
+            logger.warning("Could not solve %s: %s", file.name, failure)
             _message_or_raise(f"Could not solve file {file.full_filename()}: {failure}", failure)
         except Exception as e:
             msg = f"Error solving file {file.full_filename()}: {e}"
-            logging.error(msg, exc_info=True)
+            logger.error(msg, exc_info=True)
             _message_or_raise(msg, e)
 
 

@@ -511,7 +511,7 @@
   </action>
   <action name="actionShow_Details">
    <property name="text">
-    <string>Show Details</string>
+    <string>Show Metadata</string>
    </property>
   </action>
  </widget>

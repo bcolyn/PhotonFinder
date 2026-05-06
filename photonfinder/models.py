@@ -704,3 +704,24 @@ class FileWCS(Model):
 
 
 CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS, Project, ProjectFile]
+
+
+class CatalogEntry(Model):
+    rowid = RowIDField()
+    ra = FloatField()
+    dec = FloatField()
+    catalog = TextField()
+    catalog_id = TextField()
+    canonical_id = TextField()
+    size = FloatField()
+    axis_ratio = FloatField(null=True)
+    angle = FloatField(null=True)
+    magnitude = FloatField()
+    healpix = IntegerField()
+
+    class Meta:
+        schema = 'catalog'
+        table_name = 'catalog_entry'
+
+
+CATALOG_MODELS = [CatalogEntry]

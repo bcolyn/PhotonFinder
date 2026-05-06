@@ -54,6 +54,9 @@ jobs:
       - name: Run tests
         run: uv run pytest tests/
 
+      - name: Build catalog database
+        run: uv run python scripts/build_catalog.py
+
       - name: Build with PyInstaller
         run: uv run --extra build pyinstaller --noconfirm photonfinder.spec
 

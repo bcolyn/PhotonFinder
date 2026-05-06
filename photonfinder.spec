@@ -3,7 +3,7 @@
 from PyInstaller.utils.hooks import copy_metadata
 from PyInstaller.utils.hooks import collect_data_files
 
-datas = [('icon.png', '.')]
+datas = [('icon.png', '.'), ('data/catalog.db', '.')]
 datas += copy_metadata('xisf')
 datas += collect_data_files('astroquery')
 datas += collect_data_files('photutils')

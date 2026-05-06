@@ -583,7 +583,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         open_action = menu.addAction("Open File")
         show_location_action = menu.addAction("Show location")
         select_path_action = menu.addAction("Select path")
-        show_header_action = menu.addAction("Show details")
+        show_header_action = menu.addAction("Show metadata")
         menu.addSeparator()
         export_action = menu.addAction("Export files")
         compress_action = menu.addAction("Compress files")

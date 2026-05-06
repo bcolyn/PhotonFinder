@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from abc import abstractmethod
 from enum import Enum
 from pathlib import Path
@@ -114,16 +115,31 @@ class ApplicationContext:
 
         self.settings.set_last_database_path(str(self.database_path))
         if self.database:
-            from .models import CORE_MODELS
+            from .models import CATALOG_MODELS, CORE_MODELS
             self.database.bind(CORE_MODELS, bind_refs=False, bind_backrefs=False)
             for model in CORE_MODELS:
                 model.create_table()
+            self.database.execute_sql(
+                "ATTACH DATABASE ? AS catalog", (self._catalog_path(),)
+            )
+            self.database.bind(CATALOG_MODELS, bind_refs=False, bind_backrefs=False)
 
     def set_status_reporter(self, status_reporter: StatusReporter) -> None:
         self.status_reporter = status_reporter
 
+    def _catalog_path(self) -> str:
+        if getattr(sys, 'frozen', False):
+            base = Path(sys._MEIPASS)
+        else:
+            base = Path(__file__).parent.parent / 'data'
+        return str(base / 'catalog.db')
+
     def close_database(self) -> None:
         if self.database:
+            try:
+                self.database.execute_sql("DETACH DATABASE catalog")
+            except Exception:
+                pass
             self.database.close()
             logging.info(f"Database closed: {self.database_path}")
             self.database = None

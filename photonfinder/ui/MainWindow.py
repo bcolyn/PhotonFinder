@@ -488,7 +488,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def view_image(self, file, panel=None, row: int = -1, rows: list[int] | None = None):
         """Open the file in the internal image viewer (single non-modal window)."""
         if self.image_viewer is None or not self.image_viewer.isVisible():
-            self.image_viewer = ImageViewerWindow(parent=self)
+            self.image_viewer = ImageViewerWindow(context=self.context, parent=self)
             self.image_viewer.destroyed.connect(
                 lambda: setattr(self, 'image_viewer', None)
             )
