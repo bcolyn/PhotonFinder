@@ -1006,7 +1006,7 @@ class ImageViewerWindow(QMainWindow):
         candidates = (CatalogEntry
                       .select()
                       .where(CatalogEntry.healpix.in_(pixels.tolist()))
-                      .order_by(CatalogEntry.magnitude))
+                      .order_by(CatalogEntry.magnitude.asc(nulls='last')))
 
         # Refine with exact WCS footprint
         found = []
@@ -1058,7 +1058,7 @@ class ImageViewerWindow(QMainWindow):
                     semi_a = semi_b = 0.0
                     rotation = 0.0
 
-                mag_str  = f"{entry.magnitude:.1f}" if entry.magnitude is not None and entry.magnitude < 99 else ""
+                mag_str  = f"{entry.magnitude:.1f}" if entry.magnitude is not None else ""
                 size_str = f"{entry.size:.1f}'" if entry.size else "pt"
                 child = QTreeWidgetItem(top_node, [entry.catalog_id, mag_str, size_str])
 

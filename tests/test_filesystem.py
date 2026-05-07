@@ -172,6 +172,11 @@ def test_read_read_xisf_header(global_test_data_dir):
     file_path = global_test_data_dir / "masterFlat_BIN-1_5496x3672_FILTER-LP_CFA_SESS-2020-04-11.xisf"
     header_bytes, header_dict = read_xisf_header(file_path)
     assert header_dict['INSTRUME'][0]['value'] == 'ZWO ASI183MC Pro'
+    # CFA = 1 channel: NAXIS=2, no NAXIS3
+    assert header_dict['NAXIS'][0]['value'] == '2'
+    assert header_dict['NAXIS1'][0]['value'] == '5496'
+    assert header_dict['NAXIS2'][0]['value'] == '3672'
+    assert 'NAXIS3' not in header_dict
 
     file_path = global_test_data_dir / "masterLight_BIN-1_1080x1920_EXPOSURE-10.00s_FILTER-LP_RGB.xisf"
     header_bytes, header_dict = read_xisf_header(file_path)
@@ -180,6 +185,11 @@ def test_read_read_xisf_header(global_test_data_dir):
     assert image is not None
     assert image.camera == "Seestar S50"
     assert image.object_name == 'NGC 2174'
+    # RGB = 3 channels: NAXIS=3, NAXIS3=3
+    assert header_dict['NAXIS'][0]['value'] == '3'
+    assert header_dict['NAXIS1'][0]['value'] == '1080'
+    assert header_dict['NAXIS2'][0]['value'] == '1920'
+    assert header_dict['NAXIS3'][0]['value'] == '3'
 
     file_path = global_test_data_dir / "linear.xisf"
     header_bytes, header_dict = read_xisf_header(file_path)

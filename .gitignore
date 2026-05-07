@@ -1,5 +1,6 @@
 generated/
 .idea/
+temp.py
 build/
 dist/
 __pycache__/

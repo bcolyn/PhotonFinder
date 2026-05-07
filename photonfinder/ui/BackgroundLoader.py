@@ -14,8 +14,9 @@ from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, ProjectFile, \
     Project
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
+from astropy.wcs import WCS
 from photonfinder.platesolver import SolverBase, get_image_center_coords, SolverHint, \
-    has_been_plate_solved, extract_wcs_cards, SolverFailure, SolverError
+    has_been_plate_solved, extract_wcs_cards, flip_wcs_vertical, SolverFailure, SolverError
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +258,16 @@ class ImageReindexWorker(BackgroundLoaderBase):
 
                         if not hasattr(header_record.file, 'filewcs') and has_been_plate_solved(header):
                             solution = extract_wcs_cards(header)
+                            if Importer.is_xisf_by_name(header_record.file.name):
+                                naxis2 = solution.get('NAXIS2')
+                                wcs_obj = flip_wcs_vertical(WCS(solution), naxis2)
+                                flipped = wcs_obj.to_header(relax=True)
+                                for k in ('NAXIS', 'NAXIS1', 'NAXIS2'):
+                                    if k in solution:
+                                        flipped[k] = solution[k]
+                                solution = flipped
+                            from photonfinder.platesolver import stamp_wcs_origin
+                            stamp_wcs_origin(solution, "IMPORT")
                             wcs = FileWCS(file=header_record.file, wcs=compress(solution.tostring().encode()))
                             FileWCS.insert(wcs.__data__).on_conflict_ignore().execute()
                             setattr(header_record.file, 'filewcs', wcs)
@@ -268,10 +279,11 @@ class ImageReindexWorker(BackgroundLoaderBase):
                             if hasattr(header_record.file, 'filewcs'):
                                 wcs_str = decompress(header_record.file.filewcs.wcs)
                                 wcs_header = Header.fromstring(wcs_str)
-                                ra, dec, healpix = get_image_center_coords(wcs_header)
+                                ra, dec, healpix, radius = get_image_center_coords(wcs_header)
                                 image.coord_ra = ra
                                 image.coord_dec = dec
                                 image.coord_pix256 = healpix
+                                image.coord_radius = radius
                             new_images.append(image)
 
                         # Update progress periodically
@@ -469,26 +481,31 @@ class PlateSolveTask(FileProcessingTask):
 
         try:
             solution = None
+            used_solver = self.solver
             try:
                 solution = _try_solve(self.solver)
             except (SolverFailure, SolverError) as primary_error:
                 if self.backup_solver:
                     self.message.emit(f"  → {self._solver_name(self.solver)} failed ({primary_error}), trying {self._solver_name(self.backup_solver)}…")
                     solution = _try_solve(self.backup_solver)
+                    used_solver = self.backup_solver
                 else:
                     raise
 
             if solution:
+                from photonfinder.platesolver import stamp_wcs_origin
+                stamp_wcs_origin(solution, used_solver.wcs_origin)
                 self.context.status_reporter.update_status(f"Solved file {file.full_filename()}")
                 wcs = FileWCS(file=file, wcs=compress(solution.tostring().encode()))
                 FileWCS.insert(wcs.__data__).on_conflict_replace().execute()
-                ra, dec, healpix = get_image_center_coords(solution)
-                Image.update(coord_ra=ra, coord_dec=dec, coord_pix256=healpix
+                ra, dec, healpix, radius = get_image_center_coords(solution)
+                Image.update(coord_ra=ra, coord_dec=dec, coord_pix256=healpix, coord_radius=radius
                              ).where(Image.file == file).execute()
                 file.has_wcs = True
                 file.image.coord_ra = ra
                 file.image.coord_dec = dec
                 file.image.coord_pix256 = healpix
+                file.image.coord_radius = radius
                 self.solved_files.append(file)
                 cd11 = solution.get('CD1_1') or solution.get('CDELT1') or 0
                 cd21 = solution.get('CD2_1', 0)

@@ -115,6 +115,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionMetadata_Report.triggered.connect(self.report_metadata)
         self.actionTelescopius_List.triggered.connect(self.report_telescopius_list)
         self.actionTarget_List_Report.triggered.connect(self.report_targets)
+        self.actionCatalog_Report.triggered.connect(self.report_catalog)
         self.actionManage_Projects.triggered.connect(self.show_projects_window)
         self.menuAddToNearbyProject.aboutToShow.connect(self.populate_nearby_projects)
         self.menuAddToRecentProject.aboutToShow.connect(self.populate_recent_projects)
@@ -558,6 +559,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def report_targets(self):
         self.get_current_search_panel().report_targets()
+
+    def report_catalog(self):
+        self.get_current_search_panel().report_catalog()
 
     def enable_actions_for_current_tab(self):
         current_panel = self.get_current_search_panel()

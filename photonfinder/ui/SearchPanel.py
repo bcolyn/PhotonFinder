@@ -1250,6 +1250,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def apply_search_criteria(self, criteria: SearchCriteria):
         import copy
         self.search_criteria = copy.deepcopy(criteria)
+        self.update_in_progress = True
         if len(self.library_tree_model.loaded_library_roots) == 0:
             self.library_tree_model.library_roots_loader.library_roots_loaded.connect(self._apply_pending_path_criteria)
         else:
@@ -1259,7 +1260,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.checkBox.setChecked(criteria.paths_as_prefix)
 
         # Update combo boxes
-        self.update_in_progress = True
         if criteria.type is not None:
             self._set_combo_value(self.filter_type_combo, criteria.type)
         if criteria.filter is not None:
@@ -1345,6 +1345,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button = FilterButton(self, text, AdvancedFilter.PROJECT)
             filter_button.on_remove_filter.connect(self.reset_project_criteria)
             self.add_filter_button_control(filter_button)
+
+        self.update_search_criteria()
 
     def plate_solve_files(self):
         selected_files = self.get_selected_files()
@@ -1434,6 +1436,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         target_report_window = TargetObjectReportWindow(context=self.context, parent=self)
         target_report_window.setAttribute(Qt.WA_DeleteOnClose)
         target_report_window.show()
+
+    def report_catalog(self):
+        from .CatalogReportWindow import CatalogReportWindow
+        window = CatalogReportWindow(context=self.context, search_panel=self, parent=self.mainWindow)
+        window.setAttribute(Qt.WA_DeleteOnClose)
+        window.show()
 
     def add_no_project_filter(self):
         project = NO_PROJECT

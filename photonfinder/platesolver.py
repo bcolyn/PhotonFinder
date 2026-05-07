@@ -37,6 +37,18 @@ class SolverHint:
     mode: str = 'fallback'     # 'fallback' or 'override'
 
 
+_SOLVER_TYPE_ORIGIN = {
+    SolverType.ASTAP:          "ASTAP",
+    SolverType.ASTROMETRY_NET: "ASTROMETRY.NET",
+    SolverType.WSL_SOLVE_FIELD: "SOLVE-FIELD",
+}
+
+
+def stamp_wcs_origin(header, origin: str) -> None:
+    """Add a COMMENT card recording how the WCS solution was obtained."""
+    header.add_comment(f"WCS_ORIGIN={origin}")
+
+
 class SolverBase(metaclass=ABCMeta):
     keep_headers = {
         'CRPIX1', 'CRPIX2', 'CRVAL1', 'CRVAL2', 'CDELT1', 'CDELT2', 'CROTA1', 'CROTA2', 'CD1_1', 'CD1_2',
@@ -56,6 +68,15 @@ class SolverBase(metaclass=ABCMeta):
                 shutil.rmtree(self.tmp_dir)
         except Exception as e:
             logging.error(str(e), exc_info=True)
+
+    @property
+    @abstractmethod
+    def solver_type(self) -> SolverType:
+        pass
+
+    @property
+    def wcs_origin(self) -> str:
+        return _SOLVER_TYPE_ORIGIN[self.solver_type]
 
     @abstractmethod
     def solve(self, image_path, image=None, hint: SolverHint = None):
@@ -99,6 +120,10 @@ class ASTAPSolver(SolverBase):
     tmp_dir: str | None
     _exe: str
     _log: bool
+
+    @property
+    def solver_type(self) -> SolverType:
+        return SolverType.ASTAP
 
     def __init__(self, exe=get_default_astap_path()):
         super().__init__()
@@ -226,6 +251,10 @@ class ASTAPSolver(SolverBase):
 
 class AstrometryNetSolver(SolverBase):
 
+    @property
+    def solver_type(self) -> SolverType:
+        return SolverType.ASTROMETRY_NET
+
     def __init__(self, api_key: str, force_image_upload: bool = False):
         super().__init__()
         if not api_key:
@@ -261,6 +290,10 @@ def _to_wsl_path(path: Path) -> str:
 
 class WSLSolveFieldSolver(SolverBase):
     """Plate solver using astrometry.net's solve-field tool running under WSL."""
+
+    @property
+    def solver_type(self) -> SolverType:
+        return SolverType.WSL_SOLVE_FIELD
 
     def __init__(self, timeout: int = 300):
         super().__init__()
@@ -403,15 +436,22 @@ def get_image_center_coords(header):
     naxis1 = header.get('NAXIS1')
     naxis2 = header.get('NAXIS2')
     if naxis1 and naxis2:
-        coords = WCS(header).pixel_to_world((naxis1 - 1) / 2.0, (naxis2 - 1) / 2.0)
+        wcs = WCS(header)
+        coords = wcs.pixel_to_world((naxis1 - 1) / 2.0, (naxis2 - 1) / 2.0)
         ra = coords.ra.deg
         dec = coords.dec.deg
+        corners = wcs.pixel_to_world(
+            [0, naxis1 - 1, 0, naxis1 - 1],
+            [0, 0, naxis2 - 1, naxis2 - 1],
+        )
+        radius = float(coords.separation(corners).max().deg)
     else:
         ra = header.get("CRVAL1")
         dec = header.get("CRVAL2")
         coords = SkyCoord(ra, dec, unit=(u.deg, u.deg), frame='icrs')
+        radius = None
     healpix_index = int(hp.skycoord_to_healpix(coords))
-    return ra, dec, healpix_index
+    return ra, dec, healpix_index, radius
 
 
 def extract_wcs_cards(header):
@@ -444,6 +484,43 @@ def has_rotation(header):
     if all(k in header for k in ['CROTA1', 'CROTA2']):
         return header['CROTA1'] != 0 and header['CROTA2'] != 0
     return False
+
+
+def flip_wcs_vertical(wcs: WCS, naxis2: int) -> WCS:
+    """
+    Correct a WCS from PixInsight's ImageSolver for its inverted-Y convention.
+
+    PixInsight measures CRPIX from the top-left of the image (Y increases
+    downward), whereas the FITS/astropy convention measures from the
+    bottom-left (Y increases upward).  Apply this function to every WCS
+    object read from an XISF file before passing it to downstream code.
+    Do NOT apply it to WCS objects produced by ASTAP or solve-field.
+
+    Sample CD-matrix values (4656 x 3520 image, east-left orientation):
+        CD1_1 = -0.000168   CD1_2 = 0.0
+        CD2_1 =  0.0        CD2_2 = +0.000168
+        CRPIX1 = 2328.0     CRPIX2 = 1760.0
+        CRVAL1 = 83.82      CRVAL2 = -5.39
+    After the flip: CRPIX2 = 1761.0, CD2_2 = -0.000168.
+    """
+    from copy import deepcopy
+    result = deepcopy(wcs)
+    result.sip = None
+    result.wcs.crpix[1] = naxis2 + 1 - result.wcs.crpix[1]
+    if result.wcs.has_cd():
+        result.wcs.cd[:, 1] *= -1
+        cd = result.wcs.cd
+        cdelt1 = np.sign(cd[0, 0]) * np.sqrt(cd[0, 0] ** 2 + cd[1, 0] ** 2)
+        cdelt2 = np.sign(cd[1, 1]) * np.sqrt(cd[0, 1] ** 2 + cd[1, 1] ** 2)
+        rho_a = np.degrees(np.arctan2(cd[1, 0], cd[0, 0]))
+        rho_b = np.degrees(np.arctan2(-cd[0, 1], cd[1, 1]))
+        result.wcs.cdelt = [cdelt1, cdelt2]
+        result.wcs.crota = [(rho_a + rho_b) / 2.0] * 2
+    else:
+        result.wcs.pc[:, 1] *= -1
+        result.wcs.cdelt[1] *= -1
+    result.wcs.set()
+    return result
 
 
 def select_first_channel(data):

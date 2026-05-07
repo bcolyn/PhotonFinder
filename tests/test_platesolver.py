@@ -33,9 +33,10 @@ def test_solve_image_wcs(global_test_data_dir):
     assert wcs.has_celestial
     assert wcs.footprint_contains(reference_center)
 
-    ra, dec, healpix = get_image_center_coords(Header.fromstring(wcs_str))
+    ra, dec, healpix, radius = get_image_center_coords(Header.fromstring(wcs_str))
     assert reference_center.separation(SkyCoord(ra * u.deg, dec * u.deg, frame='icrs')) < 2 * u.arcsec
     assert healpix in reference_cone_pixels
+    assert 1.13 < radius < 1.14
 
 @pytest.mark.internet
 def test_solve_image_astrometry(global_test_data_dir):
@@ -44,9 +45,10 @@ def test_solve_image_astrometry(global_test_data_dir):
     wcs = WCS(Header.fromstring(wcs_str))
     assert wcs.has_celestial
     assert wcs.footprint_contains(reference_center)
-    ra, dec, healpix = get_image_center_coords(Header.fromstring(wcs_str))
+    ra, dec, healpix, radius = get_image_center_coords(Header.fromstring(wcs_str))
     assert reference_center.separation(SkyCoord(ra * u.deg, dec * u.deg, frame='icrs')) < 2 * u.arcsec
     assert healpix in reference_cone_pixels
+    assert radius is not None and 0.3 < radius < 3.0
 
 def test_solve_image_astrometry_offline():
     # file_path = global_test_data_dir / "M106_2020-03-17T024357_60sec_LP__-15C_frame11.fit.xz"
@@ -60,9 +62,11 @@ def test_solve_image_astrometry_offline():
     assert wcs.has_celestial
     assert wcs.footprint_contains(reference_center)
 
-    ra, dec, healpix = get_image_center_coords(header)
+    ra, dec, healpix, radius = get_image_center_coords(header)
     assert reference_center.separation(SkyCoord(ra * u.deg, dec * u.deg, frame='icrs')) < 2 * u.arcsec
     assert healpix in reference_cone_pixels
+    assert radius is not None
+    assert 1.13 < radius < 1.14
 
 @pytest.mark.slow
 @wsl_available
@@ -73,9 +77,10 @@ def test_solve_image_wsl(global_test_data_dir):
     assert wcs.has_celestial
     assert wcs.footprint_contains(reference_center)
 
-    ra, dec, healpix = get_image_center_coords(Header.fromstring(wcs_str))
+    ra, dec, healpix, radius = get_image_center_coords(Header.fromstring(wcs_str))
     assert reference_center.separation(SkyCoord(ra * u.deg, dec * u.deg, frame='icrs')) < 2 * u.arcsec
     assert healpix in reference_cone_pixels
+    assert 1.13 < radius < 1.14
 
 @pytest.mark.slow
 def test_solve_image_xisf(global_test_data_dir):
@@ -85,6 +90,44 @@ def test_solve_image_xisf(global_test_data_dir):
     assert wcs.has_celestial
     assert wcs.array_shape == (1920, 1080)
     assert wcs.footprint_contains(SkyCoord(6.1617 * 15 * u.deg, 20.5000 * u.deg, frame='icrs'))
+    ra, dec, healpix, radius = get_image_center_coords(Header.fromstring(wcs_str))
+    assert 0.70 < radius < 0.75
+
+
+def test_flip_wcs_vertical():
+    """Verify flip_wcs_vertical using the sample values from its docstring."""
+    h = Header()
+    h['NAXIS'] = 2
+    h['NAXIS1'] = 4656
+    h['NAXIS2'] = 3520
+    h['CTYPE1'] = 'RA---TAN'
+    h['CTYPE2'] = 'DEC--TAN'
+    h['CRVAL1'] = 83.82
+    h['CRVAL2'] = -5.39
+    h['CRPIX1'] = 2328.0
+    h['CRPIX2'] = 1760.0
+    h['CD1_1'] = -0.000168
+    h['CD1_2'] = 0.0
+    h['CD2_1'] = 0.0
+    h['CD2_2'] = +0.000168
+
+    naxis2 = 3520
+    original_crpix2 = 1760.0
+    original_wcs = WCS(h)
+    flipped = flip_wcs_vertical(original_wcs, naxis2)
+
+    # CD2_2 must be negative after flipping column 1 of the CD matrix
+    assert flipped.wcs.cd[1, 1] < 0
+
+    # CRPIX2 before and after must sum to naxis2 + 1
+    assert abs(original_crpix2 + flipped.wcs.crpix[1] - (naxis2 + 1)) < 1e-10
+
+    # Round-trip: pixel → world → pixel must recover the original coordinates
+    test_pixel = (1000.5, 2000.5)
+    sky = flipped.pixel_to_world(*test_pixel)
+    recovered = flipped.world_to_pixel(sky)
+    assert abs(recovered[0] - test_pixel[0]) < 1e-6
+    assert abs(recovered[1] - test_pixel[1]) < 1e-6
 
 
 def test_has_been_plate_solved():

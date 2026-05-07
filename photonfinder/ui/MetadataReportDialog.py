@@ -237,7 +237,7 @@ class MetadataReportDialog(QDialog, Ui_MetadataReportDialog):
 
         # Get Image model fields (excluding internal fields)
         image_fields = []
-        exclude_fields = {"file", "rowid", "coord_pix256"}
+        exclude_fields = {"file", "rowid", "coord_pix256", "coord_radius"}
         for field_name in Image._meta.fields:
             if not field_name.startswith('_') and field_name not in exclude_fields:
                 image_fields.append(f"Image.{field_name}")

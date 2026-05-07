@@ -5,7 +5,6 @@ import typing
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import cmp_to_key
-from idlelib.browser import file_open
 from pathlib import Path
 from typing import Optional
 
@@ -394,6 +393,7 @@ class Image(Model):
     coord_ra = FloatField(null=True, index=True)  # Right Ascension as floating point value
     coord_dec = FloatField(null=True, index=True)  # Declination as floating point value
     coord_pix256 = IntegerField(null=True, index=True)  # HEALPix value (nside=256)
+    coord_radius = FloatField(null=True)  # Half-diagonal of image FOV in degrees
 
     class Meta:
         database = None
@@ -726,7 +726,7 @@ class CatalogEntry(Model):
     size = FloatField()
     axis_ratio = FloatField(null=True)
     angle = FloatField(null=True)
-    magnitude = FloatField()
+    magnitude = FloatField(null=True)
     healpix = IntegerField()
 
     class Meta:

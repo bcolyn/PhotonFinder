@@ -60,7 +60,11 @@
             </widget>
            </item>
            <item>
-            <widget class="QLineEdit" name="filter_fname_text"/>
+            <widget class="QLineEdit" name="filter_fname_text">
+             <property name="clearButtonEnabled">
+              <bool>true</bool>
+             </property>
+            </widget>
            </item>
           </layout>
          </widget>
@@ -196,7 +200,11 @@
             </widget>
            </item>
            <item>
-            <widget class="QLineEdit" name="filter_name_text"/>
+            <widget class="QLineEdit" name="filter_name_text">
+             <property name="clearButtonEnabled">
+              <bool>true</bool>
+             </property>
+            </widget>
            </item>
           </layout>
          </widget>

@@ -168,7 +168,9 @@ class CalibrationMatcher:
         """Batch-load FITS header info for given files."""
         if not hasattr(self, 'context') or not files:
             return {}
+        import json
         from astropy.io.fits import Header as AstropyHeader
+        from photonfinder.filesystem import header_from_xisf_dict
         file_ids = [f.id for f in files if hasattr(f, 'id') and f.id is not None]
         if not file_ids:
             return {}
@@ -177,7 +179,11 @@ class CalibrationMatcher:
             with self.context.database.bind_ctx([FitsHeader]):
                 for fh in FitsHeader.select().where(FitsHeader.file_id.in_(file_ids)):
                     try:
-                        hdr = AstropyHeader.fromstring(decompress(fh.header))
+                        raw = decompress(fh.header)
+                        if raw.startswith(b'{'):
+                            hdr = header_from_xisf_dict(json.loads(raw))
+                        else:
+                            hdr = AstropyHeader.fromstring(raw)
                         result[fh.file_id] = _session_info_from_header(hdr)
                     except Exception:
                         pass

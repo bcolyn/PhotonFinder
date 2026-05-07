@@ -50,19 +50,22 @@ CREATE TABLE IF NOT EXISTS catalog_entry (
     size         REAL    NOT NULL,
     axis_ratio   REAL,
     angle        REAL,
-    magnitude    REAL    NOT NULL,
+    magnitude    REAL,
     healpix      INTEGER NOT NULL
 )
 """
 
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_healpix      ON catalog_entry (healpix)",
-    "CREATE INDEX IF NOT EXISTS idx_catalog_id   ON catalog_entry (catalog, catalog_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_catalog_id ON catalog_entry (catalog, catalog_id)",
     "CREATE INDEX IF NOT EXISTS idx_canonical_id ON catalog_entry (canonical_id)",
 ]
 
 # OpenNGC types to skip — stellar objects and invalid/duplicate entries
 _OPENNGC_SKIP_TYPES = {"*", "**", "*Ass", "Nova", "Dup", "NonEx"}
+
+# Catalogs sourced from dedicated VizieR CSVs; suppress their OpenNGC entries to avoid duplicates
+_OPENNGC_CATALOG_BLACKLIST = {"Barnard", "ESO", "PGC", "UGC", "H", "HCG", "MWSC", "Melotte"}
 
 
 def _healpix(ra_deg: float, dec_deg: float) -> int:
@@ -182,14 +185,16 @@ def load_openngc_csv(path: Path) -> list[tuple]:
 
             v_mag = _float_or_none(row.get("V-Mag", ""))
             b_mag = _float_or_none(row.get("B-Mag", ""))
-            # 99.0 sentinel for objects with no catalogued magnitude (e.g. nebulae)
-            magnitude = v_mag if v_mag is not None else (b_mag if b_mag is not None else 99.0)
+            magnitude = v_mag if v_mag is not None else b_mag
 
             pix = _healpix(ra, dec)
 
             def make_row(catalog, catalog_id, cid=canonical_id):
                 return (ra, dec, catalog, catalog_id, cid,
                         size, axis_ratio, angle, magnitude, pix)
+
+            if primary_catalog in _OPENNGC_CATALOG_BLACKLIST:
+                continue
 
             # Emit primary row unless it's a generic skip type.
             # Named-catalog entries (Messier/Caldwell by Name) always emit —
@@ -222,6 +227,13 @@ def load_generic_csv(path: Path) -> list[tuple]:
     rows: list[tuple] = []
 
     with path.open(newline="", encoding="utf-8") as f:
+        # Skip leading # comment lines before handing the stream to DictReader
+        while True:
+            pos = f.tell()
+            line = f.readline()
+            if not line.startswith("#"):
+                f.seek(pos)
+                break
         reader = csv.DictReader(f)
         for line_no, raw in enumerate(reader, start=2):
             row = {k.strip().lower(): v.strip() for k, v in raw.items()}
@@ -234,7 +246,7 @@ def load_generic_csv(path: Path) -> list[tuple]:
                 size = float(row["size"])
                 axis_ratio = _float_or_none(row.get("axis_ratio", ""))
                 angle = _float_or_none(row.get("angle", ""))
-                magnitude = float(row["magnitude"])
+                magnitude = _float_or_none(row.get("magnitude", "")) if "magnitude" in row else None
             except (KeyError, ValueError) as exc:
                 logging.warning(f"{path.name}:{line_no}: skipping — {exc}")
                 continue

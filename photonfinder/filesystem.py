@@ -12,6 +12,7 @@ from pathlib import Path
 
 import fs.path
 from astropy.io.fits import Header, Card
+from astropy.wcs.docstrings import naxis
 from fs.base import FS
 from fs.info import Info
 from peewee import JOIN
@@ -113,6 +114,18 @@ def read_xisf_header(file: str | Path, status_reporter: StatusReporter = None) -
         for meta in metas:
             if "FITSKeywords" in meta:
                 fits_keywords = meta["FITSKeywords"]
+                geometry = meta.get("geometry", ())
+                if len(geometry) >= 2:
+                    # geometry="dim1:...:dimN:channel-count" e.g. (8288, 5644, 1)
+                    channels = geometry[-1]
+                    if 'NAXIS' not in fits_keywords:
+                        fits_keywords['NAXIS'] = [{'value': '3' if channels > 1 else '2', 'comment': ''}]
+                    if 'NAXIS1' not in fits_keywords:
+                        fits_keywords['NAXIS1'] = [{'value': str(geometry[0]), 'comment': ''}]
+                    if 'NAXIS2' not in fits_keywords:
+                        fits_keywords['NAXIS2'] = [{'value': str(geometry[1]), 'comment': ''}]
+                    if channels > 1 and 'NAXIS3' not in fits_keywords:
+                        fits_keywords['NAXIS3'] = [{'value': str(channels), 'comment': ''}]
                 return json.dumps(fits_keywords).encode(), fits_keywords
     except Exception as e:
         log(WARN, f"Error reading XISF header from {file}: {str(e)}")
@@ -163,13 +176,24 @@ def _handle_file_metadata(file, status_reporter, settings):
             FitsHeader(file=file, header=compress(header_bytes)).save()
             header = header_from_xisf_dict(header_dict)
     if header is not None:
-        from photonfinder.platesolver import has_been_plate_solved, extract_wcs_cards
+        from photonfinder.platesolver import has_been_plate_solved, extract_wcs_cards, flip_wcs_vertical
+        from astropy.wcs import WCS
         settings.add_known_fits_keywords(header.keys())
         image = normalize_fits_header(file, header, status_reporter)
         if image is not None:
             Image.insert(image.__data__).on_conflict_replace().execute()
         if has_been_plate_solved(header):
+            from photonfinder.platesolver import stamp_wcs_origin
             solution = extract_wcs_cards(header)
+            if Importer.is_xisf_by_name(file.name):
+                naxis2 = solution.get('NAXIS2')
+                wcs_obj = flip_wcs_vertical(WCS(solution), naxis2)
+                flipped = wcs_obj.to_header(relax=True)
+                for k in ('NAXIS', 'NAXIS1', 'NAXIS2'):
+                    if k in solution:
+                        flipped[k] = solution[k]
+                solution = flipped
+            stamp_wcs_origin(solution, "IMPORT")
             wcs = FileWCS(file=file, wcs=compress(solution.tostring().encode()))
             FileWCS.insert(wcs.__data__).on_conflict_ignore().execute()
 

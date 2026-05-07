@@ -57,7 +57,18 @@ def register_udfs(db: SqliteDatabase):
 
     @db.func("decompress_header_value", 2)
     def db_decompress_header_value(value, header_key: str):
-        return Header.fromstring(decompress(value)).get(header_key, None)
+        import json
+        raw = decompress(value)
+        if raw.startswith(b'{'):
+            entries = json.loads(raw).get(header_key)
+            if not entries:
+                return None
+            val = entries[0].get('value')
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return val
+        return Header.fromstring(raw).get(header_key, None)
 
     @db.func("sky_distance", 4)
     def db_sky_distance(ra1, dec1, ra2, dec2):
@@ -119,9 +130,7 @@ class ApplicationContext:
             self.database.bind(CORE_MODELS, bind_refs=False, bind_backrefs=False)
             for model in CORE_MODELS:
                 model.create_table()
-            self.database.execute_sql(
-                "ATTACH DATABASE ? AS catalog", (self._catalog_path(),)
-            )
+            self.database.attach(self._catalog_path(), 'catalog')
             self.database.bind(CATALOG_MODELS, bind_refs=False, bind_backrefs=False)
 
     def set_status_reporter(self, status_reporter: StatusReporter) -> None:
@@ -137,7 +146,7 @@ class ApplicationContext:
     def close_database(self) -> None:
         if self.database:
             try:
-                self.database.execute_sql("DETACH DATABASE catalog")
+                self.database.detach('catalog')
             except Exception:
                 pass
             self.database.close()
@@ -344,6 +353,12 @@ class Settings:
 
     def set_last_export_custom_headers(self, value: str):
         self.settings.setValue("last_export_custom_headers", value)
+
+    def get_last_catalog(self):
+        return self.settings.value("last_catalog", "", str)
+
+    def set_last_catalog(self, value: str):
+        self.settings.setValue("last_catalog", value)
 
     def get_bad_file_patterns(self):
         return self.settings.value("bad_file_patterns", "bad*", str)

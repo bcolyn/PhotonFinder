@@ -4,7 +4,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDialog, QMessageBox
 
 from photonfinder.core import ApplicationContext, decompress
-from photonfinder.filesystem import parse_FITS_header
+from photonfinder.filesystem import parse_FITS_header, header_from_xisf_dict
 from photonfinder.models import File, FitsHeader, Image, SearchCriteria
 from photonfinder.platesolver import (
     ASTAPSolver, AstrometryNetSolver, WSLSolveFieldSolver, SolverHint
@@ -109,8 +109,13 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
 
     def _infer_scale_from_header(self, file: File):
         try:
+            import json
             fh = FitsHeader.get(FitsHeader.file == file)
-            header = parse_FITS_header(decompress(fh.header))
+            raw = decompress(fh.header)
+            if file.name.lower().endswith('.xisf'):
+                header = header_from_xisf_dict(json.loads(raw))
+            else:
+                header = parse_FITS_header(raw)
             scale = header.get("SCALE") or header.get("PIXSCALE")
             if scale is not None:
                 return float(scale)

@@ -129,6 +129,7 @@
     <addaction name="actionList_Files"/>
     <addaction name="actionMetadata_Report"/>
     <addaction name="actionTarget_List_Report"/>
+    <addaction name="actionCatalog_Report"/>
     <addaction name="actionTelescopius_List"/>
     <addaction name="separator"/>
    </widget>
@@ -478,6 +479,11 @@
   <action name="actionTarget_List_Report">
    <property name="text">
     <string>Target Report</string>
+   </property>
+  </action>
+  <action name="actionCatalog_Report">
+   <property name="text">
+    <string>Catalog Coverage Report</string>
    </property>
   </action>
   <action name="actionManage_Projects">
