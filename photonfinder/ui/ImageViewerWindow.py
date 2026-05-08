@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import Qt, Signal, QThread, QTimer, QRectF, QPointF
+from PySide6.QtCore import Qt, Signal, QThread, QTimer, QRectF, QPointF, Property, QPropertyAnimation
 from PySide6.QtGui import QColor, QImage, QPixmap, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
@@ -163,10 +163,19 @@ class CatalogAnnotationItem(QGraphicsObject):
         self._semi_b = max(semi_minor_px, self._MIN_RADIUS) if semi_major_px > 0 else 0.0
         self._hovering = False
         self._selected = False
+        self._pulse = 0.0
+        self._base_z = 10.0
         self.setPos(scene_x, scene_y)
         self.setRotation(rotation_deg)
         self.setAcceptHoverEvents(True)
-        self.setZValue(10)
+        self.setZValue(self._base_z)
+
+        self._anim = QPropertyAnimation(self, b"pulse", self)
+        self._anim.setDuration(1000)
+        self._anim.setKeyValueAt(0.0, 0.0)
+        self._anim.setKeyValueAt(0.5, 1.0)
+        self._anim.setKeyValueAt(1.0, 0.0)
+        self._anim.setLoopCount(-1)
 
     @property
     def entry(self):
@@ -180,13 +189,29 @@ class CatalogAnnotationItem(QGraphicsObject):
         t = self._TICK_LEN + pad
         return QRectF(-t, -t, 2 * t, 2 * t)
 
+    def _get_pulse(self) -> float:
+        return self._pulse
+
+    def _set_pulse(self, value: float):
+        self._pulse = value
+        self.update()
+
+    pulse = Property(float, _get_pulse, _set_pulse)
+
     def set_selected(self, selected: bool):
         self._selected = selected
+        self.setZValue(2000.0 if selected else self._base_z)
+        if selected:
+            self._anim.start()
+        else:
+            self._anim.stop()
+            self._pulse = 0.0
         self.update()
 
     def paint(self, painter, option, widget=None):
         if self._selected:
-            pen = self._PEN_SELECTED
+            alpha = int(80 + 175 * self._pulse)
+            pen = QPen(QColor(0, 200, 255, alpha), 2.5)
         elif self._hovering:
             pen = self._PEN_HOVER
         else:
@@ -470,7 +495,7 @@ class ImageViewerWindow(QMainWindow):
         self._plate_solve_btn.setToolTip("Plate-solve this image")
         self._plate_solve_btn.clicked.connect(self._on_plate_solve)
         self._plate_solve_action = nav_tb.addWidget(self._plate_solve_btn)
-        self._plate_solve_action.setVisible(False)
+        self._plate_solve_action.setVisible(True)
 
         self._annotate_btn = QPushButton("Annotate")
         self._annotate_btn.setToolTip("Annotate image with catalog objects")
@@ -920,7 +945,7 @@ class ImageViewerWindow(QMainWindow):
         is_solved = has_file and getattr(file, 'has_wcs', False)
         has_context = self._context is not None
         if self._plate_solve_action:
-            self._plate_solve_action.setVisible(has_file and has_context and not is_solved)
+            self._plate_solve_action.setVisible(has_file and has_context)
         if self._annotate_action:
             self._annotate_action.setVisible(bool(is_solved))
         if self._metadata_btn:
@@ -1065,6 +1090,8 @@ class ImageViewerWindow(QMainWindow):
                 ann_item = CatalogAnnotationItem(
                     entry, scene_x, scene_y, semi_a, semi_b, rotation,
                 )
+                ann_item._base_z = 1000.0 - semi_a  # larger objects render below smaller ones, all stay above image
+                ann_item.setZValue(ann_item._base_z)
                 ann_item.hovered.connect(self._on_annotation_hovered)
                 ann_item.unhovered.connect(self._on_annotation_unhovered)
                 ann_item.clicked.connect(self._on_annotation_clicked)
@@ -1095,11 +1122,15 @@ class ImageViewerWindow(QMainWindow):
                 parent.setExpanded(True)
 
     def _on_annotation_unhovered(self, item):
+        if item._selected:
+            return
         tree_node = self._item_to_tree.get(id(item))
         if tree_node and self._catalog_tree.currentItem() is tree_node:
             self._catalog_tree.setCurrentItem(None)
 
     def _on_annotation_clicked(self, item):
+        for ann in self._annotation_items:
+            ann.set_selected(ann is item)
         tree_node = self._item_to_tree.get(id(item))
         if tree_node:
             self._catalog_tree.setCurrentItem(tree_node)
