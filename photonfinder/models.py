@@ -56,6 +56,7 @@ class SearchCriteria:
     sorting_desc: bool = True
     exposure_tolerance: float | None = None   # ±seconds; None = exact match
     temperature_tolerance: float | None = None  # ±°C; None = exact match
+    plate_solved: bool | None = None  # True = solved only, False = unsolved only, None = any
 
     def is_empty(self):
         return self == SearchCriteria()
@@ -72,6 +73,10 @@ class SearchCriteria:
                      self.telescope, self.binning, self.gain, self.temperature, self.header_text]:
             if text:
                 result.append(text)
+        if self.plate_solved is True:
+            result.append("Solved")
+        elif self.plate_solved is False:
+            result.append("Unsolved")
         if self.project:
             result.append(self.project.name)
         if self.coord_ra and self.coord_dec:
@@ -533,6 +538,11 @@ class Image(Model):
                     conditions.append(fn.decompress(FitsHeader.header).contains(criteria.header_text))
             except ValueError:
                 conditions.append(fn.decompress(FitsHeader.header).contains(criteria.header_text))
+
+        if criteria.plate_solved is True:
+            conditions.append(File.rowid.in_(FileWCS.select(FileWCS.file)))
+        elif criteria.plate_solved is False:
+            conditions.append(File.rowid.not_in(FileWCS.select(FileWCS.file)))
 
         if criteria.project:
             if criteria.project.rowid > 0:

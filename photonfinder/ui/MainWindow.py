@@ -63,6 +63,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionBinning.setIcon(create_colored_svg_icon(":/res/border-outer.svg", size, text_color))
         self.actionGain.setIcon(create_colored_svg_icon(":/res/exposure.svg", size, text_color))
         self.actionTemperature.setIcon(create_colored_svg_icon(":/res/thermometer-half.svg", size, text_color))
+        self.actionPlateSolved.setIcon(create_colored_svg_icon(":/res/stars.svg", size, text_color))
 
         # hide the dock initially
         self.dockWidget.hide()
@@ -94,6 +95,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionBinning.triggered.connect(self.add_binning_filter)
         self.actionGain.triggered.connect(self.add_gain_filter)
         self.actionTemperature.triggered.connect(self.add_temperature_filter)
+        self.actionPlateSolved.triggered.connect(self.add_plate_solved_filter)
         self.action_Create_Backup.triggered.connect(self.create_backup)
         self.action_Create_Database.triggered.connect(self.create_database)
         self.action_Open_Database.triggered.connect(self.open_database)
@@ -339,6 +341,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.get_current_search_panel().add_coordinates_filter()
         self.enable_actions_for_current_tab()
 
+    def add_plate_solved_filter(self):
+        self.get_current_search_panel().add_plate_solved_filter()
+        self.enable_actions_for_current_tab()
+
     def add_header_text_filter(self):
         self.get_current_search_panel().add_header_text_filter()
 
@@ -579,6 +585,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionBinning.setChecked(AdvancedFilter.BINNING in current_panel.advanced_options)
         self.actionGain.setChecked(AdvancedFilter.GAIN in current_panel.advanced_options)
         self.actionTemperature.setChecked(AdvancedFilter.TEMPERATURE in current_panel.advanced_options)
+        self.actionPlateSolved.setChecked(AdvancedFilter.PLATE_SOLVED in current_panel.advanced_options)
 
     def add_selection_to_project(self, project: Project):
         edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)

@@ -120,6 +120,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.toolbar.addAction(mainWindow.actionBinning)
         self.toolbar.addAction(mainWindow.actionGain)
         self.toolbar.addAction(mainWindow.actionTemperature)
+        self.toolbar.addAction(mainWindow.actionPlateSolved)
 
         # connect to signal bus
         self.context.signal_bus.projects_changed.connect(self.on_projects_changed)
@@ -223,6 +224,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 self.add_coordinates_filter()
             case AdvancedFilter.HEADER_TEXT:
                 self.add_header_text_filter()
+            case AdvancedFilter.PLATE_SOLVED:
+                self.add_plate_solved_filter()
             case AdvancedFilter.PROJECT:
                 pass
         self.mainWindow.enable_actions_for_current_tab()
@@ -1041,6 +1044,21 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def reset_header_text_criteria(self):
         self.search_criteria.header_text = ""
 
+    def add_plate_solved_filter(self):
+        options = ["Solved", "Unsolved"]
+        current = "Solved" if self.search_criteria.plate_solved else "Unsolved"
+        choice, ok = QInputDialog.getItem(self, "Plate Solved Filter", "Show:", options, options.index(current), False)
+        if ok:
+            solved = choice == "Solved"
+            filter_button = FilterButton(self, f"Plate Solved: {choice}", AdvancedFilter.PLATE_SOLVED)
+            filter_button.on_remove_filter.connect(self.reset_plate_solved_criteria)
+            self.add_filter_button_control(filter_button)
+            self.search_criteria.plate_solved = solved
+            self.update_search_criteria()
+
+    def reset_plate_solved_criteria(self):
+        self.search_criteria.plate_solved = None
+
     def add_temperature_filter(self):
         from .TemperatureDialog import TemperatureDialog
         dialog = TemperatureDialog(self.context)
@@ -1316,6 +1334,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button.on_remove_filter.connect(self.reset_header_text_criteria)
             self.add_filter_button_control(filter_button)
 
+        if criteria.plate_solved is not None:
+            label = "Solved" if criteria.plate_solved else "Unsolved"
+            filter_button = FilterButton(self, f"Plate Solved: {label}", AdvancedFilter.PLATE_SOLVED)
+            filter_button.on_remove_filter.connect(self.reset_plate_solved_criteria)
+            self.add_filter_button_control(filter_button)
+
         if criteria.project:
             text = f"Project: {criteria.project.name}"
             filter_button = FilterButton(self, text, AdvancedFilter.PROJECT)
@@ -1475,3 +1499,4 @@ class AdvancedFilter(Enum):
     COORDINATES = 7
     HEADER_TEXT = 8
     PROJECT = 9
+    PLATE_SOLVED = 10

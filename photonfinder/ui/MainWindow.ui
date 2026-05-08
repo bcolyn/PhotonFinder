@@ -101,6 +101,7 @@
     <addaction name="actionBinning"/>
     <addaction name="actionGain"/>
     <addaction name="actionTemperature"/>
+    <addaction name="actionPlateSolved"/>
     <addaction name="action_filter_no_project"/>
     <addaction name="separator"/>
     <addaction name="actionHeader_Text"/>
@@ -355,6 +356,18 @@
    </property>
    <property name="text">
     <string>Temperature</string>
+   </property>
+  </action>
+  <action name="actionPlateSolved">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/res/stars.svg</normaloff>:/res/stars.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Plate Solved</string>
    </property>
   </action>
   <action name="action_Export_Data">
