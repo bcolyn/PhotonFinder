@@ -1,29 +1,33 @@
 """
 Build script: reads source files from data/catalog/ and produces data/catalog.db.
 
-Supported formats
------------------
-OpenNGC (NGC.csv / IC.csv from mattiaverga/OpenNGC)
-  Detected by: semicolon delimiter AND a "Name" column.
-  Objects with cross-catalog Messier numbers emit two rows that share a
-  canonical_id, allowing dedup at query time with user-configurable priority.
+Sources (see CATALOG_SOURCES below for the definitive list)
+-----------------------------------------------------------
+data/catalog/openngc/*.csv      — OpenNGC (semicolon-delimited, mattiaverga/OpenNGC)
+  Objects with Messier/Caldwell cross-refs emit multiple rows sharing a canonical_id.
+  Types in _OPENNGC_SKIP_TYPES are dropped; catalogs in _OPENNGC_CATALOG_BLACKLIST
+  are suppressed to avoid duplicates with dedicated sources below.
 
-Generic CSV
-  Delimiter: comma.  Required columns (case-insensitive):
-    ra, dec, catalog, catalog_id, size, magnitude
-  Optional columns:
-    canonical_id  — auto-set to "{catalog}_{catalog_id}" when absent
-    axis_ratio, angle
+data/catalog/vizier/*.csv       — Generic comma-delimited CSVs fetched from VizieR
+  Required columns (case-insensitive): ra, dec, catalog, catalog_id, size, magnitude
+  Optional: canonical_id, axis_ratio, angle
+
+data/catalog/hyperleda/*.txt.bz2 — HyperLEDA galaxy catalogue (bzip2, tab-delimited)
+  Columns: pgc, objname, hl_names(pgc), objtype, al2000, de2000, bt, vt, logd25, logr25, pa
+  Filtered to objtype='G' in the query; magnitude limit bt≤18 or vt≤19 applied here.
+  Visual magnitude stored as vt, or bt−0.8 when vt is absent.
 
 Run:
   uv run python scripts/build_catalog.py
 """
 
+import bz2
 import csv
 import logging
 import re
 import sqlite3
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import astropy.units as u
@@ -238,8 +242,8 @@ def load_generic_csv(path: Path) -> list[tuple]:
         for line_no, raw in enumerate(reader, start=2):
             row = {k.strip().lower(): v.strip() for k, v in raw.items()}
             try:
-                ra = float(row["ra"])
-                dec = float(row["dec"])
+                ra = _float_or_none(row["ra"])
+                dec = _float_or_none(row["dec"])
                 catalog = row["catalog"]
                 catalog_id = row["catalog_id"]
                 canonical_id = row.get("canonical_id") or f"{catalog}_{catalog_id}"
@@ -250,6 +254,9 @@ def load_generic_csv(path: Path) -> list[tuple]:
             except (KeyError, ValueError) as exc:
                 logging.warning(f"{path.name}:{line_no}: skipping — {exc}")
                 continue
+            if ra is None or dec is None:
+                logging.warning(f"{path.name}:{line_no}: skipping — missing coordinates")
+                continue
 
             rows.append((ra, dec, catalog, catalog_id, canonical_id,
                          size, axis_ratio, angle, magnitude, _healpix(ra, dec)))
@@ -258,20 +265,91 @@ def load_generic_csv(path: Path) -> list[tuple]:
 
 
 # ---------------------------------------------------------------------------
-# Dispatcher
+# HyperLEDA loader
 # ---------------------------------------------------------------------------
 
-def _is_openngc(path: Path) -> bool:
-    with path.open(encoding="utf-8") as f:
-        header = f.readline()
-    return ";" in header and "Name" in header
+# columns: pgc, objname, hl_names(pgc), objtype, al2000, de2000, bt, vt, logd25, logr25, pa
+_HL_BT_LIMIT = 18.0
+_HL_VT_LIMIT = 19.0
 
 
-def load_csv(path: Path) -> list[tuple]:
-    if _is_openngc(path):
-        logging.info(f"  Detected OpenNGC format")
-        return load_openngc_csv(path)
-    return load_generic_csv(path)
+def load_hyperleda_bz2(path: Path) -> list[tuple]:
+    rows: list[tuple] = []
+    skipped_mag = skipped_coord = 0
+
+    with bz2.open(path, 'rt', encoding='utf-8') as f:
+        in_data = False
+        for line in f:
+            if line.startswith('#'):
+                continue
+            if not in_data:
+                in_data = True  # first non-# line is the space-delimited column header
+                continue
+
+            parts = line.rstrip('\n').split('\t')
+            if len(parts) < 6:
+                continue
+
+            pgc_raw  = parts[0].strip()
+            objname  = parts[1].strip()
+            # parts[2] = hl_names(pgc) — reserved for future dedup, not stored
+            # parts[3] = objtype — already filtered to 'G' in query
+
+            al2000_h = _float_or_none(parts[4]) if len(parts) > 4 else None  # decimal hours
+            de2000   = _float_or_none(parts[5]) if len(parts) > 5 else None  # decimal degrees
+            if al2000_h is None or de2000 is None:
+                skipped_coord += 1
+                continue
+            al2000 = al2000_h * 15.0  # convert hours → degrees
+
+            bt = _float_or_none(parts[6]) if len(parts) > 6 else None
+            vt = _float_or_none(parts[7]) if len(parts) > 7 else None
+
+            # Include only if at least one band is within its magnitude limit
+            bt_ok = bt is not None and bt <= _HL_BT_LIMIT
+            vt_ok = vt is not None and vt <= _HL_VT_LIMIT
+            if not bt_ok and not vt_ok:
+                skipped_mag += 1
+                continue
+
+            # Visual magnitude: prefer vt, fall back to bt − 0.8
+            visual_mag: float = vt if vt is not None else (bt - 0.8)  # type: ignore[operator]
+
+            logd25 = _float_or_none(parts[8]) if len(parts) > 8 else None
+            size = 10 ** logd25 * 0.1 if logd25 is not None else 0.0  # point source if absent
+
+            logr25 = _float_or_none(parts[9]) if len(parts) > 9 else None
+            axis_ratio = 10 ** (-logr25) if logr25 is not None else 1.0  # circular if absent
+
+            pa = _float_or_none(parts[10]) if len(parts) > 10 else None  # None → no rotation
+
+            try:
+                pgc_id = str(int(pgc_raw))
+            except (ValueError, TypeError):
+                continue
+
+            catalog_id = pgc_id
+            if objname:
+                _, _, canonical_id = _parse_openngc_name(objname)
+            else:
+                canonical_id = f"PGC_{pgc_id}"
+
+            rows.append((al2000, de2000, 'PGC', catalog_id, canonical_id,
+                         size, axis_ratio, pa, visual_mag, _healpix(al2000, de2000)))
+
+    logging.info(f"  skipped {skipped_coord} (no coords), {skipped_mag} (magnitude limit)")
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Catalog source registry — edit here to add/remove/reorder sources
+# ---------------------------------------------------------------------------
+
+CATALOG_SOURCES: list[tuple[str, Callable[[Path], list[tuple]]]] = [
+    ("openngc/*.csv",          load_openngc_csv),
+    ("vizier/*.csv",           load_generic_csv),
+    ("hyperleda/*.txt.bz2",    load_hyperleda_bz2),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -279,10 +357,6 @@ def load_csv(path: Path) -> list[tuple]:
 # ---------------------------------------------------------------------------
 
 def build(output: Path = OUTPUT_DB, source_dir: Path = CATALOG_DIR) -> None:
-    csv_files = sorted(source_dir.rglob("*.csv"))
-    if not csv_files:
-        logging.warning(f"No CSV files found in {source_dir} — output will be empty")
-
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.exists():
         try:
@@ -297,14 +371,19 @@ def build(output: Path = OUTPUT_DB, source_dir: Path = CATALOG_DIR) -> None:
         con.execute(CREATE_TABLE)
 
         total = 0
-        for csv_path in csv_files:
-            logging.info(f"Loading {csv_path.name} ...")
-            rows = load_csv(csv_path)
-            con.executemany(
-                "INSERT INTO catalog_entry VALUES (?,?,?,?,?,?,?,?,?,?)", rows
-            )
-            logging.info(f"  {len(rows):,} rows inserted")
-            total += len(rows)
+        for pattern, loader in CATALOG_SOURCES:
+            files = sorted((source_dir / pattern.split("/")[0]).glob(pattern.split("/")[1]))
+            for path in files:
+                logging.info(f"Loading {path.name} ({loader.__name__}) ...")
+                rows = loader(path)
+                con.executemany(
+                    "INSERT INTO catalog_entry VALUES (?,?,?,?,?,?,?,?,?,?)", rows
+                )
+                logging.info(f"  {len(rows):,} rows inserted")
+                total += len(rows)
+
+        if total == 0:
+            logging.warning("No rows inserted — check that source files exist")
 
         for stmt in CREATE_INDEXES:
             con.execute(stmt)

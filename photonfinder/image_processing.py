@@ -254,7 +254,7 @@ def detect_bayer_pattern(header: dict) -> str | None:
     return None
 
 
-_BRIGHT_GAP      = 0.05   # normalised offset above background to be "extended content"
+_BRIGHT_GAP      = 0.02   # normalised offset above background to be "extended content"
 _BRIGHT_FRACTION = 0.01   # if more than this fraction exceeds the threshold → not linear
 
 

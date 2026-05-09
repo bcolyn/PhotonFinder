@@ -50,38 +50,52 @@
      </property>
      <layout class="QVBoxLayout" name="hints_layout">
       <item>
-       <layout class="QHBoxLayout" name="coord_layout">
-        <item>
+       <layout class="QGridLayout" name="coord_grid">
+        <item row="0" column="0">
          <widget class="QLabel" name="ra_label">
           <property name="text">
            <string>RA (°):</string>
           </property>
          </widget>
         </item>
-        <item>
+        <item row="0" column="1">
          <widget class="QLineEdit" name="hint_ra_edit">
           <property name="toolTip">
-           <string>Right Ascension in decimal degrees</string>
+           <string>Right Ascension in decimal degrees. You may also paste HMS (e.g. 05:34:32) and it will be converted on focus-out.</string>
           </property>
           <property name="placeholderText">
            <string>e.g. 83.82</string>
           </property>
          </widget>
         </item>
-        <item>
+        <item row="0" column="2">
          <widget class="QLabel" name="dec_label">
           <property name="text">
            <string>Dec (°):</string>
           </property>
          </widget>
         </item>
-        <item>
+        <item row="0" column="3">
          <widget class="QLineEdit" name="hint_dec_edit">
           <property name="toolTip">
-           <string>Declination in decimal degrees</string>
+           <string>Declination in decimal degrees. You may also paste DMS (e.g. -05:23:28) and it will be converted on focus-out.</string>
           </property>
           <property name="placeholderText">
            <string>e.g. -5.39</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLabel" name="hint_ra_hms_label">
+          <property name="toolTip">
+           <string>Right Ascension in H:M:S</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="3">
+         <widget class="QLabel" name="hint_dec_dms_label">
+          <property name="toolTip">
+           <string>Declination in D:M:S</string>
           </property>
          </widget>
         </item>
@@ -176,6 +190,13 @@
    </item>
    <item>
     <layout class="QHBoxLayout" name="button_layout">
+     <item>
+      <widget class="QPushButton" name="direct_copy_button">
+       <property name="text">
+        <string>Direct Copy...</string>
+       </property>
+      </widget>
+     </item>
      <item>
       <spacer name="button_spacer">
        <property name="orientation">

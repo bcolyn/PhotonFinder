@@ -409,6 +409,19 @@ class Settings:
     def set_obs_timezone(self, value: str):
         self.settings.setValue('obs_timezone', value)
 
+    def get_annotation_mag_limit(self) -> float:
+        return self.settings.value('annotation_mag_limit', 19.0, float)
+
+    def set_annotation_mag_limit(self, value: float):
+        self.settings.setValue('annotation_mag_limit', value)
+
+    def get_annotation_collapsed_catalogs(self) -> set[str]:
+        raw = self.settings.value('annotation_collapsed_catalogs', '', str)
+        return set(raw.split(',')) - {''} if raw else set()
+
+    def set_annotation_collapsed_catalogs(self, catalogs: set[str]):
+        self.settings.setValue('annotation_collapsed_catalogs', ','.join(sorted(catalogs)))
+
     def sync(self):
         """Ensure settings are saved to disk."""
         self.settings.setValue("known_fits_keywords", "|".join(self.known_fits_keywords))

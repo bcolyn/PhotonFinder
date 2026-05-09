@@ -580,6 +580,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if not index.isValid():
             return
 
+        selected_file = self.get_file_at_row(index.row())
+
         # Create context menu
         menu = QMenu(self)
         view_action = menu.addAction("View")
@@ -594,7 +596,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         find_darks_action = menu.addAction("Find matching darks")
         find_flats_action = menu.addAction("Find matching flats")
         menu.addSeparator()
-        menu.addAction(self.mainWindow.actionPlate_solve_files)
+        is_solved = selected_file is not None and getattr(selected_file, 'has_wcs', False)
+        plate_solve_action = menu.addAction("Force Re-Solve" if is_solved else "Plate Solve")
+        plate_solve_action.triggered.connect(self.plate_solve_files)
         menu.addSeparator()
         mark_bad_action = menu.addAction("Mark as bad")
         menu.addSeparator()
@@ -614,7 +618,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 project_actions.append(recent_project_action)
 
         # enable or disable based on current selection
-        selected_file = self.get_file_at_row(index.row())
         if selected_file and hasattr(selected_file, 'image'):
             selected_image = selected_file.image
             current_type = selected_image.image_type
@@ -1368,6 +1371,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         )
         dialog.setAttribute(Qt.WA_DeleteOnClose)
         dialog.solving_complete.connect(self.on_files_solved)
+        dialog.wcs_copied.connect(self.on_files_solved)
         dialog.show()
 
     def on_files_solved(self, task: PlateSolveTask):

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
     QGraphicsObject, QToolBar, QLabel, QCheckBox, QDoubleSpinBox, QComboBox, QPushButton,
     QStatusBar, QMessageBox, QSplitter, QTreeWidget, QTreeWidgetItem, QAbstractItemView,
-    QHeaderView,
+    QHeaderView, QWidget, QVBoxLayout, QHBoxLayout,
 )
 
 from photonfinder.models import File
@@ -376,6 +376,9 @@ class ImageViewerWindow(QMainWindow):
         self._annotation_items: list = []
         self._item_to_tree: dict = {}   # id(CatalogAnnotationItem) -> QTreeWidgetItem
         self._tree_to_item: dict = {}   # id(QTreeWidgetItem) -> CatalogAnnotationItem
+        self._collapsed_catalogs: set[str] = set()
+        self._tree_container: QWidget | None = None
+        self._mag_limit_spin: QDoubleSpinBox | None = None
 
         # Loading / nav state
         self._is_loading: bool = False
@@ -415,10 +418,34 @@ class ImageViewerWindow(QMainWindow):
         self._catalog_tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._catalog_tree.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._catalog_tree.itemClicked.connect(self._on_tree_item_clicked)
-        self._catalog_tree.setVisible(False)
+        self._catalog_tree.itemCollapsed.connect(self._on_catalog_collapsed)
+        self._catalog_tree.itemExpanded.connect(self._on_catalog_expanded)
+
+        # Magnitude limit header above the tree
+        _mag_header = QWidget()
+        _mag_hbox = QHBoxLayout(_mag_header)
+        _mag_hbox.setContentsMargins(4, 2, 4, 2)
+        _mag_hbox.addWidget(QLabel("Mag ≤"))
+        self._mag_limit_spin = QDoubleSpinBox()
+        self._mag_limit_spin.setRange(5.0, 25.0)
+        self._mag_limit_spin.setDecimals(1)
+        self._mag_limit_spin.setSingleStep(0.5)
+        initial_mag = self._context.settings.get_annotation_mag_limit() if self._context else 19.0
+        self._mag_limit_spin.setValue(initial_mag)
+        self._mag_limit_spin.setToolTip("Hide annotations fainter than this visual magnitude")
+        self._mag_limit_spin.valueChanged.connect(self._on_mag_limit_changed)
+        _mag_hbox.addWidget(self._mag_limit_spin, stretch=1)
+
+        self._tree_container = QWidget()
+        _vbox = QVBoxLayout(self._tree_container)
+        _vbox.setContentsMargins(0, 0, 0, 0)
+        _vbox.setSpacing(0)
+        _vbox.addWidget(_mag_header)
+        _vbox.addWidget(self._catalog_tree)
+        self._tree_container.setVisible(False)
 
         self._splitter = QSplitter(Qt.Orientation.Horizontal)
-        self._splitter.addWidget(self._catalog_tree)
+        self._splitter.addWidget(self._tree_container)
         self._splitter.addWidget(self._canvas)
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
@@ -946,6 +973,8 @@ class ImageViewerWindow(QMainWindow):
         has_context = self._context is not None
         if self._plate_solve_action:
             self._plate_solve_action.setVisible(has_file and has_context)
+        if self._plate_solve_btn:
+            self._plate_solve_btn.setText("Force Re-Solve" if is_solved else "Plate Solve")
         if self._annotate_action:
             self._annotate_action.setVisible(bool(is_solved))
         if self._metadata_btn:
@@ -965,15 +994,19 @@ class ImageViewerWindow(QMainWindow):
         )
         dialog.setAttribute(Qt.WA_DeleteOnClose)
         dialog.solving_complete.connect(self._on_plate_solve_complete)
+        dialog.wcs_copied.connect(self._on_plate_solve_complete)
         dialog.show()
 
     def _on_plate_solve_complete(self, task):
         solved = set(task.solved_files)
-        if self._current_file and self._current_file in solved:
+        current_was_solved = self._current_file and self._current_file in solved
+        if current_was_solved:
             self._current_file.has_wcs = True
         self._update_solve_buttons()
         if self._nav_panel is not None:
             self._nav_panel.on_files_solved(task)
+        if current_was_solved and self._annotate_btn and self._annotate_btn.isChecked():
+            self._on_annotate()
 
     def _on_annotate_toggled(self, checked: bool):
         if checked:
@@ -1057,14 +1090,18 @@ class ImageViewerWindow(QMainWindow):
         for obj in found:
             by_catalog[obj.catalog].append(obj)
 
-        self._catalog_tree.setVisible(True)
+        if self._context:
+            self._collapsed_catalogs = self._context.settings.get_annotation_collapsed_catalogs()
+
+        self._tree_container.setVisible(True)
         self._splitter.setSizes([220, max(0, self._splitter.width() - 220)])
 
         for catalog_name in sorted(by_catalog):
             entries = by_catalog[catalog_name]
             top_node = QTreeWidgetItem(self._catalog_tree,
                                        [f"{catalog_name} ({len(entries)})", "", ""])
-            top_node.setExpanded(True)
+            top_node.setData(0, Qt.ItemDataRole.UserRole, catalog_name)
+            top_node.setExpanded(catalog_name not in self._collapsed_catalogs)
 
             for entry in entries:
                 sky = SkyCoord(entry.ra, entry.dec, unit=u.deg, frame='icrs')
@@ -1090,7 +1127,7 @@ class ImageViewerWindow(QMainWindow):
                 ann_item = CatalogAnnotationItem(
                     entry, scene_x, scene_y, semi_a, semi_b, rotation,
                 )
-                ann_item._base_z = 1000.0 - semi_a  # larger objects render below smaller ones, all stay above image
+                ann_item._base_z = 1.0 / (semi_b + 1.0)  # larger objects render below smaller ones, always above image (z>0)
                 ann_item.setZValue(ann_item._base_z)
                 ann_item.hovered.connect(self._on_annotation_hovered)
                 ann_item.unhovered.connect(self._on_annotation_unhovered)
@@ -1104,29 +1141,69 @@ class ImageViewerWindow(QMainWindow):
         for col in range(self._catalog_tree.columnCount()):
             self._catalog_tree.resizeColumnToContents(col)
 
+        self._update_annotation_visibility()
+
     def _clear_annotations(self):
         self._canvas.clear_annotations()
         self._annotation_items.clear()
         self._item_to_tree.clear()
         self._tree_to_item.clear()
         self._catalog_tree.clear()
-        self._catalog_tree.setVisible(False)
+        self._tree_container.setVisible(False)
         self._splitter.setSizes([0, self._splitter.width()])
+
+    def _update_annotation_visibility(self):
+        mag_limit = self._mag_limit_spin.value() if self._mag_limit_spin else 99.0
+        for item in self._annotation_items:
+            entry = item.entry
+            mag_ok = entry.magnitude is None or entry.magnitude <= mag_limit
+            catalog_ok = entry.catalog not in self._collapsed_catalogs
+            item.setVisible(mag_ok and catalog_ok)
+
+    def _on_mag_limit_changed(self, value: float):
+        if self._context:
+            self._context.settings.set_annotation_mag_limit(value)
+        self._update_annotation_visibility()
+
+    def _on_catalog_collapsed(self, tree_item: QTreeWidgetItem):
+        if tree_item.parent() is not None:
+            return
+        catalog_name = tree_item.data(0, Qt.ItemDataRole.UserRole)
+        if catalog_name:
+            self._collapsed_catalogs.add(catalog_name)
+            if self._context:
+                self._context.settings.set_annotation_collapsed_catalogs(self._collapsed_catalogs)
+            self._update_annotation_visibility()
+
+    def _on_catalog_expanded(self, tree_item: QTreeWidgetItem):
+        if tree_item.parent() is not None:
+            return
+        catalog_name = tree_item.data(0, Qt.ItemDataRole.UserRole)
+        if catalog_name:
+            self._collapsed_catalogs.discard(catalog_name)
+            if self._context:
+                self._context.settings.set_annotation_collapsed_catalogs(self._collapsed_catalogs)
+            self._update_annotation_visibility()
+
+    _HOVER_BG = QColor(255, 140, 0, 60)  # faint orange tint matching the hover pen
 
     def _on_annotation_hovered(self, item):
         tree_node = self._item_to_tree.get(id(item))
         if tree_node:
-            self._catalog_tree.setCurrentItem(tree_node)
+            for col in range(self._catalog_tree.columnCount()):
+                tree_node.setBackground(col, self._HOVER_BG)
+            self._catalog_tree.scrollToItem(
+                tree_node, QAbstractItemView.ScrollHint.EnsureVisible,
+            )
             parent = tree_node.parent()
             if parent:
                 parent.setExpanded(True)
 
     def _on_annotation_unhovered(self, item):
-        if item._selected:
-            return
         tree_node = self._item_to_tree.get(id(item))
-        if tree_node and self._catalog_tree.currentItem() is tree_node:
-            self._catalog_tree.setCurrentItem(None)
+        if tree_node:
+            for col in range(self._catalog_tree.columnCount()):
+                tree_node.setBackground(col, QColor(0, 0, 0, 0))
 
     def _on_annotation_clicked(self, item):
         for ann in self._annotation_items:
