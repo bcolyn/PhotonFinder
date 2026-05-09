@@ -77,6 +77,14 @@ def register_udfs(db: SqliteDatabase):
         retval = coord1.separation(coord2).value
         return retval
 
+    @db.func("hp_cone_search", 3)
+    def db_hp_cone_search(ra, dec, radius_deg):
+        import json
+        from astropy_healpix import HEALPix
+        _hp = HEALPix(nside=256, order='nested', frame='icrs')
+        pixels = _hp.cone_search_lonlat(ra * u.deg, dec * u.deg, radius_deg * u.deg)
+        return json.dumps(pixels.tolist())
+
 
 class ApplicationContext:
 

@@ -20,124 +20,225 @@ HEADERS = ["ID / Path / File", "Mag", "Size (')", "Images"]
 
 
 class CatalogReportLoader(BackgroundLoaderBase):
-    on_result = Signal(object)   # (List[CatalogEntry], Dict[int, List[(str, str)]])
+    on_result = Signal(object)   # (List[CatalogEntry], Dict[int, List[(str, str)]], bool only_matching)
     on_progress = Signal(int, int)
 
     def __init__(self, context: ApplicationContext):
         super().__init__(context)
         self._catalog = ""
         self._criteria = None
+        self._only_matching = False
 
-    def start(self, catalog: str, criteria: SearchCriteria):
+    def start(self, catalog: str, criteria: SearchCriteria, only_matching: bool = False):
         self._catalog = catalog
         self._criteria = criteria
+        self._only_matching = only_matching
         self.run_in_thread(self._query_data)
 
     def _query_data(self):
+        import json
+        import os
+        import time
+        import numpy as np
         from astropy.io.fits import Header
         from astropy.wcs import WCS
-        from astropy.coordinates import SkyCoord
+        from astropy_healpix import HEALPix
         import astropy.units as u
-        from peewee import JOIN
-        from photonfinder.models import File, Image, LibraryRoot, FileWCS, hp
+        from photonfinder.models import File, Image, LibraryRoot, FileWCS
 
         catalog = self._catalog
         criteria = self._criteria
-
-        catalog_entries = list(
-            CatalogEntry.select()
-            .where(CatalogEntry.catalog == catalog)
-            .order_by(CatalogEntry.catalog_id.cast('INTEGER'), CatalogEntry.catalog_id)
-        )
-
-        # Pass 1: fetch image center + radius without loading any WCS blob.
-        meta_query = (
-            Image.select(Image.coord_ra, Image.coord_dec, Image.coord_radius, Image.file)
-            .join_from(Image, File)
-            .join_from(File, FileWCS)
-            .join_from(File, LibraryRoot)
-        )
-        meta_query = Image.apply_search_criteria(meta_query, criteria)
-
-        catalog_coords = SkyCoord(
-            [e.ra for e in catalog_entries], [e.dec for e in catalog_entries],
-            unit=u.deg, frame='icrs',
-        )
-        candidate_file_ids = [
-            row.file for row in meta_query.namedtuples()
-            if row.coord_ra is not None
-            and (
-                row.coord_radius is None  # radius unknown: include and let WCS decode decide
-                or float(SkyCoord(row.coord_ra, row.coord_dec, unit=u.deg).separation(catalog_coords).min().deg)
-                   <= row.coord_radius
-            )
-        ]
-
-        if not candidate_file_ids:
-            self.on_result.emit((catalog_entries, {}))
+        context = self.context
+        db = context.database
+        if db is None:
             return
 
-        # Pass 2: load WCS blobs only for the surviving candidates.
-        wcs_query = (
-            FileWCS.select(FileWCS, File, Image, LibraryRoot)
-            .join_from(FileWCS, File)
+        t0 = time.monotonic()
+        hp = HEALPix(nside=256, order='nested', frame='icrs')
+        only_matching = self._only_matching
+        catalog_entries = []
+
+        if not only_matching:
+            # Phase 0: fetch all catalog entries for display (including unmatched ones).
+            catalog_entries = list(
+                CatalogEntry.select(CatalogEntry.rowid, CatalogEntry.catalog_id,
+                                    CatalogEntry.magnitude, CatalogEntry.size)
+                .where(CatalogEntry.catalog == catalog)
+                .order_by(CatalogEntry.catalog_id.cast('INTEGER'), CatalogEntry.catalog_id)
+                .namedtuples()
+            )
+            logger.debug("Phase 0: %d catalog entries in %.2fs", len(catalog_entries), time.monotonic() - t0)
+            if not catalog_entries:
+                self.on_result.emit(([], {}, False))
+                return
+
+        # Phase 1: fetch criteria-filtered images with WCS coords from the main DB.
+        # No catalog interaction yet — just the image side of the M×N problem.
+        t1 = time.monotonic()
+        img_q = (
+            Image.select(
+                File.rowid.alias('file_id'),
+                LibraryRoot.rowid.alias('root_id'),
+                LibraryRoot.name.alias('root_name'),
+                LibraryRoot.path.alias('root_path'),
+                File.path.alias('file_path'),
+                File.name.alias('file_name'),
+                Image.object_name,
+                Image.coord_ra,
+                Image.coord_dec,
+                Image.coord_pix256,
+                Image.coord_radius,
+            )
+            .join_from(Image, File)
             .join_from(File, LibraryRoot)
-            .join_from(File, Image, JOIN.LEFT_OUTER)
-            .where(File.rowid.in_(candidate_file_ids))
+            .join_from(File, FileWCS)   # inner join: plate-solved images only
+            .where(Image.coord_ra.is_null(False))
         )
-        image_list = list(wcs_query)
-        total = len(image_list)
+        img_q = Image.apply_search_criteria(img_q, criteria)
+        image_rows = list(img_q.tuples())
+        logger.debug("Phase 1: %d candidate images in %.2fs", len(image_rows), time.monotonic() - t1)
 
-        coverage: dict[int, list] = {}
+        if not image_rows:
+            self.on_result.emit((catalog_entries if not only_matching else [], {}, only_matching))
+            return
 
-        for i, wcs_record in enumerate(image_list):
-            self.on_progress.emit(i + 1, total)
+        # Phase 1b: group images by FoV signature — dithered subs share one WCS decode.
+        # Key: (center healpix pixel, radius bucket, root_id, directory).
+        t1b = time.monotonic()
+        fov_groups = {}   # fov_key -> {rep_file_id, coord_ra, coord_dec, coord_radius, file_data[]}
+
+        for row in image_rows:
+            (file_id, root_id, root_name, root_path,
+             file_path, file_name, object_name,
+             coord_ra, coord_dec, coord_pix256, coord_radius) = row
+
+            fov_key = (coord_pix256, round((coord_radius or 0) * 1000), root_id, file_path)
+            if fov_key not in fov_groups:
+                fov_groups[fov_key] = {
+                    'rep_file_id': file_id,
+                    'coord_ra': coord_ra,
+                    'coord_dec': coord_dec,
+                    'coord_radius': coord_radius or 0,
+                    'file_data': [],
+                }
+            full_path = os.path.join(str(root_path), str(file_path), str(file_name))
+            fov_groups[fov_key]['file_data'].append(
+                (object_name or '', full_path, root_id, root_name, file_path, file_name)
+            )
+
+        logger.debug("Phase 1b: %d FoV groups from %d images in %.2fs",
+                     len(fov_groups), len(image_rows), time.monotonic() - t1b)
+
+        # Phase 1c: compute healpix pixel union across all FoV group representatives
+        # in Python (fast numpy), then query the catalog once with that pixel set.
+        # This avoids per-row Python UDF calls from inside SQLite.
+        t1c = time.monotonic()
+        pixel_to_fovkeys = {}   # healpix pixel -> [fov_key, …]
+        for fov_key, g in fov_groups.items():
+            pixels = hp.cone_search_lonlat(
+                g['coord_ra'] * u.deg, g['coord_dec'] * u.deg, g['coord_radius'] * u.deg
+            )
+            g['pixels'] = set(int(p) for p in pixels)
+            for px in g['pixels']:
+                pixel_to_fovkeys.setdefault(px, []).append(fov_key)
+
+        all_pixels = list(pixel_to_fovkeys)
+        logger.debug("Phase 1c: %d unique healpix pixels across %d groups in %.2fs",
+                     len(all_pixels), len(fov_groups), time.monotonic() - t1c)
+
+        # Phase 2: single catalog query using the pixel union via json_each (no per-row UDF).
+        t2 = time.monotonic()
+        catalog_rows = list(db.execute_sql(
+            "SELECT rowid, ra, dec, healpix FROM catalog.catalog_entry"
+            " WHERE catalog = ? AND healpix IN (SELECT value FROM json_each(?))",
+            [catalog, json.dumps(all_pixels)]
+        ))
+        logger.debug("Phase 2: %d catalog candidates in %.2fs", len(catalog_rows), time.monotonic() - t2)
+
+        if not catalog_rows:
+            self.on_result.emit((catalog_entries if not only_matching else [], {}, only_matching))
+            return
+
+        # Assign each catalog candidate to the FoV groups whose pixel cone contains it.
+        for ce_rowid, ce_ra, ce_dec, ce_healpix in catalog_rows:
+            for fov_key in pixel_to_fovkeys.get(ce_healpix, []):
+                fov_groups[fov_key].setdefault('ce_candidates', {})[ce_rowid] = (ce_ra, ce_dec)
+
+        # Phase 3: decode WCS once per FoV group; check precise rectangular footprint.
+        t3 = time.monotonic()
+        wcs_cache = {}   # rep_file_id -> WCS | None
+        matches_map = {}    # ce_rowid -> list of match tuples
+
+        groups_with_candidates = [g for g in fov_groups.values() if g.get('ce_candidates')]
+        total_groups = len(groups_with_candidates)
+        logger.debug("Phase 3: %d groups have catalog candidates", total_groups)
+
+        # Batch-load all representative WCS blobs in one query (avoids N round-trips).
+        rep_ids = [g['rep_file_id'] for g in groups_with_candidates]
+        wcs_blobs = {r.file_id: r.wcs for r in FileWCS.select().where(FileWCS.file.in_(rep_ids))}
+        logger.debug("Phase 3: fetched %d WCS blobs in %.2fs", len(wcs_blobs), time.monotonic() - t3)
+
+        for i, group in enumerate(groups_with_candidates):
+            self.on_progress.emit(i + 1, total_groups)
+
+            rep_id = group['rep_file_id']
+            if rep_id not in wcs_cache:
+                raw_wcs = wcs_blobs.get(rep_id)
+                if raw_wcs is None:
+                    logger.warning("CatalogReportLoader: no WCS record for rep %s", rep_id)
+                    wcs_cache[rep_id] = None
+                else:
+                    try:
+                        wcs_header = Header.fromstring(decompress(raw_wcs).decode())
+                        naxis1 = wcs_header.get('NAXIS1', 0)
+                        naxis2 = wcs_header.get('NAXIS2', 0)
+                        if naxis1 and naxis2:
+                            wcs_obj = WCS(wcs_header)
+                            wcs_obj.array_shape = (naxis2, naxis1)
+                            wcs_cache[rep_id] = wcs_obj
+                        else:
+                            logger.warning("CatalogReportLoader: no NAXIS in WCS for rep %s", rep_id)
+                            wcs_cache[rep_id] = None
+                    except Exception as e:
+                        logger.warning("CatalogReportLoader: bad WCS for rep %s: %s", rep_id, e)
+                        wcs_cache[rep_id] = None
+
+            wcs_obj = wcs_cache[rep_id]
+            if wcs_obj is None:
+                continue
+
+            # Vectorized: project all candidate coords to pixel space in one call.
+            candidates = list(group['ce_candidates'].items())
+            world = np.array([(ce_ra, ce_dec) for _, (ce_ra, ce_dec) in candidates])
             try:
-                file = wcs_record.file
-                wcs_header = Header.fromstring(decompress(wcs_record.wcs).decode())
-                naxis1 = wcs_header.get('NAXIS1', 0)
-                naxis2 = wcs_header.get('NAXIS2', 0)
-                if not naxis1 or not naxis2:
-                    continue
+                pix = wcs_obj.all_world2pix(world, 0)
+            except Exception:
+                continue
+            ny, nx = wcs_obj.array_shape
+            inside = (pix[:, 0] >= 0) & (pix[:, 0] < nx) & (pix[:, 1] >= 0) & (pix[:, 1] < ny)
+            file_data = group['file_data']
+            for j, (ce_rowid, _) in enumerate(candidates):
+                if inside[j]:
+                    matches_map.setdefault(ce_rowid, []).extend(file_data)
 
-                wcs = WCS(wcs_header)
-                wcs.array_shape = (naxis2, naxis1)
+        logger.debug("Phase 3: footprint checks done in %.2fs, %d catalog entries matching",
+                     time.monotonic() - t3, len(matches_map))
 
-                cx, cy = (naxis1 - 1) / 2.0, (naxis2 - 1) / 2.0
-                center = wcs.pixel_to_world(cx, cy)
-                corner_coords = wcs.pixel_to_world(
-                    [0, naxis1 - 1, 0, naxis1 - 1],
-                    [0, 0, naxis2 - 1, naxis2 - 1],
-                )
-                radius_deg = float(center.separation(corner_coords).max().deg) * 1.05
+        if only_matching:
+            # Fetch only the matched entries — avoids the full 785k Phase 0 scan.
+            matched_rowids = list(matches_map.keys())
+            catalog_entries = list(
+                CatalogEntry.select(CatalogEntry.rowid, CatalogEntry.catalog_id,
+                                    CatalogEntry.magnitude, CatalogEntry.size)
+                .where(CatalogEntry.rowid.in_(matched_rowids))
+                .order_by(CatalogEntry.catalog_id.cast('INTEGER'), CatalogEntry.catalog_id)
+                .namedtuples()
+            )
+            logger.debug("Phase 3b: fetched %d matching entries in %.2fs",
+                         len(catalog_entries), time.monotonic() - t3)
 
-                pixels = hp.cone_search_skycoord(center, radius_deg * u.deg)
-                candidates = list(
-                    CatalogEntry.select()
-                    .where(CatalogEntry.catalog == catalog)
-                    .where(CatalogEntry.healpix.in_(pixels.tolist()))
-                )
-
-                obj_name = ""
-                try:
-                    img = file.image
-                    if img and img.object_name:
-                        obj_name = img.object_name
-                except Exception:
-                    pass
-                filepath = file.full_filename()
-
-                for obj in candidates:
-                    coord = SkyCoord(obj.ra, obj.dec, unit=u.deg, frame='icrs')
-                    if wcs.footprint_contains(coord):
-                        coverage.setdefault(obj.rowid, []).append(
-                            (obj_name, filepath, file.root.rowid, file.root.name, file.path, file.name)
-                        )
-
-            except Exception as e:
-                logger.warning("CatalogReportLoader: skipping wcs record %s: %s", wcs_record.rowid, e)
-
-        self.on_result.emit((catalog_entries, coverage))
+        logger.debug("Total _query_data time: %.2fs", time.monotonic() - t0)
+        self.on_result.emit((catalog_entries, matches_map, only_matching))
 
 
 _FILE_DATA_ROLE = Qt.ItemDataRole.UserRole
@@ -150,7 +251,7 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
         self.setupUi(self)
         self.context = context
         self._catalog_entries = []
-        self._coverage = {}
+        self._matches_map = {}
         self.loader = CatalogReportLoader(context)
         self.loader.on_result.connect(self.on_load_complete)
         self.loader.on_progress.connect(self.on_progress)
@@ -160,8 +261,9 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
         self.search_panel.search_criteria_changed.connect(self.load_report)
         self.search_panel.mainWindow.tabs_changed.connect(self.on_tabs_changed)
 
+        self._loaded_only_matching = False
         self.catalogCombo.currentTextChanged.connect(self._on_catalog_changed)
-        self.showCoveredCheckBox.toggled.connect(self.apply_filter)
+        self.showMatchingCheckBox.toggled.connect(self._on_show_matching_toggled)
         self.treeWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.treeWidget.customContextMenuRequested.connect(self._on_context_menu)
         self.saveButton.clicked.connect(self._save_report)
@@ -201,39 +303,51 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
             return
         self.treeWidget.clear()
         self.statusbar.showMessage("Loading…")
-        self.loader.start(catalog, self.search_panel.search_criteria)
+        only_matching = self.showMatchingCheckBox.isChecked()
+        self.loader.start(catalog, self.search_panel.search_criteria, only_matching)
+
+    def _on_show_matching_toggled(self, checked: bool):
+        if not checked and self._loaded_only_matching:
+            # We only have matching entries in memory — need a full reload to show all.
+            self.load_report()
+        else:
+            self.apply_filter()
 
     def on_progress(self, done: int, total: int):
         self.statusbar.showMessage(f"Processing images: {done} / {total}…")
 
     def on_load_complete(self, result):
-        catalog_entries, coverage = result
+        catalog_entries, matches_map, only_matching = result
         self._catalog_entries = catalog_entries
-        self._coverage = coverage
-        covered_count = sum(1 for rowid in coverage if coverage[rowid])
-        self.statusbar.showMessage(
-            f"{covered_count} of {len(catalog_entries)} objects covered by plate-solved images."
-        )
+        self._matches_map = matches_map
+        self._loaded_only_matching = only_matching
+        match_count = len(matches_map)
+        if only_matching:
+            self.statusbar.showMessage(f"{match_count} objects matching plate-solved images.")
+        else:
+            self.statusbar.showMessage(
+                f"{match_count} of {len(catalog_entries)} objects matching plate-solved images."
+            )
         self.apply_filter()
 
     def apply_filter(self):
-        show_only_covered = self.showCoveredCheckBox.isChecked()
+        show_only_matching = self.showMatchingCheckBox.isChecked()
         self.treeWidget.clear()
         self.treeWidget.setHeaderLabels(HEADERS)
 
         for entry in self._catalog_entries:
-            matches = self._coverage.get(entry.rowid, [])
-            covered = bool(matches)
-            if show_only_covered and not covered:
+            matches = self._matches_map.get(entry.rowid, [])
+            has_matches = bool(matches)
+            if show_only_matching and not has_matches:
                 continue
 
             parent = QTreeWidgetItem(self.treeWidget)
             parent.setText(0, entry.catalog_id)
             parent.setText(1, f"{entry.magnitude:.1f}" if entry.magnitude else "")
             parent.setText(2, f"{entry.size:.1f}" if entry.size else "")
-            count_text = str(len(matches)) if covered else ""
+            count_text = str(len(matches)) if has_matches else ""
             parent.setText(3, count_text)
-            if covered:
+            if has_matches:
                 parent.setForeground(3, _GREEN)
             else:
                 parent.setForeground(0, _GRAY)
@@ -274,8 +388,8 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
             self._open_in_new_tab(root_id, root_label, file_dir, file_name, obj_name)
 
     def _save_report(self):
-        if not self._coverage:
-            QMessageBox.information(self, "No Data", "There is no coverage data to save.")
+        if not self._matches_map:
+            QMessageBox.information(self, "No Data", "There is no match data to save.")
             return
 
         catalog = self.catalogCombo.currentText()
@@ -302,7 +416,7 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
                 writer = csv.writer(f, dialect=dialect)
                 writer.writerow(["CatalogName", "CatalogId", "FilePath"])
                 for entry in self._catalog_entries:
-                    for _obj_name, filepath, *_ in self._coverage.get(entry.rowid, []):
+                    for _obj_name, filepath, *_ in self._matches_map.get(entry.rowid, []):
                         writer.writerow([catalog, entry.catalog_id, filepath])
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to save report: {e}")
