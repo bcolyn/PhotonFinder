@@ -1142,8 +1142,7 @@ class ImageViewerWindow(QMainWindow):
 
                 mag_str  = f"{entry.magnitude:.1f}" if entry.magnitude is not None else ""
                 size_str = f"{entry.size:.1f}'" if entry.size else "pt"
-                expected_canonical = f"{entry.catalog}_{entry.catalog_id}"
-                aka_str = entry.canonical_id if entry.canonical_id != expected_canonical else ""
+                aka_str = entry.canonical_id or ""
                 child = QTreeWidgetItem(top_node, [entry.catalog_id, aka_str, mag_str, size_str])
 
                 ann_item = CatalogAnnotationItem(

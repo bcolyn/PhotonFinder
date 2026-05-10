@@ -722,7 +722,7 @@ class CatalogEntry(Model):
     dec = FloatField()
     catalog = TextField()
     catalog_id = TextField()
-    canonical_id = TextField()
+    canonical_id = TextField(null=True)
     size = FloatField()
     axis_ratio = FloatField(null=True)
     angle = FloatField(null=True)

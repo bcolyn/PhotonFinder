@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS catalog_entry (
     dec          REAL    NOT NULL,
     catalog      TEXT    NOT NULL,
     catalog_id   TEXT    NOT NULL,
-    canonical_id TEXT    NOT NULL,
+    canonical_id TEXT,
     size         REAL    NOT NULL,
     axis_ratio   REAL,
     angle        REAL,
@@ -194,7 +194,8 @@ def load_openngc_csv(path: Path) -> list[tuple]:
             pix = _healpix(ra, dec)
 
             def make_row(catalog, catalog_id, cid=canonical_id):
-                return (ra, dec, catalog, catalog_id, cid,
+                return (ra, dec, catalog, catalog_id,
+                        None if cid == f"{catalog}_{catalog_id}" else cid,
                         size, axis_ratio, angle, magnitude, pix)
 
             blacklisted = primary_catalog in _OPENNGC_CATALOG_BLACKLIST
@@ -246,7 +247,7 @@ def load_generic_csv(path: Path) -> list[tuple]:
                 dec = _float_or_none(row["dec"])
                 catalog = row["catalog"]
                 catalog_id = row["catalog_id"]
-                canonical_id = row.get("canonical_id") or f"{catalog}_{catalog_id}"
+                canonical_id = row.get("canonical_id") or None
                 size = float(row["size"])
                 axis_ratio = _float_or_none(row.get("axis_ratio", ""))
                 angle = _float_or_none(row.get("angle", ""))
@@ -331,8 +332,10 @@ def load_hyperleda_bz2(path: Path) -> list[tuple]:
             catalog_id = pgc_id
             if objname:
                 _, _, canonical_id = _parse_openngc_name(objname)
+                if canonical_id == f"PGC_{catalog_id}":
+                    canonical_id = None
             else:
-                canonical_id = f"PGC_{pgc_id}"
+                canonical_id = None
 
             rows.append((al2000, de2000, 'PGC', catalog_id, canonical_id,
                          size, axis_ratio, pa, visual_mag, _healpix(al2000, de2000)))
