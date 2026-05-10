@@ -15,6 +15,7 @@
     <file>res/telescope-icon-original.svg</file>
     <file>res/border-outer.svg</file>
     <file>res/stars.svg</file>
+    <file>res/table.svg</file>
     <file alias="icon.png">../../icon.png</file>
   </qresource>
 </RCC>

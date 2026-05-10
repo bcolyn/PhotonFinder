@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
     QGraphicsObject, QToolBar, QLabel, QCheckBox, QDoubleSpinBox, QComboBox, QPushButton,
     QStatusBar, QMessageBox, QSplitter, QTreeWidget, QTreeWidgetItem, QAbstractItemView,
-    QHeaderView, QWidget, QVBoxLayout, QHBoxLayout,
+    QHeaderView, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
 )
 
 from photonfinder.models import File
@@ -373,6 +373,8 @@ class ImageViewerWindow(QMainWindow):
         self._pattern_override: str | None = None
 
         # Annotation state
+        self._pending_annotate: bool = False
+        self._focus_annotation: tuple[str, str] | None = None  # (catalog, catalog_id)
         self._annotation_items: list = []
         self._item_to_tree: dict = {}   # id(CatalogAnnotationItem) -> QTreeWidgetItem
         self._tree_to_item: dict = {}   # id(QTreeWidgetItem) -> CatalogAnnotationItem
@@ -407,8 +409,8 @@ class ImageViewerWindow(QMainWindow):
         self._canvas.pixel_hovered.connect(self._on_pixel_hover)
 
         self._catalog_tree = QTreeWidget()
-        self._catalog_tree.setHeaderLabels(["Object", "Mag", "Size"])
-        self._catalog_tree.setColumnCount(3)
+        self._catalog_tree.setHeaderLabels(["Object", "Also known as", "Mag", "Size"])
+        self._catalog_tree.setColumnCount(4)
         self._catalog_tree.setMinimumWidth(160)
         header = self._catalog_tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
@@ -436,11 +438,17 @@ class ImageViewerWindow(QMainWindow):
         self._mag_limit_spin.valueChanged.connect(self._on_mag_limit_changed)
         _mag_hbox.addWidget(self._mag_limit_spin, stretch=1)
 
+        self._annotation_filter = QLineEdit()
+        self._annotation_filter.setPlaceholderText("Filter…")
+        self._annotation_filter.setClearButtonEnabled(True)
+        self._annotation_filter.textChanged.connect(self._on_annotation_filter_changed)
+
         self._tree_container = QWidget()
         _vbox = QVBoxLayout(self._tree_container)
         _vbox.setContentsMargins(0, 0, 0, 0)
         _vbox.setSpacing(0)
         _vbox.addWidget(_mag_header)
+        _vbox.addWidget(self._annotation_filter)
         _vbox.addWidget(self._catalog_tree)
         self._tree_container.setVisible(False)
 
@@ -640,7 +648,8 @@ class ImageViewerWindow(QMainWindow):
         self._nav_rows = rows if rows and len(rows) > 1 else None
         self._nav_row = self._nav_rows.index(row) if self._nav_rows and row in self._nav_rows else row
         self._pending_nav_row = None
-        panel.data_fully_loaded.connect(self._on_nav_data_loaded)
+        if panel is not None:
+            panel.data_fully_loaded.connect(self._on_nav_data_loaded)
         self._update_nav_label()
         if self._preload_btn:
             self._preload_btn.setEnabled(True)
@@ -1008,6 +1017,17 @@ class ImageViewerWindow(QMainWindow):
         if current_was_solved and self._annotate_btn and self._annotate_btn.isChecked():
             self._on_annotate()
 
+    def request_annotations(self, catalog: str | None = None, catalog_id: str | None = None):
+        """Enable annotations for the next file load; applies once the button becomes visible.
+
+        If catalog and catalog_id are given, that catalog is kept expanded and its entry
+        pre-selected; all other catalogs are collapsed.
+        """
+        if self._annotate_btn and self._annotate_btn.isChecked():
+            return
+        self._pending_annotate = True
+        self._focus_annotation = (catalog, catalog_id) if catalog and catalog_id else None
+
     def _on_annotate_toggled(self, checked: bool):
         if checked:
             self._on_annotate()
@@ -1099,7 +1119,7 @@ class ImageViewerWindow(QMainWindow):
         for catalog_name in sorted(by_catalog):
             entries = by_catalog[catalog_name]
             top_node = QTreeWidgetItem(self._catalog_tree,
-                                       [f"{catalog_name} ({len(entries)})", "", ""])
+                                       [f"{catalog_name} ({len(entries)})", "", "", ""])
             top_node.setData(0, Qt.ItemDataRole.UserRole, catalog_name)
             top_node.setExpanded(catalog_name not in self._collapsed_catalogs)
 
@@ -1122,7 +1142,9 @@ class ImageViewerWindow(QMainWindow):
 
                 mag_str  = f"{entry.magnitude:.1f}" if entry.magnitude is not None else ""
                 size_str = f"{entry.size:.1f}'" if entry.size else "pt"
-                child = QTreeWidgetItem(top_node, [entry.catalog_id, mag_str, size_str])
+                expected_canonical = f"{entry.catalog}_{entry.catalog_id}"
+                aka_str = entry.canonical_id if entry.canonical_id != expected_canonical else ""
+                child = QTreeWidgetItem(top_node, [entry.catalog_id, aka_str, mag_str, size_str])
 
                 ann_item = CatalogAnnotationItem(
                     entry, scene_x, scene_y, semi_a, semi_b, rotation,
@@ -1142,6 +1164,57 @@ class ImageViewerWindow(QMainWindow):
             self._catalog_tree.resizeColumnToContents(col)
 
         self._update_annotation_visibility()
+        self._apply_annotation_focus()
+
+    def _on_annotation_filter_changed(self, text: str):
+        needle = text.strip().lower()
+        root = self._catalog_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            top = root.child(i)
+            any_visible = False
+            for j in range(top.childCount()):
+                child = top.child(j)
+                match = not needle or needle in child.text(0).lower()
+                child.setHidden(not match)
+                if match:
+                    any_visible = True
+            top.setHidden(not any_visible)
+
+    def _apply_annotation_focus(self):
+        focus = self._focus_annotation
+        self._focus_annotation = None
+        if not focus:
+            root = self._catalog_tree.invisibleRootItem()
+            if not any(root.child(i).isExpanded() for i in range(root.childCount())):
+                _defaults = {"NGC", "IC", "Messier"}
+                for i in range(root.childCount()):
+                    top = root.child(i)
+                    if top.data(0, Qt.ItemDataRole.UserRole) in _defaults:
+                        top.setExpanded(True)
+            return
+        target_catalog, target_id = focus
+
+        root = self._catalog_tree.invisibleRootItem()
+        target_child = None
+        for i in range(root.childCount()):
+            top = root.child(i)
+            catalog_name = top.data(0, Qt.ItemDataRole.UserRole)
+            is_target = catalog_name == target_catalog
+            top.setExpanded(is_target)
+            if is_target:
+                for j in range(top.childCount()):
+                    child = top.child(j)
+                    if child.text(0) == target_id:
+                        target_child = child
+                        break
+
+        if target_child:
+            self._catalog_tree.setCurrentItem(target_child)
+            self._catalog_tree.scrollToItem(target_child, QAbstractItemView.ScrollHint.EnsureVisible)
+            ann_item = self._tree_to_item.get(id(target_child))
+            if ann_item:
+                for item in self._annotation_items:
+                    item.set_selected(item is ann_item)
 
     def _clear_annotations(self):
         self._canvas.clear_annotations()
@@ -1149,6 +1222,7 @@ class ImageViewerWindow(QMainWindow):
         self._item_to_tree.clear()
         self._tree_to_item.clear()
         self._catalog_tree.clear()
+        self._annotation_filter.clear()
         self._tree_container.setVisible(False)
         self._splitter.setSizes([0, self._splitter.width()])
 
@@ -1184,6 +1258,8 @@ class ImageViewerWindow(QMainWindow):
             if self._context:
                 self._context.settings.set_annotation_collapsed_catalogs(self._collapsed_catalogs)
             self._update_annotation_visibility()
+        for col in range(self._catalog_tree.columnCount()):
+            self._catalog_tree.resizeColumnToContents(col)
 
     _HOVER_BG = QColor(255, 140, 0, 60)  # faint orange tint matching the hover pen
 
@@ -1376,8 +1452,10 @@ class ImageViewerWindow(QMainWindow):
             self._run_processing()
 
     def _on_processed(self, display_uint8: np.ndarray, src_uint16: np.ndarray, stretch_params):
+        was_annotating = bool(self._annotate_btn and self._annotate_btn.isChecked()) or self._pending_annotate
+        self._pending_annotate = False
         self._clear_annotations()
-        if self._annotate_btn and self._annotate_btn.isChecked():
+        if was_annotating:
             self._annotate_btn.blockSignals(True)
             self._annotate_btn.setChecked(False)
             self._annotate_btn.blockSignals(False)
@@ -1403,6 +1481,9 @@ class ImageViewerWindow(QMainWindow):
         if not self._fitted:
             self._canvas.fit_in_view()
             self._fitted = True
+
+        if was_annotating and self._annotate_btn:
+            self._annotate_btn.setChecked(True)
 
         name = Path(self._filename).name if self._filename else ""
         self.statusBar().showMessage(f"{name}  |  {w}×{h}")

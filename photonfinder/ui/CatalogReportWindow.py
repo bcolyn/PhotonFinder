@@ -266,6 +266,8 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
         self.showMatchingCheckBox.toggled.connect(self._on_show_matching_toggled)
         self.treeWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.treeWidget.customContextMenuRequested.connect(self._on_context_menu)
+        self.treeWidget.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self.filterEdit.textChanged.connect(self._apply_text_filter)
         self.saveButton.clicked.connect(self._save_report)
 
         self.on_tabs_changed()
@@ -374,6 +376,15 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
         for col in range(1, self.treeWidget.columnCount()):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
 
+        self._apply_text_filter(self.filterEdit.text())
+
+    def _apply_text_filter(self, text: str):
+        needle = text.strip().lower()
+        root = self.treeWidget.invisibleRootItem()
+        for i in range(root.childCount()):
+            item = root.child(i)
+            item.setHidden(bool(needle) and needle not in item.text(0).lower())
+
     def _on_context_menu(self, pos):
         item = self.treeWidget.itemAt(pos)
         if item is None:
@@ -420,6 +431,26 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
                         writer.writerow([catalog, entry.catalog_id, filepath])
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to save report: {e}")
+
+    def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
+        data = item.data(0, _FILE_DATA_ROLE)
+        if data is None:
+            return
+        root_id, root_label, file_dir, file_name, obj_name = data
+        if file_name is None:
+            return
+        from photonfinder.models import File, FileWCS
+        file = File.get_or_none((File.root == root_id) & (File.path == file_dir) & (File.name == file_name))
+        if file is None:
+            return
+        file.has_wcs = FileWCS.select().where(FileWCS.file == file).exists()
+        catalog = self.catalogCombo.currentText()
+        catalog_entry_node = item.parent().parent() if item.parent() else None
+        catalog_entry_id = catalog_entry_node.text(0) if catalog_entry_node else None
+        self.search_panel.mainWindow.view_image(
+            file, annotate=True,
+            annotation_catalog=catalog, annotation_catalog_id=catalog_entry_id,
+        )
 
     def _open_in_new_tab(self, root_id, root_label, file_dir, file_name, obj_name):
         criteria = deepcopy(self.search_panel.search_criteria)

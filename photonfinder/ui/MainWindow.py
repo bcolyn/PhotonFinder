@@ -55,6 +55,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionOpen_File.setIcon(create_colored_svg_icon(":/res/card-image.svg", size, text_color))
         self.action_Open_Database.setIcon(create_colored_svg_icon(":/res/database.svg", size, text_color))
         self.action_Export_Data.setIcon(create_colored_svg_icon(":/res/send-plus.svg", size, text_color))
+        self.actionCatalog_Report.setIcon(create_colored_svg_icon(":/res/table.svg", size, text_color))
 
         self.actionExposure.setIcon(create_colored_svg_icon(":/res/clock.svg", size, text_color))
         self.actionCoordinates.setIcon(create_colored_svg_icon(":/res/rulers.svg", size, text_color))
@@ -492,7 +493,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Open the file at the selected row
         current_panel.open_file(selected_rows[0])
 
-    def view_image(self, file, panel=None, row: int = -1, rows: list[int] | None = None):
+    def view_image(self, file, panel=None, row: int = -1, rows: list[int] | None = None,
+                   annotate: bool = False, annotation_catalog: str | None = None,
+                   annotation_catalog_id: str | None = None):
         """Open the file in the internal image viewer (single non-modal window)."""
         if self.image_viewer is None or not self.image_viewer.isVisible():
             self.image_viewer = ImageViewerWindow(context=self.context, parent=self)
@@ -501,6 +504,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             )
             self.image_viewer.show()
         self.image_viewer.set_nav_context(panel, row, rows)
+        if annotate:
+            self.image_viewer.request_annotations(annotation_catalog, annotation_catalog_id)
         self.image_viewer.load_file(file)
         self.image_viewer.raise_()
         self.image_viewer.activateWindow()
