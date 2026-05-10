@@ -267,10 +267,13 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.close_button.setText("Close")
         self._task = None
 
-    def _on_close_clicked(self):
+    def closeEvent(self, event):
         if self._task is not None:
             self._task.cancel()
             self._task = None
+        super().closeEvent(event)
+
+    def _on_close_clicked(self):
         self.close()
 
     def _update_hms_dms(self):

@@ -485,6 +485,8 @@ class PlateSolveTask(FileProcessingTask):
             try:
                 solution = _try_solve(self.solver)
             except (SolverFailure, SolverError) as primary_error:
+                if self.cancelled:
+                    return
                 if self.backup_solver:
                     self.message.emit(f"  → {self._solver_name(self.solver)} failed ({primary_error}), trying {self._solver_name(self.backup_solver)}…")
                     solution = _try_solve(self.backup_solver)

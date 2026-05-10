@@ -1375,13 +1375,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         dialog.show()
 
     def on_files_solved(self, task: PlateSolveTask):
-        solved_files = set(task.solved_files)
+        solved_files = {f: f for f in task.solved_files}
         model = self.dataView.model()
         for row in range(model.rowCount()):
             index = model.index(row, 0)
-            if index.data(ROWID_ROLE) in solved_files:
-                file = index.data(ROWID_ROLE)
-                assert file.has_wcs
+            file = solved_files.get(index.data(ROWID_ROLE))
+            if file is not None:
                 ra_item = model.index(row, 15)
                 dec_item = model.index(row, 16)
                 solved_item = model.index(row, 17)
@@ -1392,6 +1391,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 model.setData(dec_item, file.image.coord_dec, SORT_ROLE)
                 model.setData(solved_item, "True", Qt.DisplayRole)
                 model.setData(solved_item, "True", SORT_ROLE)
+
+        if solved_files and self.search_criteria.plate_solved is not None:
+            self.refresh_data_grid()
 
     def report_list_files(self):
         selected_files = self.get_selected_files()
