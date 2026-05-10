@@ -1,0 +1,8 @@
+# Manual overrides for controversial or misidentified catalog entries.
+# Format matches the generic VizieR CSV: ra and dec in decimal degrees, size in arcminutes.
+# Each row replaces the existing (catalog, catalog_id) entry in the database.
+#
+# M102: identity disputed; we follow the NGC 5866 (Spindle Galaxy) interpretation.
+# canonical_id=NGC_5866 links this entry to the existing NGC 5866 record.
+ra,dec,catalog,catalog_id,canonical_id,size,axis_ratio,angle,magnitude
+226.62291666666667,55.763222222222225,Messier,102,NGC_5866,6.31,0.431,126.0,9.89

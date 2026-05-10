@@ -197,13 +197,13 @@ def load_openngc_csv(path: Path) -> list[tuple]:
                 return (ra, dec, catalog, catalog_id, cid,
                         size, axis_ratio, angle, magnitude, pix)
 
-            if primary_catalog in _OPENNGC_CATALOG_BLACKLIST:
-                continue
+            blacklisted = primary_catalog in _OPENNGC_CATALOG_BLACKLIST
 
-            # Emit primary row unless it's a generic skip type.
-            # Named-catalog entries (Messier/Caldwell by Name) always emit —
-            # e.g. M040 (**) and C014 (*Ass) should appear in their own catalogs.
-            if not skip_primary or primary_catalog in ("Messier", "Caldwell"):
+            # Emit primary row unless it's a generic skip type or a blacklisted
+            # catalog (those have dedicated sources). Named-catalog entries
+            # (Messier/Caldwell by Name) always emit — e.g. M040 (**) and
+            # C014 (*Ass) should appear in their own catalogs.
+            if not blacklisted and (not skip_primary or primary_catalog in ("Messier", "Caldwell")):
                 rows.append(make_row(primary_catalog, primary_id))
 
             # Messier cross-ref: always emit when M column is set and the
@@ -342,6 +342,27 @@ def load_hyperleda_bz2(path: Path) -> list[tuple]:
 
 
 # ---------------------------------------------------------------------------
+# Overrides
+# ---------------------------------------------------------------------------
+
+def apply_overrides(con: sqlite3.Connection, path: Path) -> None:
+    """
+    Apply manual overrides from a CSV file (same format as generic VizieR CSVs).
+    Each row replaces the existing (catalog, catalog_id) entry, if any.
+    """
+    if not path.exists():
+        return
+    rows = load_generic_csv(path)
+    replaced = 0
+    for row in rows:
+        ra, dec, catalog, catalog_id, canonical_id, size, axis_ratio, angle, magnitude, healpix = row
+        con.execute("DELETE FROM catalog_entry WHERE catalog=? AND catalog_id=?", (catalog, catalog_id))
+        con.execute("INSERT INTO catalog_entry VALUES (?,?,?,?,?,?,?,?,?,?)", row)
+        replaced += 1
+    logging.info(f"Overrides: {replaced} entr{'y' if replaced == 1 else 'ies'} replaced from {path.name}")
+
+
+# ---------------------------------------------------------------------------
 # Catalog source registry — edit here to add/remove/reorder sources
 # ---------------------------------------------------------------------------
 
@@ -384,6 +405,8 @@ def build(output: Path = OUTPUT_DB, source_dir: Path = CATALOG_DIR) -> None:
 
         if total == 0:
             logging.warning("No rows inserted — check that source files exist")
+
+        apply_overrides(con, source_dir / "overrides.csv")
 
         for stmt in CREATE_INDEXES:
             con.execute(stmt)
