@@ -157,7 +157,7 @@ class ASTAPSolver(SolverBase):
     def _run_astap(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None):
         """Execute ASTAP with the given parameters."""
         params = [self._exe, "-f", str(tmp_image_file), "-update", "-platesolve"]
-        options = {"-r": "180",  "-z": "2"} #  "-s": "100" ?
+        options = {"-r": "180"} #  "-s": "100" ?
         if hint is not None:
             options.update(hint)
         params.extend([item for k in options for item in (k, options[k])])
@@ -195,6 +195,10 @@ class ASTAPSolver(SolverBase):
                     astap_hint['-spd'] = str(90 + float(hint.dec))
                 if hint.scale is not None and '-fov' not in astap_hint and naxis2:
                     astap_hint['-fov'] = str(int(naxis2) * hint.scale / 3600)
+            if naxis2 > 2000:
+                astap_hint['-z'] = "2"
+            else:
+                astap_hint['-z'] = "0"
 
         return self._solve(temp_image, astap_hint)
 
