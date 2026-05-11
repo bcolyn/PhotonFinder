@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QTableWidgetItem, QDialog, QMessageBox, QWidget
 
 from photonfinder.core import ApplicationContext, Change
 from photonfinder.models import Project, ProjectFile
+from photonfinder.ui.BackgroundLoader import ProjectsLoader
 from photonfinder.ui.generated.ProjectsWindow_ui import Ui_ProjectsWindow
 from .ProjectEditDialog import ProjectEditDialog
 from .common import _format_ra, _format_dec, _format_date, create_colored_svg_icon, ColumnVisibilityController
@@ -20,9 +21,10 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
         super(ProjectsWindow, self).__init__(parent)
         self.setupUi(self)
         self.context = context
-        self.connect_signals()
-        self.populate_table()
         self.main_window = main_window
+        self._loader = ProjectsLoader(context)
+        self._loader.projects_loaded.connect(self._on_projects_loaded)
+        self.connect_signals()
 
         text_color = self.palette().color(QPalette.WindowText)
         size = QSize(24, 24)
@@ -30,6 +32,8 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
         self.visibility_controller = ColumnVisibilityController(self.tableWidget)
         hidden_cols = context.settings.get_project_hidden_cols()
         self.visibility_controller.load_visibility(hidden_cols)
+
+        self._loader.reload_projects()
 
     def connect_signals(self):
         self.actionCreate.triggered.connect(self.create_action)
@@ -44,15 +48,13 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
 
     def on_projects_changed(self, projects: Collection[Project], change: Change):
         # TODO partial update
-        self.populate_table()
+        self._loader.reload_projects()
 
     def on_project_links_changed(self, project_files: Collection[ProjectFile], change: Change):
-        #TODO partial update
-        self.populate_table()
+        # TODO partial update
+        self._loader.reload_projects()
 
-    def populate_table(self):
-        projects = Project.list_projects_with_image_data()
-
+    def _on_projects_loaded(self, projects):
         self.tableWidget.clearContents()
         self.tableWidget.setRowCount(len(projects))
 
@@ -73,6 +75,9 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
 
         self.tableWidget.resizeColumnsToContents()
         self.enable_disable_actions()
+
+    def populate_table(self):
+        self._loader.reload_projects()
 
     def save_cols(self):
         hidden_cols = self.visibility_controller.save_visibility()
@@ -105,8 +110,8 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
                 for project in projects:
                     project.delete_instance()
             self.context.signal_bus.projects_changed.emit(projects, Change.DELETE)
-
-        self.populate_table()
+        else:
+            self.populate_table()
 
     def create_action(self):
         project = Project()
@@ -135,7 +140,6 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
             Project.delete().where(Project.rowid.in_(to_merge_ids)).execute()
             self.context.signal_bus.projects_changed.emit([leader], Change.CREATE_OR_UPDATE)
             self.context.signal_bus.projects_changed.emit(to_merge, Change.DELETE)
-        self.populate_table()
 
     def use_as_filter_action(self):
         from photonfinder.ui.SearchPanel import FilterButton, AdvancedFilter

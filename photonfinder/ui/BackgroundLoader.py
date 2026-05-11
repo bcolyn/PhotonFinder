@@ -66,6 +66,22 @@ class GenericControlLoader(BackgroundLoaderBase):
                 logging.error(f"Error loading data for control {widget.objectName()}: {e}", exc_info=True)
 
 
+class ProjectsLoader(BackgroundLoaderBase):
+    """Helper class for asynchronous loading of projects with image data."""
+
+    projects_loaded = Signal(list)
+
+    def reload_projects(self):
+        self.run_in_thread(self._reload_projects_task)
+
+    def _reload_projects_task(self):
+        try:
+            projects = Project.list_projects_with_image_data()
+            self.projects_loaded.emit(projects)
+        except Exception as e:
+            logging.error(f"Error loading projects: {e}")
+
+
 class LibraryRootsLoader(BackgroundLoaderBase):
     """Helper class for asynchronous loading of library roots from the database."""
 
