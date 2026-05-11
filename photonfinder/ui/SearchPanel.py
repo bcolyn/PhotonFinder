@@ -82,7 +82,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # Connect selection changes
         self.dataView.selectionModel().selectionChanged.connect(self.on_data_selection_changed)
         self.dataView.installEventFilter(self)
-        self.visibility_controller = ColumnVisibilityController(self.dataView)
+        self.visibility_controller = ColumnVisibilityController(self.dataView, context=context.settings)
         self.has_more_results = False
         self.loading_more = False
 

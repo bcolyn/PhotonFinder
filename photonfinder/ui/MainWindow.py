@@ -20,7 +20,7 @@ from .ProjectEditDialog import ProjectEditDialog
 from .ProjectsWindow import ProjectsWindow
 from .SearchPanel import SearchPanel, AdvancedFilter
 from .SettingsDialog import SettingsDialog
-from .common import create_colored_svg_icon
+from .common import create_colored_svg_icon, _BUILTIN_PRESETS
 from .generated.MainWindow_ui import Ui_MainWindow
 import photonfinder.ui.generated.resources_rc
 from .session import SessionManager, Session
@@ -158,9 +158,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         try:
             sessions = self.session_manager.load_sessions()
             for session in sessions:
-                panel = self.new_search_tab(session.criteria)
+                panel = self.new_search_tab(session.criteria, hidden_columns=session.hidden_columns)
                 panel.set_title(session.title)
-                panel.visibility_controller.load_visibility(session.hidden_columns)
         except Exception as e:
             logging.error(e, exc_info=True)
         finally:
@@ -175,11 +174,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ) for panel in self.get_search_panels()]
         self.session_manager.save_sessions(sessions)
 
-    def new_search_tab(self, search_criteria=None) -> SearchPanel:
+    def new_search_tab(self, search_criteria=None, hidden_columns=None) -> SearchPanel:
+        if hidden_columns is None:
+            current = self.get_current_search_panel()
+            if current is not None:
+                hidden_columns = current.visibility_controller.save_visibility()
+            else:
+                hidden_columns = ",".join(_BUILTIN_PRESETS["Standard"])
         panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
         tab = self.tabWidget.addTab(panel, "Loading")
         if search_criteria:
             panel.apply_search_criteria(search_criteria)
+        if hidden_columns:
+            panel.visibility_controller.load_visibility(hidden_columns)
         self.tabWidget.setCurrentIndex(tab)
         self.tabs_changed.emit(self.get_search_panels())
         return panel

@@ -392,6 +392,18 @@ class Settings:
     def set_project_hidden_cols(self, value) -> str:
         self.settings.setValue("project_hidden_cols", value)
 
+    def get_column_presets(self) -> dict:
+        import json
+        raw = self.settings.value("column_presets", "{}", str)
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {}
+
+    def set_column_presets(self, presets: dict):
+        import json
+        self.settings.setValue("column_presets", json.dumps(presets))
+
     def get_use_internal_viewer(self) -> bool:
         return self.settings.value("use_internal_viewer", True, bool)
 

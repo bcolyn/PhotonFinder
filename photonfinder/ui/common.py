@@ -4,7 +4,7 @@ from datetime import datetime
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter, QAction
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QStyle, QTableView, QMenu
+from PySide6.QtWidgets import QStyle, QTableView, QMenu, QInputDialog, QMessageBox, QDialog, QVBoxLayout, QListWidget, QPushButton, QDialogButtonBox, QHBoxLayout
 
 
 def _format_file_size(size_bytes):
@@ -121,11 +121,20 @@ def ensure_header_widths(table_view, extra_padding=12):
             header.resizeSection(col, total_needed)
 
 
+_BUILTIN_PRESETS = {
+    "Essentials": {"Gain", "Offset", "Binning", "Set Temp", "Camera", "Telescope",
+                   "Size", "Modified", "RA", "DEC", "Solved", "Paths"},
+    "Standard": {"Size", "Modified", "RA", "DEC", "Solved"},
+    "Full": set(),
+}
+
+
 class ColumnVisibilityController:
-    def __init__(self, table_view: QTableView):
+    def __init__(self, table_view: QTableView, context=None):
         self.table_view = table_view
         self.model = table_view.model()
         self.header = table_view.horizontalHeader()
+        self.context = context  # optional; enables preset support when provided
 
         self.header.setContextMenuPolicy(Qt.CustomContextMenu)
         self.header.customContextMenuRequested.connect(
@@ -141,6 +150,10 @@ class ColumnVisibilityController:
         if not self.model:
             return
 
+        if self.context is not None:
+            self._build_presets_section(menu)
+            menu.addSeparator()
+
         for col in range(self.model.columnCount()):
             header = self.model.headerData(col, Qt.Horizontal)
             action = QAction(header, menu)
@@ -151,8 +164,87 @@ class ColumnVisibilityController:
 
         return menu
 
+    def _build_presets_section(self, menu: QMenu):
+        user_presets = self.context.get_column_presets()
+
+        for name, hidden_set in _BUILTIN_PRESETS.items():
+            action = QAction(name, menu)
+            action.triggered.connect(lambda _, h=hidden_set: self.load_visibility(",".join(h)))
+            menu.addAction(action)
+
+        if user_presets:
+            menu.addSeparator()
+            for name, hidden_csv in user_presets.items():
+                action = QAction(name, menu)
+                action.triggered.connect(lambda _, csv=hidden_csv: self.load_visibility(csv))
+                menu.addAction(action)
+
+        menu.addSeparator()
+        save_action = QAction("Save as Preset...", menu)
+        save_action.triggered.connect(self._save_preset_dialog)
+        menu.addAction(save_action)
+
+        manage_action = QAction("Manage Presets...", menu)
+        manage_action.triggered.connect(self._manage_presets_dialog)
+        manage_action.setEnabled(bool(user_presets))
+        menu.addAction(manage_action)
+
+    def _save_preset_dialog(self):
+        name, ok = QInputDialog.getText(
+            self.table_view, "Save Preset", "Preset name:"
+        )
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        if name in _BUILTIN_PRESETS:
+            QMessageBox.warning(self.table_view, "Save Preset",
+                                f'"{name}" is a built-in preset and cannot be overwritten.')
+            return
+        presets = self.context.get_column_presets()
+        presets[name] = self.save_visibility()
+        self.context.set_column_presets(presets)
+
+    def _manage_presets_dialog(self):
+        presets = self.context.get_column_presets()
+        if not presets:
+            return
+
+        dlg = QDialog(self.table_view)
+        dlg.setWindowTitle("Manage Presets")
+        layout = QVBoxLayout(dlg)
+
+        list_widget = QListWidget()
+        list_widget.addItems(presets.keys())
+        layout.addWidget(list_widget)
+
+        btn_layout = QHBoxLayout()
+        delete_btn = QPushButton("Delete")
+        delete_btn.setEnabled(False)
+        btn_layout.addWidget(delete_btn)
+        btn_layout.addStretch()
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        btn_layout.addWidget(buttons)
+        layout.addLayout(btn_layout)
+
+        list_widget.itemSelectionChanged.connect(
+            lambda: delete_btn.setEnabled(bool(list_widget.selectedItems()))
+        )
+
+        def delete_selected():
+            item = list_widget.currentItem()
+            if not item:
+                return
+            name = item.text()
+            presets.pop(name, None)
+            self.context.set_column_presets(presets)
+            list_widget.takeItem(list_widget.row(item))
+            delete_btn.setEnabled(False)
+
+        delete_btn.clicked.connect(delete_selected)
+        buttons.rejected.connect(dlg.accept)
+        dlg.exec()
+
     def save_visibility(self) -> str:
-        """Return a comma-separated string of hidden column headers."""
         hidden_columns = []
         for col in range(self.model.columnCount()):
             if self.table_view.isColumnHidden(col):
@@ -161,7 +253,6 @@ class ColumnVisibilityController:
         return ",".join(hidden_columns)
 
     def load_visibility(self, csv_string: str):
-        """Hide columns listed in the comma-separated string; show all others."""
         hidden_headers = set(h.strip() for h in csv_string.split(",") if h.strip())
         for col in range(self.model.columnCount()):
             header = str(self.model.headerData(col, Qt.Horizontal))
