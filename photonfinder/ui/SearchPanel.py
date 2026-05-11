@@ -597,7 +597,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         find_flats_action = menu.addAction("Find matching flats")
         menu.addSeparator()
         is_solved = selected_file is not None and getattr(selected_file, 'has_wcs', False)
-        plate_solve_action = menu.addAction("Force Re-Solve" if is_solved else "Plate Solve")
+        plate_solve_action = menu.addAction("Force Re-Solve..." if is_solved else "Plate Solve...")
         plate_solve_action.triggered.connect(self.plate_solve_files)
         menu.addSeparator()
         mark_bad_action = menu.addAction("Mark as bad")

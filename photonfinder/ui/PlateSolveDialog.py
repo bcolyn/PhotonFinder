@@ -78,6 +78,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.hint_dec_edit.textChanged.connect(self._update_hms_dms)
         self.hint_ra_edit.editingFinished.connect(self._try_convert_ra)
         self.hint_dec_edit.editingFinished.connect(self._try_convert_dec)
+        self.lookup_hint_button.clicked.connect(self._on_lookup_hint)
         self._update_hms_dms()
 
     def _populate_combos(self):
@@ -275,6 +276,18 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
 
     def _on_close_clicked(self):
         self.close()
+
+    def _on_lookup_hint(self):
+        from photonfinder.ui.ObjectLookupDialog import ObjectLookupDialog
+        dialog = ObjectLookupDialog(self.context, parent=self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        result = dialog.result_ra_dec
+        if result is None:
+            return
+        ra_deg, dec_deg = result
+        self.hint_ra_edit.setText(f"{ra_deg:.4f}")
+        self.hint_dec_edit.setText(f"{dec_deg:.4f}")
 
     def _update_hms_dms(self):
         from astropy.coordinates import Angle

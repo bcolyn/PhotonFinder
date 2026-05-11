@@ -102,6 +102,30 @@
        </layout>
       </item>
       <item>
+       <layout class="QHBoxLayout" name="lookup_layout">
+        <item>
+         <spacer name="lookup_spacer">
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="lookup_hint_button">
+          <property name="text">
+           <string>Lookup object…</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
        <layout class="QHBoxLayout" name="scale_layout">
         <item>
          <widget class="QLabel" name="scale_label">

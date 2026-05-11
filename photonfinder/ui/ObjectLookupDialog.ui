@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ObjectLookupDialog</class>
+ <widget class="QDialog" name="ObjectLookupDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>440</width>
+    <height>260</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Object Lookup</string>
+  </property>
+  <property name="modal">
+   <bool>true</bool>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="local_group">
+     <property name="title">
+      <string>Local Database</string>
+     </property>
+     <layout class="QFormLayout" name="local_form">
+      <item row="0" column="0">
+       <widget class="QLabel" name="catalog_label">
+        <property name="text">
+         <string>Catalog:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="catalog_combo"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="id_label">
+        <property name="text">
+         <string>Object ID:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout" name="local_id_layout">
+        <item>
+         <widget class="QLineEdit" name="catalog_id_edit">
+          <property name="placeholderText">
+           <string>e.g. 42, NGC 1499</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="local_lookup_button">
+          <property name="text">
+           <string>Look up</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="online_group">
+     <property name="title">
+      <string>Online (VizieR)</string>
+     </property>
+     <layout class="QFormLayout" name="online_form">
+      <item row="0" column="0">
+       <widget class="QLabel" name="name_label">
+        <property name="text">
+         <string>Name:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="online_name_layout">
+        <item>
+         <widget class="QLineEdit" name="name_edit">
+          <property name="placeholderText">
+           <string>e.g. M42, Orion Nebula</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="online_lookup_button">
+          <property name="text">
+           <string>Look up</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="result_label">
+     <property name="text">
+      <string/>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignmentFlag::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="standardButtons">
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>accepted()</signal>
+   <receiver>ObjectLookupDialog</receiver>
+   <slot>accept()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>219</x>
+     <y>235</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>219</x>
+     <y>130</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>rejected()</signal>
+   <receiver>ObjectLookupDialog</receiver>
+   <slot>reject()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>219</x>
+     <y>235</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>219</x>
+     <y>130</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+</ui>
