@@ -290,10 +290,22 @@ class Settings:
     def set_astrometry_net_force_image_upload(self, value):
         return self.settings.setValue('astrometry_net_force_image_upload', value)
 
-    def get_wsl_solver_timeout(self) -> int:
+    def get_solve_field_path(self) -> str:
+        return self.settings.value('solve_field_path', '', str)
+
+    def set_solve_field_path(self, value: str):
+        self.settings.setValue('solve_field_path', value)
+
+    def get_solve_field_wsl_distro(self) -> str:
+        return self.settings.value('solve_field_wsl_distro', '', str)
+
+    def set_solve_field_wsl_distro(self, value: str):
+        self.settings.setValue('solve_field_wsl_distro', value)
+
+    def get_solve_field_timeout(self) -> int:
         return self.settings.value('wsl_solver_timeout', 300, int)
 
-    def set_wsl_solver_timeout(self, value: int):
+    def set_solve_field_timeout(self, value: int):
         self.settings.setValue('wsl_solver_timeout', value)
 
     def get_plate_solve_primary_solver(self) -> int:

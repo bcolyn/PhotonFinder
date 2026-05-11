@@ -6,12 +6,21 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>612</width>
-    <height>468</height>
+    <width>673</width>
+    <height>681</height>
    </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>500</width>
+    <height>0</height>
+   </size>
   </property>
   <property name="windowTitle">
    <string>Settings</string>
+  </property>
+  <property name="sizeGripEnabled">
+   <bool>true</bool>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
    <item>
@@ -127,7 +136,7 @@
         <item>
          <widget class="QLabel" name="label_6">
           <property name="text">
-           <string>Normally PhotonFinder extracts star positions and uploads those as text for faster data submission. Force image upload if there's problems with that.</string>
+           <string>By default PhotonFinder extracts star positions locally and submits those. Enable this to upload the full image and let the server run its own source extraction instead.</string>
           </property>
           <property name="wordWrap">
            <bool>true</bool>
@@ -144,11 +153,70 @@
        </widget>
       </item>
       <item>
+       <widget class="QLabel" name="wsl_hint_label">
+        <property name="text">
+         <string>solve-field is the engine of ANSVR, All Sky Plate Solver or can be installed under the Windows Subsystem for Linux</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="solve_field_path_layout">
+        <item>
+         <widget class="QLabel" name="solve_field_path_label">
+          <property name="text">
+           <string>solve-field Path:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="solve_field_path_edit">
+          <property name="toolTip">
+           <string>Path to solve-field executable (Cygwin). Leave empty to use WSL.</string>
+          </property>
+          <property name="placeholderText">
+           <string>Leave empty to use WSL</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="solve_field_browse_button">
+          <property name="text">
+           <string>Browse...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="wsl_distro_layout">
+        <item>
+         <widget class="QLabel" name="wsl_distro_label">
+          <property name="text">
+           <string>WSL Distro:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="wsl_distro_edit">
+          <property name="toolTip">
+           <string>WSL distribution name to use for solve-field. Leave empty to use the default WSL distro.</string>
+          </property>
+          <property name="placeholderText">
+           <string>Leave empty for default WSL distro</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
        <layout class="QHBoxLayout" name="wsl_timeout_layout">
         <item>
          <widget class="QLabel" name="wsl_timeout_label">
           <property name="text">
-           <string>solve-field (WSL) CPU time limit (seconds):</string>
+           <string>solve-field CPU time limit (seconds):</string>
           </property>
          </widget>
         </item>
@@ -169,16 +237,6 @@
          </widget>
         </item>
        </layout>
-      </item>
-      <item>
-       <widget class="QLabel" name="wsl_hint_label">
-        <property name="text">
-         <string>solve-field runs via WSL. Use the Plate Solve dialog to set pixel scale hints.</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
       </item>
      </layout>
     </widget>

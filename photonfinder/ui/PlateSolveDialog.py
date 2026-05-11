@@ -9,7 +9,7 @@ from photonfinder.core import ApplicationContext, decompress
 from photonfinder.filesystem import parse_FITS_header, header_from_xisf_dict
 from photonfinder.models import File, FileWCS, FitsHeader, Image, SearchCriteria
 from photonfinder.platesolver import (
-    ASTAPSolver, AstrometryNetSolver, WSLSolveFieldSolver, SolverHint
+    ASTAPSolver, AstrometryNetSolver, SolveFieldSolver, SolverHint
 )
 from photonfinder.ui.BackgroundLoader import PlateSolveTask
 from photonfinder.ui.generated.PlateSolveDialog_ui import Ui_PlateSolveDialog
@@ -50,7 +50,7 @@ class CopyWCSDialog(QDialog):
 _SOLVERS = [
     ("ASTAP", 0),
     ("Astrometry.net", 1),
-    ("WSL solve-field", 2),
+    ("solve-field", 2),
 ]
 
 
@@ -192,10 +192,14 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         elif solver_index == 1:
             return AstrometryNetSolver(
                 api_key=s.get_astrometry_net_api_key(),
-                force_image_upload=s.get_astrometry_net_force_image_upload()
+                force_image_upload=s.get_astrometry_net_force_image_upload(),
             )
         elif solver_index == 2:
-            return WSLSolveFieldSolver(timeout=s.get_wsl_solver_timeout())
+            return SolveFieldSolver(
+                exe_path=s.get_solve_field_path(),
+                timeout=s.get_solve_field_timeout(),
+                wsl_distro=s.get_solve_field_wsl_distro(),
+            )
         return None
 
     def _build_hint(self):

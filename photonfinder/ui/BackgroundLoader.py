@@ -410,13 +410,13 @@ class PlateSolveTask(FileProcessingTask):
         self.hint = hint
 
     def _solver_name(self, solver: SolverBase) -> str:
-        from photonfinder.platesolver import ASTAPSolver, AstrometryNetSolver, WSLSolveFieldSolver
+        from photonfinder.platesolver import ASTAPSolver, AstrometryNetSolver, SolveFieldSolver
         if isinstance(solver, ASTAPSolver):
             return "ASTAP"
         if isinstance(solver, AstrometryNetSolver):
             return "Astrometry.net"
-        if isinstance(solver, WSLSolveFieldSolver):
-            return "WSL solve-field"
+        if isinstance(solver, SolveFieldSolver):
+            return "solve-field"
         return type(solver).__name__
 
     def get_tables(self) -> List:

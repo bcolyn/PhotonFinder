@@ -10,6 +10,11 @@ from photonfinder.platesolver import _create_temp_jpeg
 from tests.sample_headers import *
 
 
+_CYGWIN_SOLVE_FIELD = Path(os.path.expandvars(
+    r"%USERPROFILE%\AppData\Local\cygwin_ansvr\lib\astrometry\bin\solve-field.exe" #Ansvr
+    #"%USERPROFILE%\AppData\Local\Astrometry\lib\astrometry\bin\solve-field.exe" #All Sky Plate Solver
+))
+
 def _wsl_available() -> bool:
     try:
         result = subprocess.run(["wsl", "echo", "ok"], capture_output=True, text=True, timeout=30)
@@ -17,7 +22,13 @@ def _wsl_available() -> bool:
     except Exception:
         return False
 
+
+def _cygwin_available() -> bool:
+    return _CYGWIN_SOLVE_FIELD.exists()
+
+
 wsl_available = pytest.mark.skipif(not _wsl_available(), reason="WSL not available")
+cygwin_available = pytest.mark.skipif(not _cygwin_available(), reason="CYGWIN solve-field not found")
 
 # Center (RA, hms):	12h 18m 56.659s
 # Center (Dec, dms):+47° 18' 49.201"
@@ -26,7 +37,7 @@ _hp = HEALPix(nside=256, order='nested', frame='icrs')
 reference_cone_pixels = set(_hp.cone_search_skycoord(reference_center, radius=10 * u.arcsec))
 
 @pytest.mark.slow
-def test_solve_image_wcs(global_test_data_dir):
+def test_solve_image_astap(global_test_data_dir):
     file_path = global_test_data_dir / "M106_2020-03-17T024357_60sec_LP__-15C_frame11.fit.xz"
     wcs_str = solve_image_astap(file_path)
     wcs = WCS(Header.fromstring(wcs_str))
@@ -37,6 +48,7 @@ def test_solve_image_wcs(global_test_data_dir):
     assert reference_center.separation(SkyCoord(ra * u.deg, dec * u.deg, frame='icrs')) < 2 * u.arcsec
     assert healpix in reference_cone_pixels
     assert 1.13 < radius < 1.14
+    assert -178.8 < angle_to_north(wcs) < -178.6
 
 @pytest.mark.internet
 def test_solve_image_astrometry(global_test_data_dir):
@@ -49,6 +61,7 @@ def test_solve_image_astrometry(global_test_data_dir):
     assert reference_center.separation(SkyCoord(ra * u.deg, dec * u.deg, frame='icrs')) < 2 * u.arcsec
     assert healpix in reference_cone_pixels
     assert radius is not None and 0.3 < radius < 3.0
+    assert -178.8 < angle_to_north(wcs) < -178.6
 
 def test_solve_image_astrometry_offline():
     # file_path = global_test_data_dir / "M106_2020-03-17T024357_60sec_LP__-15C_frame11.fit.xz"
@@ -69,6 +82,21 @@ def test_solve_image_astrometry_offline():
     assert 1.13 < radius < 1.14
 
 @pytest.mark.slow
+@cygwin_available
+def test_solve_image_cygwin(global_test_data_dir):
+    file_path = global_test_data_dir / "M106_2020-03-17T024357_60sec_LP__-15C_frame11.fit.xz"
+    wcs_str = solve_image_cygwin(file_path)
+    wcs = WCS(Header.fromstring(wcs_str))
+    assert wcs.has_celestial
+    assert wcs.footprint_contains(reference_center)
+
+    ra, dec, healpix, radius = get_image_center_coords(Header.fromstring(wcs_str))
+    assert reference_center.separation(SkyCoord(ra * u.deg, dec * u.deg, frame='icrs')) < 2 * u.arcsec
+    assert healpix in reference_cone_pixels
+    assert 1.13 < radius < 1.14
+    assert -178.8 < angle_to_north(wcs) < -178.6
+
+@pytest.mark.slow
 @wsl_available
 def test_solve_image_wsl(global_test_data_dir):
     file_path = global_test_data_dir / "M106_2020-03-17T024357_60sec_LP__-15C_frame11.fit.xz"
@@ -81,6 +109,7 @@ def test_solve_image_wsl(global_test_data_dir):
     assert reference_center.separation(SkyCoord(ra * u.deg, dec * u.deg, frame='icrs')) < 2 * u.arcsec
     assert healpix in reference_cone_pixels
     assert 1.13 < radius < 1.14
+    assert -178.8 < angle_to_north(wcs) < -178.6
 
 @pytest.mark.slow
 def test_solve_image_xisf(global_test_data_dir):
@@ -169,6 +198,28 @@ def solve_image_wsl(image_path) -> str:
         scale=1.24,
         mode='fallback',
     )
-    with WSLSolveFieldSolver() as solver:
+    with SolveFieldSolver() as solver:
         header = solver.solve(image_path, hint=hint)
     return header.tostring()
+
+
+def solve_image_cygwin(image_path) -> str:
+    # Test image: M106, 400mm FL, pixel scale ~1.24 arcsec/px
+    hint = SolverHint(
+        ra=reference_center.ra.deg,
+        dec=reference_center.dec.deg,
+        scale=1.24,
+        mode='fallback',
+    )
+    with SolveFieldSolver(exe_path=str(_CYGWIN_SOLVE_FIELD)) as solver:
+        header = solver.solve(image_path, hint=hint)
+    return header.tostring()
+
+
+def angle_to_north(wcs: WCS) -> float:
+    crpix = wcs.wcs.crpix  # reference pixel, 1-indexed
+    x, y = crpix[0] - 1, crpix[1] - 1  # convert to 0-indexed
+    sky: SkyCoord = wcs.pixel_to_world(x, y)
+    sky_north: SkyCoord = sky.directional_offset_by(0 * u.deg, 1 * u.arcsec)
+    x2, y2 = wcs.world_to_pixel(sky_north)
+    return float(np.degrees(np.arctan2(x2 - x, y2 - y)))

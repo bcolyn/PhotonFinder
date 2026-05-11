@@ -26,7 +26,7 @@ from photonfinder.fits_handlers import hp
 class SolverType(Enum):
     ASTAP = 1
     ASTROMETRY_NET = 2
-    WSL_SOLVE_FIELD = 3
+    SOLVE_FIELD = 3
 
 
 @dataclass
@@ -40,7 +40,7 @@ class SolverHint:
 _SOLVER_TYPE_ORIGIN = {
     SolverType.ASTAP:          "ASTAP",
     SolverType.ASTROMETRY_NET: "ASTROMETRY.NET",
-    SolverType.WSL_SOLVE_FIELD: "SOLVE-FIELD",
+    SolverType.SOLVE_FIELD: "SOLVE-FIELD",
 }
 
 
@@ -274,34 +274,95 @@ class AstrometryNetSolver(SolverBase):
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
         temp_image = self._create_temp_fits(image_path)
-        wcs_header: Header = self.ast.solve_from_image(temp_image, verbose=False, crpix_center=True,
-                                                       solve_timeout=5*60,
-                                                       force_image_upload=self.force_image_upload)
-        result = extract_wcs_cards(wcs_header)
-        original_header = fits.getheader(temp_image)
-        result['NAXIS1'] = original_header['NAXIS1']
-        result['NAXIS2'] = original_header['NAXIS2']
+        if self.force_image_upload:
+            wcs_header: Header = self.ast.solve_from_image(
+                temp_image, verbose=False, crpix_center=True, solve_timeout=5 * 60,
+            )
+            original_header = fits.getheader(temp_image)
+            result = extract_wcs_cards(wcs_header)
+            result['NAXIS1'] = original_header['NAXIS1']
+            result['NAXIS2'] = original_header['NAXIS2']
+        else:
+            x, y, flux, width, height = extract_sources(temp_image)
+            if len(x) == 0:
+                raise SolverError(f"No sources detected in {image_path.name}")
+            wcs_header = self.ast.solve_from_source_list(
+                x, y, width, height,
+                verbose=False, crpix_center=True, solve_timeout=5 * 60,
+            )
+            result = extract_wcs_cards(wcs_header)
+            result['NAXIS1'] = width
+            result['NAXIS2'] = height
         return result
 
 
-def _to_wsl_path(path: Path) -> str:
-    result = subprocess.run(
-        ["wsl", "wslpath", str(path).replace("\\", "/")],
-        capture_output=True, text=True, timeout=30,
-    )
+def _to_wsl_path(path: Path, distro: str = "") -> str:
+    cmd = ["wsl"]
+    if distro:
+        cmd += ["-d", distro]
+    cmd += ["wslpath", str(path).replace("\\", "/")]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     return result.stdout.strip()
 
 
-class WSLSolveFieldSolver(SolverBase):
-    """Plate solver using astrometry.net's solve-field tool running under WSL."""
+def _to_cygwin_path(path: Path, cygpath_exe: str = "", env: dict = None) -> str:
+    """Convert a Windows path to a Cygwin Unix-style path using cygpath, with string fallback."""
+    if cygpath_exe:
+        result = subprocess.run(
+            [cygpath_exe, "-u", str(path)],
+            capture_output=True, text=True, timeout=30, env=env,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    s = str(path)
+    if len(s) >= 2 and s[1] == ':':
+        drive = s[0].lower()
+        rest = s[2:].replace("\\", "/")
+        return f"/cygdrive/{drive}{rest}"
+    return s.replace("\\", "/")
+
+
+class SolveFieldSolver(SolverBase):
+    """Plate solver using astrometry.net's solve-field, via WSL (exe_path empty) or Cygwin."""
 
     @property
     def solver_type(self) -> SolverType:
-        return SolverType.WSL_SOLVE_FIELD
+        return SolverType.SOLVE_FIELD
 
-    def __init__(self, timeout: int = 300):
+    def __init__(self, exe_path: str = "", timeout: int = 300, wsl_distro: str = ""):
         super().__init__()
+        self._exe_path = exe_path  # empty → WSL mode; set → path to solve-field (Cygwin/native)
         self._timeout = timeout
+        self._wsl_distro = wsl_distro  # WSL distro name; empty → default distro
+
+    def _cygwin_root(self) -> Path:
+        # solve-field lives at <cygwin_root>/lib/astrometry/bin/solve-field.exe
+        return Path(self._exe_path).parents[3]
+
+    def _cygpath_exe(self) -> str:
+        """Return cygpath.exe derived from the Cygwin root."""
+        candidate = self._cygwin_root() / "bin" / "cygpath.exe"
+        return str(candidate) if candidate.exists() else ""
+
+    def _cygwin_env(self) -> dict:
+        """Return an env dict with Cygwin directories prepended to PATH."""
+        import os
+        root = self._cygwin_root()
+        extra = [
+            root / "lib" / "astrometry" / "bin",
+            root / "usr" / "local" / "bin",
+            root / "bin",
+            root / "lib" / "lapack",
+        ]
+        prepend = os.pathsep.join(str(p) for p in extra if p.exists())
+        env = os.environ.copy()
+        env["PATH"] = prepend + os.pathsep + env.get("PATH", "")
+        return env
+
+    def _to_unix_path(self, path: Path) -> str:
+        if self._exe_path:
+            return _to_cygwin_path(path, self._cygpath_exe(), self._cygwin_env())
+        return _to_wsl_path(path, self._wsl_distro)
 
     @staticmethod
     def _derive_scale(header: Header):
@@ -335,9 +396,8 @@ class WSLSolveFieldSolver(SolverBase):
             return extract_wcs_cards(header)
 
         temp_image = self._create_temp_fits(image_path)
-
-        temp_wsl = _to_wsl_path(temp_image)
-        tmp_wsl = _to_wsl_path(temp_image.parent)
+        temp_unix = self._to_unix_path(temp_image)
+        tmp_unix = self._to_unix_path(temp_image.parent)
 
         # Scale range
         scale_low = None
@@ -356,11 +416,17 @@ class WSLSolveFieldSolver(SolverBase):
         elif header is not None:
             scale_low, scale_high = self._derive_scale(header)
 
-        cmd = [
-            "wsl", "solve-field",
+        if self._exe_path:
+            cmd = [self._exe_path]
+        else:
+            cmd = ["wsl"]
+            if self._wsl_distro:
+                cmd += ["-d", self._wsl_distro]
+            cmd.append("solve-field")
+        cmd += [
             "--no-plots", "--overwrite",
             "--downsample", "2",
-            "--dir", tmp_wsl,
+            "--dir", tmp_unix,
             "--cpulimit", str(self._timeout),
         ]
         if scale_low is not None:
@@ -386,21 +452,27 @@ class WSLSolveFieldSolver(SolverBase):
         if hint_ra is not None and hint_dec is not None:
             cmd += ["--ra", str(hint_ra), "--dec", str(hint_dec), "--radius", "2.0"]
 
-        cmd.append(temp_wsl)
+        cmd.append(temp_unix)
 
+        env = self._cygwin_env() if self._exe_path else None
         logging.info("solve-field command: %s", " ".join(cmd))
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=self._timeout + 15)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=self._timeout + 15, env=env)
         except subprocess.TimeoutExpired as e:
             output = (e.stdout or "") + (e.stderr or "")
             logging.error("solve-field timed out for %s:\n%s", image_path.name, output)
-            raise SolverFailure(f"solve-field timed out on {image_path.name}", None)
+            raise SolverFailure(f"solve-field timed out on {image_path.name}", output.splitlines() or None)
 
         solved_marker = temp_image.with_suffix(".solved")
         if not solved_marker.exists():
             output = (result.stdout or "") + (result.stderr or "")
             logging.error("solve-field failed for %s:\n%s", image_path.name, output)
-            raise SolverFailure(f"solve-field could not solve {image_path.name}", None)
+            if "child_info_fork::abort" in output:
+                raise SolverFailure(
+                    "Cygwin DLL address conflict — run 'rebaseall' in a Cygwin shell (with all Cygwin processes stopped) then retry.",
+                    output.splitlines(),
+                )
+            raise SolverFailure(f"solve-field could not solve {image_path.name}", output.splitlines() or None)
 
         wcs_file = temp_image.with_suffix(".wcs")
         if not wcs_file.exists():
@@ -552,6 +624,67 @@ def select_first_channel(data):
             return data[:, :, 0]
     else:
         raise ValueError(f"Unsupported array shape: {data.shape}. Expected 2D or 3D array.")
+
+
+def _extract_sources(data: np.ndarray, max_sources: int = 300) -> tuple:
+    """Detect stars in a 2D float array. Returns (x, y, flux) 1-indexed pixel arrays."""
+    from photutils.background import Background2D, MedianBackground
+    from photutils.detection import DAOStarFinder
+
+    data = data.astype(np.float32)
+    try:
+        bkg = Background2D(data, (64, 64), filter_size=(3, 3), bkg_estimator=MedianBackground())
+        data_sub = data - bkg.background
+        std = float(bkg.background_rms_median)
+    except Exception:
+        data_sub = data - float(np.median(data))
+        std = float(np.std(data_sub))
+
+    sources = DAOStarFinder(fwhm=3.0, threshold=5.0 * std)(data_sub)
+    if sources is None or len(sources) == 0:
+        return np.array([]), np.array([]), np.array([])
+
+    sources.sort('peak', reverse=True)
+    if len(sources) > max_sources:
+        sources = sources[:max_sources]
+
+    return (
+        np.array(sources['xcentroid'] + 1, dtype=np.float32),  # 1-indexed
+        np.array(sources['ycentroid'] + 1, dtype=np.float32),
+        np.array(sources['peak'],          dtype=np.float32),
+    )
+
+
+def extract_sources(temp_fits: Path) -> tuple:
+    """Load a temp FITS and extract star positions. Returns (x, y, flux, width, height)."""
+    with fits.open(temp_fits) as hdul:
+        data = hdul[0].data
+        width  = int(hdul[0].header.get('NAXIS1', 0))
+        height = int(hdul[0].header.get('NAXIS2', 0))
+    if data.ndim == 3:
+        data = select_first_channel(data)
+    x, y, flux = _extract_sources(data)
+    return x, y, flux, width, height
+
+
+def create_xylist(temp_fits: Path, output_dir: Path) -> Path:
+    """Extract sources from a temp FITS and write an astrometry.net xylist FITS binary table."""
+    x, y, flux, width, height = extract_sources(temp_fits)
+    if len(x) == 0:
+        raise SolverError(f"No sources detected in {temp_fits.name}")
+    logging.info("Extracted %d sources for xylist from %s", len(x), temp_fits.name)
+
+    bintable = fits.BinTableHDU.from_columns([
+        fits.Column(name='X',    format='E', array=x),
+        fits.Column(name='Y',    format='E', array=y),
+        fits.Column(name='FLUX', format='E', array=flux),
+    ])
+    bintable.header['IMAGEW'] = width
+    bintable.header['IMAGEH'] = height
+
+    xylist_path = output_dir / (temp_fits.stem + ".xyls")
+    fits.HDUList([fits.PrimaryHDU(), bintable]).writeto(str(xylist_path), overwrite=True)
+    return xylist_path
 
 
 def _create_temp_jpeg(input_image, output_dir: Path) -> Path:

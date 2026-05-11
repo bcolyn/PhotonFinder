@@ -10,12 +10,15 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
     def __init__(self, context: ApplicationContext, parent=None):
         super(SettingsDialog, self).__init__(parent)
         self.setupUi(self)
+        self.adjustSize()
         self.context = context
 
         self.astap_path_edit.setText(self.context.settings.get_astap_path())
         self.astrometry_api_key_edit.setText(self.context.settings.get_astrometry_net_api_key())
         self.astrometry_image_upload_check.setChecked(self.context.settings.get_astrometry_net_force_image_upload())
-        self.wsl_timeout_spin.setValue(self.context.settings.get_wsl_solver_timeout())
+        self.solve_field_path_edit.setText(self.context.settings.get_solve_field_path())
+        self.wsl_distro_edit.setText(self.context.settings.get_solve_field_wsl_distro())
+        self.wsl_timeout_spin.setValue(self.context.settings.get_solve_field_timeout())
 
         self.file_ignore_edit.setText(self.context.settings.get_bad_file_patterns())
         self.folder_ignore_edit.setText(self.context.settings.get_bad_dir_patterns())
@@ -25,6 +28,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.obs_timezone_edit.setText(self.context.settings.get_obs_timezone())
 
         self.astap_browse_button.clicked.connect(self.browse_astap_executable)
+        self.solve_field_browse_button.clicked.connect(self.browse_solve_field_executable)
 
     def browse_astap_executable(self):
         if platform.system() == "Windows":
@@ -41,11 +45,24 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         if file_path:
             self.astap_path_edit.setText(file_path)
 
+    def browse_solve_field_executable(self):
+        file_filter = "solve-field.exe;;All Files (*.*)"
+        current_path = self.solve_field_path_edit.text()
+        start_dir = os.path.dirname(current_path) if current_path else os.path.expanduser("~")
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select solve-field Executable", start_dir, file_filter
+        )
+        if file_path:
+            self.solve_field_path_edit.setText(file_path)
+
     def accept(self):
         self.context.settings.set_astap_path(self.astap_path_edit.text())
         self.context.settings.set_astrometry_net_api_key(self.astrometry_api_key_edit.text())
         self.context.settings.set_astrometry_net_force_image_upload(self.astrometry_image_upload_check.isChecked())
-        self.context.settings.set_wsl_solver_timeout(self.wsl_timeout_spin.value())
+        self.context.settings.set_solve_field_path(self.solve_field_path_edit.text())
+        self.context.settings.set_solve_field_wsl_distro(self.wsl_distro_edit.text().strip())
+        self.context.settings.set_solve_field_timeout(self.wsl_timeout_spin.value())
 
         self.context.settings.set_bad_file_patterns(self.file_ignore_edit.text())
         self.context.settings.set_bad_dir_patterns(self.folder_ignore_edit.text())
