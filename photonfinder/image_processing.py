@@ -183,7 +183,12 @@ def _load_xisf(filename: str) -> tuple[np.ndarray, dict]:
     metadata_list = xf.get_images_metadata()
     if not metadata_list:
         raise ValueError(f"No images in {filename}")
-    data = xf.read_image(0, 'channels_first')
+    try:
+        data = xf.read_image(0, 'channels_first')
+    except KeyError as exc:
+        if exc.args == ('value',):
+            raise ValueError("Image format not supported (XISF embedded data block)") from exc
+        raise
     if data.ndim == 3 and data.shape[0] == 1:
         data = data.squeeze(0)  # (1, H, W) monochrome → (H, W)
     fits_keywords = metadata_list[0].get('FITSKeywords', {})

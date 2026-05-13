@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>540</width>
-    <height>500</height>
+    <width>720</width>
+    <height>640</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -69,13 +69,20 @@
          </widget>
         </item>
         <item row="0" column="2">
+         <widget class="QLabel" name="hint_ra_hms_label">
+          <property name="toolTip">
+           <string>Right Ascension in H:M:S</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="3">
          <widget class="QLabel" name="dec_label">
           <property name="text">
            <string>Dec (°):</string>
           </property>
          </widget>
         </item>
-        <item row="0" column="3">
+        <item row="0" column="4">
          <widget class="QLineEdit" name="hint_dec_edit">
           <property name="toolTip">
            <string>Declination in decimal degrees. You may also paste DMS (e.g. -05:23:28) and it will be converted on focus-out.</string>
@@ -85,14 +92,7 @@
           </property>
          </widget>
         </item>
-        <item row="1" column="1">
-         <widget class="QLabel" name="hint_ra_hms_label">
-          <property name="toolTip">
-           <string>Right Ascension in H:M:S</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="3">
+        <item row="0" column="5">
          <widget class="QLabel" name="hint_dec_dms_label">
           <property name="toolTip">
            <string>Declination in D:M:S</string>

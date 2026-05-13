@@ -599,6 +599,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         is_solved = selected_file is not None and getattr(selected_file, 'has_wcs', False)
         plate_solve_action = menu.addAction("Force Re-Solve..." if is_solved else "Plate Solve...")
         plate_solve_action.triggered.connect(self.plate_solve_files)
+        clear_solution_action = menu.addAction("Clear Plate Solution")
+        clear_solution_action.setEnabled(is_solved)
         menu.addSeparator()
         mark_bad_action = menu.addAction("Mark as bad")
         menu.addSeparator()
@@ -664,6 +666,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         elif action == find_flats_action:
             if self.mainWindow:
                 self.mainWindow.find_matching_flats()
+        elif action == clear_solution_action:
+            file = self.get_file_at_row(index.row())
+            if file:
+                self.clear_plate_solution(file, index.row())
         elif action == mark_bad_action:
             file = self.get_file_at_row(index.row())
             if file:
@@ -768,6 +774,22 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         else:
             self.set_title(f"{self.total_files} files [{str(self.search_criteria)}]")
         return True
+
+    def clear_plate_solution(self, file: File, model_row: int):
+        """Delete the FileWCS for the given file and update the grid row."""
+        with self.context.database.bind_ctx(CORE_MODELS):
+            wcs = FileWCS.get_or_none(FileWCS.file == file)
+            if wcs:
+                wcs.delete_instance()
+        model = self.dataView.model()
+        model.setData(model.index(model_row, 15), "", Qt.DisplayRole)
+        model.setData(model.index(model_row, 15), None, SORT_ROLE)
+        model.setData(model.index(model_row, 16), "", Qt.DisplayRole)
+        model.setData(model.index(model_row, 16), None, SORT_ROLE)
+        model.setData(model.index(model_row, 17), "False", Qt.DisplayRole)
+        model.setData(model.index(model_row, 17), "False", SORT_ROLE)
+        if hasattr(file, 'has_wcs'):
+            file.has_wcs = False
 
     def on_item_double_clicked(self, index):
         """Handle double-click on an item in the data view."""

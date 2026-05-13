@@ -65,6 +65,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionGain.setIcon(create_colored_svg_icon(":/res/exposure.svg", size, text_color))
         self.actionTemperature.setIcon(create_colored_svg_icon(":/res/thermometer-half.svg", size, text_color))
         self.actionPlateSolved.setIcon(create_colored_svg_icon(":/res/stars.svg", size, text_color))
+        self.actionPlate_solve_files.setIcon(create_colored_svg_icon(":/res/stars.svg", size, text_color))
 
         # hide the dock initially
         self.dockWidget.hide()

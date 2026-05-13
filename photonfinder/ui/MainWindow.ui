@@ -203,6 +203,8 @@
    <addaction name="action_Scan_Libraries"/>
    <addaction name="actionManage_Projects"/>
    <addaction name="actionShow_location"/>
+   <addaction name="actionPlate_solve_files"/>
+   <addaction name="separator"/>
    <addaction name="action_Export_Data"/>
    <addaction name="actionCatalog_Report"/>
   </widget>

@@ -405,6 +405,7 @@ class PlateSolveTask(FileProcessingTask):
                  solver: SolverBase, backup_solver: SolverBase = None, hint: SolverHint = None):
         super().__init__(context, search_criteria, files)
         self.solved_files = list()
+        self.file_results = list()  # list of (file, success: bool, error_msg: str | None)
         self.solver = solver
         self.backup_solver = backup_solver
         self.hint = hint
@@ -485,15 +486,15 @@ class PlateSolveTask(FileProcessingTask):
         super()._process_file(file, index)
         self.message.emit(f"Processing file {index + 1}/{self.total}:\n {file.full_filename()}")
 
-        def _message_or_raise(message, e):
-            if self.total <= 1:
-                raise e
-            else:
-                self.message.emit(message)
+        file_wcs = FileWCS.get_or_none(FileWCS.file == file)
 
         def _try_solve(solver):
             with solver:
-                return solver.solve(Path(file.full_filename()), file.image, self.hint)
+                return solver.solve(
+                    Path(file.full_filename()), file.image, self.hint,
+                    output_callback=lambda line: self.message.emit(f"    {line}"),
+                    file_wcs=file_wcs,
+                )
 
         try:
             solution = None
@@ -525,6 +526,7 @@ class PlateSolveTask(FileProcessingTask):
                 file.image.coord_pix256 = healpix
                 file.image.coord_radius = radius
                 self.solved_files.append(file)
+                self.file_results.append((file, True, None))
                 cd11 = solution.get('CD1_1') or solution.get('CDELT1') or 0
                 cd21 = solution.get('CD2_1', 0)
                 scale_arcsec = math.hypot(cd11, cd21) * 3600
@@ -533,6 +535,11 @@ class PlateSolveTask(FileProcessingTask):
                     file.name, ra, dec, scale_arcsec,
                 )
                 self.message.emit(f"  ✓ Solved: RA {ra:.4f}°  Dec {dec:.4f}°")
+        except SolverError as e:
+            msg = str(e)
+            logger.warning("Cannot solve %s: %s", file.name, e)
+            self.file_results.append((file, False, msg))
+            self.message.emit(f"  ✗ {msg}")
         except SolverFailure as failure:
             if failure.log:
                 if isinstance(failure.log, Iterable):
@@ -541,11 +548,17 @@ class PlateSolveTask(FileProcessingTask):
                 else:
                     self.message.emit(failure.log)
             logger.warning("Could not solve %s: %s", file.name, failure)
-            _message_or_raise(f"Could not solve file {file.full_filename()}: {failure}", failure)
+            error_msg = str(failure)
+            if failure.log:
+                log_text = "\n".join(str(l).strip() for l in failure.log) if isinstance(failure.log, Iterable) else str(failure.log)
+                error_msg = f"{error_msg}\n\n{log_text}"
+            self.file_results.append((file, False, error_msg))
+            self.message.emit(f"  Could not solve {file.name}: {failure}")
         except Exception as e:
             msg = f"Error solving file {file.full_filename()}: {e}"
             logger.error(msg, exc_info=True)
-            _message_or_raise(msg, e)
+            self.file_results.append((file, False, str(e)))
+            self.message.emit(f"  ✗ {msg}")
 
 
 

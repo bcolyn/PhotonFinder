@@ -2,11 +2,13 @@ import logging
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QLabel, QMessageBox, QVBoxLayout,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QGridLayout, QLabel, QMessageBox,
+    QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from photonfinder.core import ApplicationContext, decompress
 from photonfinder.filesystem import parse_FITS_header, header_from_xisf_dict
+from peewee import JOIN
 from photonfinder.models import File, FileWCS, FitsHeader, Image, SearchCriteria
 from photonfinder.platesolver import (
     ASTAPSolver, AstrometryNetSolver, SolveFieldSolver, SolverHint
@@ -65,10 +67,12 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.files = files
         self.search_criteria = search_criteria
         self._task = None
+        self._pending_retry_files = None
 
         self._populate_combos()
         self._load_settings()
         self._infer_hints()
+        self._update_title()
 
         self.start_button.clicked.connect(self._start_solving)
         self.close_button.clicked.connect(self._on_close_clicked)
@@ -80,6 +84,13 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.hint_dec_edit.editingFinished.connect(self._try_convert_dec)
         self.lookup_hint_button.clicked.connect(self._on_lookup_hint)
         self._update_hms_dms()
+
+    def _update_title(self):
+        if self.files:
+            n = len(self.files)
+            self.setWindowTitle(f"Plate Solve — {n} file{'s' if n != 1 else ''}")
+        elif hasattr(self.parent(), 'get_title'):
+            self.setWindowTitle(f"Plate Solve — {self.parent().get_title()}")
 
     def _populate_combos(self):
         for name, _ in _SOLVERS:
@@ -139,10 +150,14 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
     def _get_sample_files(self, n: int):
         try:
             if self.files:
-                return self.files[:n]
+                with_wcs = [f for f in self.files if getattr(f, 'has_wcs', False)]
+                without_wcs = [f for f in self.files if not getattr(f, 'has_wcs', False)]
+                return (with_wcs + without_wcs)[:n]
             query = (File
-                     .select(File, Image)
+                     .select(File, Image, FileWCS)
                      .join_from(File, Image)
+                     .join_from(File, FileWCS, JOIN.LEFT_OUTER)
+                     .order_by(FileWCS.wcs.is_null())
                      .limit(n))
             query = Image.apply_search_criteria(query, self.search_criteria)
             return list(query)
@@ -222,7 +237,13 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
 
     def _start_solving(self):
         self._save_settings()
+        if hasattr(self, '_results_scroll'):
+            self._cleanup_results()
+        files = self._pending_retry_files if self._pending_retry_files is not None else self.files
+        self._pending_retry_files = None
+        self._run_task(files)
 
+    def _run_task(self, files):
         primary_index = self.primary_solver_combo.currentIndex()
         backup_index = self.backup_solver_combo.currentIndex() - 1  # -1 = None
 
@@ -238,7 +259,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self._task = PlateSolveTask(
             context=self.context,
             search_criteria=self.search_criteria,
-            files=self.files,
+            files=files,
             solver=primary_solver,
             backup_solver=backup_solver,
             hint=hint,
@@ -252,9 +273,17 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.progressBar.setValue(0)
         self.log_edit.clear()
         self.start_button.setEnabled(False)
+        self.direct_copy_button.setEnabled(False)
+        self.start_button.setText("Start")
         self.close_button.setText("Cancel")
 
         self._task.start()
+
+    def _cleanup_results(self):
+        self.layout().removeWidget(self._results_scroll)
+        self._results_scroll.deleteLater()
+        del self._results_scroll
+        self.log_edit.show()
 
     def _append_log(self, message: str):
         self.log_edit.appendPlainText(message)
@@ -263,12 +292,75 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         task = self._task
         self._task = None
         self.solving_complete.emit(task)
-        self.accept()
+        self._show_results(task)
+
+    def _show_results(self, task):
+        self.log_edit.hide()
+        self.close_button.setText("Close")
+        self.progressBar.setValue(self.progressBar.maximum())
+        self.direct_copy_button.setEnabled(True)
+
+        failed_files = [f for f, success, _ in task.file_results if not success]
+        if failed_files:
+            self._pending_retry_files = failed_files
+            self.start_button.setText("Retry Failed")
+            self.start_button.setEnabled(True)
+
+        results_widget = QWidget()
+        grid = QGridLayout(results_widget)
+        grid.setColumnStretch(1, 1)
+        grid.setContentsMargins(4, 4, 4, 4)
+        grid.setHorizontalSpacing(8)
+
+        if not task.file_results:
+            none_label = QLabel("No files to solve.")
+            grid.addWidget(none_label, 0, 0, 1, 3)
+            n_rows = 1
+        else:
+            for row, (file, success, error_msg) in enumerate(task.file_results):
+                icon = QLabel("✓" if success else "✗")
+                icon.setStyleSheet("color: green; font-weight: bold;" if success else "color: red; font-weight: bold;")
+                grid.addWidget(icon, row, 0)
+
+                name_label = QLabel(file.name)
+                grid.addWidget(name_label, row, 1)
+
+                if not success and error_msg:
+                    btn = QPushButton("Show Error")
+                    btn.clicked.connect(lambda checked=False, msg=error_msg: self._show_error_popup(msg))
+                    grid.addWidget(btn, row, 2)
+            n_rows = len(task.file_results)
+
+        grid.setRowStretch(n_rows, 1)
+
+        scroll = QScrollArea()
+        scroll.setWidget(results_widget)
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumHeight(120)
+
+        main_layout = self.layout()
+        log_index = main_layout.indexOf(self.log_edit)
+        main_layout.insertWidget(log_index + 1, scroll)
+        self._results_scroll = scroll
+
+    def _show_error_popup(self, error_msg: str):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Solve Error")
+        dlg.resize(600, 400)
+        layout = QVBoxLayout(dlg)
+        text = QPlainTextEdit(error_msg)
+        text.setReadOnly(True)
+        layout.addWidget(text)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok)
+        buttons.accepted.connect(dlg.accept)
+        layout.addWidget(buttons)
+        dlg.exec()
 
     def _on_error(self, error_message: str):
         self._append_log(f"Error: {error_message}")
         QMessageBox.critical(self, "Plate solving error", error_message)
         self.start_button.setEnabled(True)
+        self.direct_copy_button.setEnabled(True)
         self.close_button.setText("Close")
         self._task = None
 

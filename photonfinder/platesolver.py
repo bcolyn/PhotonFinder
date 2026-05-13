@@ -1,8 +1,11 @@
 import configparser
 import logging
+import queue
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
 import typing
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
@@ -18,7 +21,8 @@ import numpy as np
 from astroquery.astrometry_net import AstrometryNet
 from xisf import XISF
 
-from photonfinder.core import get_default_astap_path
+from photonfinder.core import get_default_astap_path, decompress
+from photonfinder.image_processing import is_linear
 from photonfinder.filesystem import fopen, Importer, header_from_xisf_dict
 from photonfinder.fits_handlers import hp
 
@@ -79,10 +83,20 @@ class SolverBase(metaclass=ABCMeta):
         return _SOLVER_TYPE_ORIGIN[self.solver_type]
 
     @abstractmethod
-    def solve(self, image_path, image=None, hint: SolverHint = None):
+    def solve(self, image_path, image=None, hint: SolverHint = None,
+              output_callback: typing.Callable[[str], None] = None, file_wcs=None):
         pass
 
-    def _create_temp_fits(self, input_image) -> Path:
+    @staticmethod
+    def _merge_wcs_into_header(header: Header, file_wcs) -> None:
+        """Overwrite WCS cards in *header* with those stored in *file_wcs*."""
+        raw = decompress(file_wcs.wcs)
+        wcs_header = Header.fromstring(raw.decode())
+        for card in wcs_header.cards:
+            if card.keyword:
+                header[card.keyword] = (card.value, card.comment)
+
+    def _create_temp_fits(self, input_image, file_wcs=None) -> Path:
         temp_image = Path(self.tmp_dir) / (input_image.name + ".fit")
         if Importer.is_fits_by_name(str(input_image)):
             with fopen(input_image) as source_file:
@@ -93,6 +107,8 @@ class SolverBase(metaclass=ABCMeta):
                     header2d = Header(main_header.cards, copy=True)
                     header2d['NAXIS'] = 2
                     header2d.remove('NAXIS3', ignore_missing=True)
+                    if file_wcs is not None:
+                        self._merge_wcs_into_header(header2d, file_wcs)
                     hdu = fits.PrimaryHDU(data=data2d, header=header2d)
                     hdu.writeto(temp_image, overwrite=False, output_verify='silentfix')
             return temp_image
@@ -106,7 +122,14 @@ class SolverBase(metaclass=ABCMeta):
                     main_header.remove("HISTORY", ignore_missing=True, remove_all=True)
                     main_header['NAXIS'] = 2
                     main_header.remove('NAXIS3', ignore_missing=True)
-                    main_image_data = select_first_channel(xisf.read_image(i, 'channels_first'))
+                    if file_wcs is not None:
+                        self._merge_wcs_into_header(main_header, file_wcs)
+                    try:
+                        main_image_data = select_first_channel(xisf.read_image(i, 'channels_first'))
+                    except KeyError as exc:
+                        if exc.args == ('value',):
+                            raise SolverError("Image format not supported (XISF embedded data block)") from exc
+                        raise
                     hdu = fits.PrimaryHDU(data=main_image_data, header=main_header)
                     hdu.writeto(temp_image, overwrite=False, output_verify='silentfix')
                     return temp_image
@@ -170,14 +193,15 @@ class ASTAPSolver(SolverBase):
     def is_pre_solved(header):
         return ASTAPSolver.keep_headers.issubset(header.keys()) and has_valid_scale(header)
 
-    def solve(self, image_path: Path, image=None, hint: SolverHint = None) -> Header:
+    def solve(self, image_path: Path, image=None, hint: SolverHint = None,
+              output_callback: typing.Callable[[str], None] = None, file_wcs=None) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self._exe:
             raise FileNotFoundError("ASTAP executable not found")
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
-        temp_image = self._create_temp_fits(image_path)
+        temp_image = self._create_temp_fits(image_path, file_wcs)
         header = fits.getheader(temp_image)
         astap_hint = self.extract_hint(header, image)
 
@@ -268,12 +292,13 @@ class AstrometryNetSolver(SolverBase):
         self.ast.api_key = api_key
         self.force_image_upload = force_image_upload
 
-    def solve(self, image_path, image=None, hint: SolverHint = None) -> Header:
+    def solve(self, image_path, image=None, hint: SolverHint = None,
+              output_callback: typing.Callable[[str], None] = None, file_wcs=None) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
-        temp_image = self._create_temp_fits(image_path)
+        temp_image = self._create_temp_fits(image_path, file_wcs)
         if self.force_image_upload:
             wcs_header: Header = self.ast.solve_from_image(
                 temp_image, verbose=False, crpix_center=True, solve_timeout=5 * 60,
@@ -378,7 +403,63 @@ class SolveFieldSolver(SolverBase):
         scale = float(scale)
         return scale * 0.5, scale * 2
 
-    def solve(self, image_path: Path, image=None, hint: SolverHint = None) -> Header:
+    def _run_solve_field(self, cmd: list, env: dict,
+                         output_callback: typing.Callable[[str], None] = None) -> list[str]:
+        """Run solve-field, streaming output to callback and returning all output lines."""
+        output_lines: list[str] = []
+        line_queue: queue.Queue = queue.Queue()
+
+        try:
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, env=env,
+            )
+        except Exception as e:
+            raise SolverFailure(f"Failed to launch solve-field: {e}", None)
+
+        def _reader():
+            try:
+                for line in proc.stdout:
+                    line_queue.put(line.rstrip('\r\n'))
+            finally:
+                line_queue.put(None)
+
+        reader = threading.Thread(target=_reader, daemon=True)
+        reader.start()
+
+        deadline = time.monotonic() + self._timeout + 15
+        timed_out = False
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                proc.kill()
+                break
+            try:
+                line = line_queue.get(timeout=min(remaining, 0.5))
+            except queue.Empty:
+                if proc.poll() is not None:
+                    break
+                continue
+            if line is None:
+                break
+            output_lines.append(line)
+            if output_callback and line.strip():
+                output_callback(line)
+
+        proc.wait()
+        reader.join(5)
+
+        if timed_out:
+            logging.error("solve-field timed out:\n%s", "\n".join(output_lines))
+            raise SolverFailure(
+                f"solve-field timed out after {self._timeout}s", output_lines or None
+            )
+
+        return output_lines
+
+    def solve(self, image_path: Path, image=None, hint: SolverHint = None,
+              output_callback: typing.Callable[[str], None] = None, file_wcs=None) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self.tmp_dir:
@@ -386,8 +467,7 @@ class SolveFieldSolver(SolverBase):
 
         header = None
         try:
-            from astropy.io import fits as _fits
-            with _fits.open(image_path, memmap=False) as hdul:
+            with fits.open(image_path, memmap=False) as hdul:
                 header = hdul[0].header
         except Exception:
             pass
@@ -395,7 +475,7 @@ class SolveFieldSolver(SolverBase):
         if header is not None and ASTAPSolver.is_pre_solved(header):
             return extract_wcs_cards(header)
 
-        temp_image = self._create_temp_fits(image_path)
+        temp_image = self._create_temp_fits(image_path, file_wcs)
         temp_unix = self._to_unix_path(temp_image)
         tmp_unix = self._to_unix_path(temp_image.parent)
 
@@ -424,7 +504,7 @@ class SolveFieldSolver(SolverBase):
                 cmd += ["-d", self._wsl_distro]
             cmd.append("solve-field")
         cmd += [
-            "--no-plots", "--overwrite",
+            "--no-plots", "--overwrite", "--new-fits", "none",
             "--downsample", "2",
             "--dir", tmp_unix,
             "--cpulimit", str(self._timeout),
@@ -451,35 +531,39 @@ class SolveFieldSolver(SolverBase):
 
         if hint_ra is not None and hint_dec is not None:
             cmd += ["--ra", str(hint_ra), "--dec", str(hint_dec), "--radius", "2.0"]
+        else:
+            try:
+                with fits.open(temp_image, memmap=False) as hdul:
+                    if is_linear(hdul[0].data):
+                        cmd += ["--objs", "500"]
+            except Exception:
+                pass
 
         cmd.append(temp_unix)
 
         env = self._cygwin_env() if self._exe_path else None
-        logging.info("solve-field command: %s", " ".join(cmd))
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=self._timeout + 15, env=env)
-        except subprocess.TimeoutExpired as e:
-            output = (e.stdout or "") + (e.stderr or "")
-            logging.error("solve-field timed out for %s:\n%s", image_path.name, output)
-            raise SolverFailure(f"solve-field timed out on {image_path.name}", output.splitlines() or None)
+        cmd_str = " ".join(cmd)
+        logging.info("solve-field command: %s", cmd_str)
+        if output_callback:
+            output_callback(f"$ {cmd_str}")
+        output_lines = self._run_solve_field(cmd, env, output_callback)
 
         solved_marker = temp_image.with_suffix(".solved")
         if not solved_marker.exists():
-            output = (result.stdout or "") + (result.stderr or "")
+            output = "\n".join(output_lines)
             logging.error("solve-field failed for %s:\n%s", image_path.name, output)
             if "child_info_fork::abort" in output:
                 raise SolverFailure(
                     "Cygwin DLL address conflict — run 'rebaseall' in a Cygwin shell (with all Cygwin processes stopped) then retry.",
-                    output.splitlines(),
+                    output_lines,
                 )
-            raise SolverFailure(f"solve-field could not solve {image_path.name}", output.splitlines() or None)
+            raise SolverFailure(f"solve-field could not solve {image_path.name}", output_lines or None)
 
         wcs_file = temp_image.with_suffix(".wcs")
         if not wcs_file.exists():
             raise SolverFailure(f"solve-field produced no .wcs file for {image_path.name}", None)
 
-        from astropy.io import fits as _fits
-        with _fits.open(wcs_file, memmap=False) as hdul:
+        with fits.open(wcs_file, memmap=False) as hdul:
             wcs_header = hdul[0].header
 
         result = extract_wcs_cards(wcs_header)
@@ -732,7 +816,12 @@ def _create_temp_jpeg(input_image, output_dir: Path) -> Path:
         metas = xisf.get_images_metadata()
         for i, meta in enumerate(metas):
             if "FITSKeywords" in meta:
-                main_image_data = xisf.read_image(i, 'channels_first')
+                try:
+                    main_image_data = xisf.read_image(i, 'channels_first')
+                except KeyError as exc:
+                    if exc.args == ('value',):
+                        raise SolverError("Image format not supported (XISF embedded data block)") from exc
+                    raise
 
                 # Convert to 8-bit for JPEG
                 if main_image_data.dtype != np.uint8:
