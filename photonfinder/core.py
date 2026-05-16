@@ -138,8 +138,34 @@ class ApplicationContext:
             self.database.bind(CORE_MODELS, bind_refs=False, bind_backrefs=False)
             for model in CORE_MODELS:
                 model.create_table()
+            self._migrate_image_dimensions()
             self.database.attach(self._catalog_path(), 'catalog')
             self.database.bind(CATALOG_MODELS, bind_refs=False, bind_backrefs=False)
+
+    def _migrate_image_dimensions(self) -> None:
+        for col in ('width', 'height'):
+            try:
+                self.database.execute_sql(f'ALTER TABLE image ADD COLUMN {col} INTEGER')
+            except Exception:
+                pass  # column already exists
+        try:
+            self.database.execute_sql(
+                'ALTER TABLE image ADD COLUMN coord_scale REAL'
+                ' GENERATED ALWAYS AS ('
+                'ROUND((coord_radius * 2.0 * 3600.0) /'
+                ' SQRT(CAST(width AS REAL) * width + CAST(height AS REAL) * height), 2)'
+                ') VIRTUAL'
+            )
+        except Exception:
+            pass  # column already exists
+        try:
+            self.database.execute_sql(
+                'CREATE INDEX IF NOT EXISTS idx_image_camera_scale'
+                ' ON image(camera, coord_scale)'
+                ' WHERE camera IS NOT NULL AND coord_scale IS NOT NULL'
+            )
+        except Exception:
+            pass
 
     def set_status_reporter(self, status_reporter: StatusReporter) -> None:
         self.status_reporter = status_reporter

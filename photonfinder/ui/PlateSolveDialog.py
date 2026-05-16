@@ -5,6 +5,8 @@ from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QGridLayout, QLabel, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
+from astropy.wcs import WCS
+from astropy.wcs.utils import proj_plane_pixel_scales
 
 from photonfinder.core import ApplicationContext, decompress
 from photonfinder.filesystem import parse_FITS_header, header_from_xisf_dict
@@ -56,6 +58,48 @@ _SOLVERS = [
 ]
 
 
+def _infer_scale_from_header(file: File):
+    try:
+        import json
+        fh = FitsHeader.get(FitsHeader.file == file)
+        raw = decompress(fh.header)
+        if file.name.lower().endswith('.xisf'):
+            header = header_from_xisf_dict(json.loads(raw))
+        else:
+            header = parse_FITS_header(raw)
+        scale = header.get("SCALE") or header.get("PIXSCALE")
+        if scale is not None:
+            return float(scale)
+        focal_len = header.get("FOCALLEN")
+        pix_size = header.get("YPIXSZ")
+        if focal_len and pix_size:
+            scale = 206.265 * float(pix_size) / float(focal_len)
+            scale = round(scale, 3)
+            return scale
+    except Exception:
+        pass
+    return None
+
+
+def _infer_scale_from_wcs(file: File):
+    try:
+        import math
+        from astropy.io.fits import Header as AstroHeader
+        wcs_rec = FileWCS.get_or_none(FileWCS.file == file)
+        if wcs_rec is None:
+            return None
+        raw = decompress(wcs_rec.wcs)
+        header = AstroHeader.fromstring(raw.decode())
+        wcs = WCS(header)
+        pixel_scales = proj_plane_pixel_scales(wcs)  # in degrees/pixel
+        scale = float(pixel_scales[0]) * 3600  # convert to arcsec/pixel
+        scale = round(scale, 3)
+        return scale if scale > 0 else None
+    except Exception as e:
+        print(e)
+        return None
+
+
 class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
     solving_complete = Signal(object)  # emits PlateSolveTask when done
     wcs_copied = Signal(object)        # emits object with .solved_files after Direct Copy
@@ -66,13 +110,17 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.context = context
         self.files = files
         self.search_criteria = search_criteria
-        self._task = None
+        self._task: PlateSolveTask | None = None
         self._pending_retry_files = None
 
         self._populate_combos()
         self._load_settings()
         self._infer_hints()
         self._update_title()
+        self._camera_scale_cache = self._load_camera_scale_cache()
+        if not self._any_file_has_camera():
+            self.use_camera_scales_check.setChecked(False)
+            self.use_camera_scales_check.setEnabled(False)
 
         self.start_button.clicked.connect(self._start_solving)
         self.close_button.clicked.connect(self._on_close_clicked)
@@ -84,6 +132,11 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.hint_dec_edit.editingFinished.connect(self._try_convert_dec)
         self.lookup_hint_button.clicked.connect(self._on_lookup_hint)
         self._update_hms_dms()
+
+        if self.files:
+            self.log_edit.appendPlainText("Files to solve:")
+            for f in self.files:
+                self.log_edit.appendPlainText(f.name)
 
     def _update_title(self):
         if self.files:
@@ -122,9 +175,6 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         s = self.context.settings
         s.set_plate_solve_primary_solver(self.primary_solver_combo.currentIndex())
         s.set_plate_solve_backup_solver(self.backup_solver_combo.currentIndex() - 1)
-        s.set_plate_solve_hint_ra(self.hint_ra_edit.text().strip())
-        s.set_plate_solve_hint_dec(self.hint_dec_edit.text().strip())
-        s.set_plate_solve_hint_scale(self.hint_scale_spin.value())
         s.set_plate_solve_hint_mode('override' if self.hint_override_radio.isChecked() else 'fallback')
 
     def _infer_hints(self):
@@ -142,8 +192,12 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
 
         # Scale: try WCS then header; fall back to whatever settings restored
         for file in sample_files:
-            scale = self._infer_scale_from_wcs(file) or self._infer_scale_from_header(file)
+            scale = _infer_scale_from_wcs(file) or _infer_scale_from_header(file)
             if scale is not None:
+                assert scale <= self.hint_scale_spin.maximum(), (
+                    f"Inferred scale {scale:.4f} arcsec/px exceeds spinner max "
+                    f"({self.hint_scale_spin.maximum()}) for file {file.name!r}"
+                )
                 self.hint_scale_spin.setValue(round(scale, 3))
                 break
 
@@ -164,41 +218,108 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         except Exception:
             return []
 
-    def _infer_scale_from_wcs(self, file: File):
-        try:
-            import math
-            from astropy.io.fits import Header as AstroHeader
-            wcs_rec = FileWCS.get_or_none(FileWCS.file == file)
-            if wcs_rec is None:
-                return None
-            raw = decompress(wcs_rec.wcs)
-            header = AstroHeader.fromstring(raw.decode())
-            cd11 = header.get('CD1_1') or header.get('CDELT1') or 0
-            cd21 = header.get('CD2_1', 0)
-            scale = math.hypot(float(cd11), float(cd21)) * 3600
-            return scale if scale > 0 else None
-        except Exception:
-            return None
+    def _load_camera_scale_cache(self) -> dict:
+        """Returns {camera: [scale, ...]} from solved Image records (one DB query).
 
-    def _infer_scale_from_header(self, file: File):
+        Only distinct (camera, coord_scale) pairs are fetched. Scales within 30% of
+        each other are collapsed to the most common one — they represent the same
+        optical setup and would not give the solver useful new information.
+        """
+        from peewee import fn
+        cache: dict[str, dict[float, int]] = {}  # camera → {scale: count}
         try:
-            import json
-            fh = FitsHeader.get(FitsHeader.file == file)
-            raw = decompress(fh.header)
-            if file.name.lower().endswith('.xisf'):
-                header = header_from_xisf_dict(json.loads(raw))
-            else:
-                header = parse_FITS_header(raw)
-            scale = header.get("SCALE") or header.get("PIXSCALE")
-            if scale is not None:
-                return float(scale)
-            focal_len = header.get("FOCALLEN")
-            pix_size = header.get("YPIXSZ")
-            if focal_len and pix_size:
-                return 206.265 * float(pix_size) / float(focal_len)
+            rows = (Image
+                    .select(Image.camera, Image.coord_scale,
+                            fn.COUNT(Image.rowid).alias('cnt'))
+                    .where(Image.camera.is_null(False)
+                           & Image.coord_scale.is_null(False))
+                    .group_by(Image.camera, Image.coord_scale))
+            for img in rows:
+                cache.setdefault(img.camera, {})[img.coord_scale] = img.cnt
         except Exception:
-            pass
-        return None
+            logging.exception("Failed to load camera scale cache")
+            return {}
+        return {cam: self._dedupe_scales(counts) for cam, counts in cache.items()}
+
+    @staticmethod
+    def _otsu_threshold(counts: list[int]) -> float:
+        """Return the Otsu optimal split threshold for a list of counts.
+
+        Tries every midpoint between adjacent unique count values, picks the one
+        that maximises between-class variance.  Returns 0 (keep all) when there
+        are fewer than two distinct values or the two classes are too similar
+        (lower-class mean ≥ 20 % of upper-class mean — both are legitimate setups).
+        """
+        unique = sorted(set(counts))
+        if len(unique) < 2:
+            return 0
+        best_var, best_t = -1.0, 0.0
+        n = len(counts)
+        for i in range(1, len(unique)):
+            t = (unique[i - 1] + unique[i]) / 2.0
+            below = [c for c in counts if c <= t]
+            above = [c for c in counts if c > t]
+            if not below or not above:
+                continue
+            w0, w1 = len(below) / n, len(above) / n
+            m0, m1 = sum(below) / len(below), sum(above) / len(above)
+            if m0 >= 0.25 * m1:         # classes too similar — not a real outlier (< 4:1 ratio)
+                continue
+            var = w0 * w1 * (m0 - m1) ** 2
+            if var > best_var:
+                best_var, best_t = var, t
+        return best_t
+
+    @staticmethod
+    def _dedupe_scales(scale_counts: dict[float, int]) -> list[float]:
+        """Return representative scales, removing near-duplicates and rare outliers.
+
+        Steps:
+        1. Sort scales and merge those within a 30% ratio band, accumulating their
+           solve counts and keeping the value with the highest individual count.
+        2. Apply an Otsu threshold on the per-band totals to drop bands whose
+           accumulated count is clearly in the noise tier (only triggers when one
+           class is less than 20% as common as the other).
+        """
+        if not scale_counts:
+            return []
+
+        # Step 1 — 30% band merge
+        bands: list[tuple[float, int, int]] = []   # (representative_scale, rep_count, band_total)
+        for scale in sorted(scale_counts):
+            cnt = scale_counts[scale]
+            if not bands or scale / bands[-1][0] >= 1.30:
+                bands.append((scale, cnt, cnt))
+            else:
+                rep_s, rep_c, total = bands[-1]
+                winner, winner_c = (scale, cnt) if cnt > rep_c else (rep_s, rep_c)
+                bands[-1] = (winner, winner_c, total + cnt)
+
+        # Step 2 — Otsu on band totals, drop noise tier
+        if len(bands) >= 2:
+            totals = [total for _, _, total in bands]
+            threshold = PlateSolveDialog._otsu_threshold(totals)
+            if threshold > 0:
+                filtered = [(s, rc, t) for s, rc, t in bands if t > threshold]
+                if filtered:
+                    bands = filtered
+
+        return [s for s, _, _ in bands]
+
+    def _any_file_has_camera(self) -> bool:
+        """Return True if at least one file to be solved has a camera field set."""
+        try:
+            if self.files:
+                return (Image.select(Image.camera)
+                        .where(Image.file.in_(self.files) & Image.camera.is_null(False))
+                        .exists())
+            query = (File.select(Image.camera)
+                     .join(Image)
+                     .where(Image.camera.is_null(False)))
+            query = Image.apply_search_criteria(query, self.search_criteria)
+            return query.exists()
+        except Exception:
+            return True  # safe default — don't disable if check fails
 
     def _build_solver(self, solver_index: int):
         s = self.context.settings
@@ -263,7 +384,10 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
             solver=primary_solver,
             backup_solver=backup_solver,
             hint=hint,
+            camera_scale_cache=self._camera_scale_cache,
+            use_camera_scales=self.use_camera_scales_check.isChecked(),
         )
+        assert self._task is not None
         self._task.progress.connect(self.progressBar.setValue)
         self._task.total_found.connect(self.progressBar.setMaximum)
         self._task.message.connect(self._append_log)
@@ -290,11 +414,18 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
 
     def _on_finished(self):
         task = self._task
+        assert task is not None
         self._task = None
         self.solving_complete.emit(task)
         self._show_results(task)
+        if task.first_solution is not None:
+            ra, dec, scale_arcsec = task.first_solution
+            s = self.context.settings
+            s.set_plate_solve_hint_ra(f"{ra:.6f}")
+            s.set_plate_solve_hint_dec(f"{dec:.6f}")
+            s.set_plate_solve_hint_scale(round(scale_arcsec, 4))
 
-    def _show_results(self, task):
+    def _show_results(self, task: PlateSolveTask):
         self.log_edit.hide()
         self.close_button.setText("Close")
         self.progressBar.setValue(self.progressBar.maximum())
@@ -439,7 +570,8 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
             return
 
         dirs = {(f.root_id, f.path) for f in self.files}
-        wcs_files = self._find_wcs_files_in_dirs(dirs)
+        exclude_ids = {f.rowid for f in self.files}
+        wcs_files = self._find_wcs_files_in_dirs(dirs, exclude_ids)
         if not wcs_files:
             QMessageBox.information(self, "Direct Copy", "No solved files found in the same director(ies).")
             return
@@ -455,11 +587,22 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
             self.wcs_copied.emit(result)
         self._infer_hints()
 
-    def _find_wcs_files_in_dirs(self, dirs):
+        reply = QMessageBox.question(
+            self, "Refine with plate solver?",
+            "WCS data was copied. Do you want to start the plate solver to refine or correct it?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._start_solving()
+
+    def _find_wcs_files_in_dirs(self, dirs, exclude_ids=None):
         import operator
         from functools import reduce
         conditions = [(File.root == root_id) & (File.path == path) for root_id, path in dirs]
         condition = reduce(operator.or_, conditions)
+        if exclude_ids:
+            condition = condition & File.rowid.not_in(exclude_ids)
         query = (File.select(File, Image, FileWCS)
                  .join(FileWCS)
                  .switch(File)

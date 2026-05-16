@@ -151,6 +151,9 @@
           <property name="maximum">
            <double>100.000000000000000</double>
           </property>
+          <property name="singleStep">
+           <double>0.100000000000000</double>
+          </property>
          </widget>
         </item>
         <item>
@@ -165,6 +168,16 @@
            </size>
           </property>
          </spacer>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="use_camera_scales_check">
+          <property name="toolTip">
+           <string>If solving fails, retry using image scales derived from previous successful solves for this camera</string>
+          </property>
+          <property name="text">
+           <string>Try other successful values from the same camera</string>
+          </property>
+         </widget>
         </item>
        </layout>
       </item>
@@ -201,14 +214,14 @@
    </item>
    <item>
     <widget class="QPlainTextEdit" name="log_edit">
-     <property name="readOnly">
-      <bool>true</bool>
-     </property>
      <property name="minimumSize">
       <size>
        <width>0</width>
        <height>120</height>
       </size>
+     </property>
+     <property name="readOnly">
+      <bool>true</bool>
      </property>
     </widget>
    </item>
@@ -217,7 +230,7 @@
      <item>
       <widget class="QPushButton" name="direct_copy_button">
        <property name="text">
-        <string>Direct Copy...</string>
+        <string>Copy from another image...</string>
        </property>
       </widget>
      </item>

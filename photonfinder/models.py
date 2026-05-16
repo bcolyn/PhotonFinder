@@ -18,6 +18,7 @@ from playhouse.sqlite_ext import RowIDField
 hp = HEALPix(nside=256, order='nested', frame='icrs')
 
 
+
 @dataclass(frozen=True)
 class RootAndPath:
     root_id: int
@@ -394,6 +395,14 @@ class Image(Model):
     coord_dec = FloatField(null=True, index=True)  # Declination as floating point value
     coord_pix256 = IntegerField(null=True, index=True)  # HEALPix value (nside=256)
     coord_radius = FloatField(null=True)  # Half-diagonal of image FOV in degrees
+    width = IntegerField(null=True)   # Image width in pixels (NAXIS1)
+    height = IntegerField(null=True)  # Image height in pixels (NAXIS2)
+    coord_scale = FloatField(null=True, constraints=[SQL(
+        'GENERATED ALWAYS AS ('
+        'ROUND((coord_radius * 2.0 * 3600.0) /'
+        ' SQRT(CAST(width AS REAL) * width + CAST(height AS REAL) * height), 2)'
+        ') VIRTUAL'
+    )])
 
     class Meta:
         database = None
@@ -575,6 +584,16 @@ class Image(Model):
     @staticmethod
     def load_cameras(search_criteria: SearchCriteria):
         return Image.get_distinct_values_available(search_criteria, Image.camera)
+
+
+# Remove coord_scale from Peewee's write-path field registry so it is never
+# included in INSERT / UPDATE / bulk_create (SQLite rejects writes to GENERATED columns).
+# The class attribute (FieldAccessor) is intentionally kept for use in WHERE/ORDER BY.
+_cs = Image._meta.fields.pop('coord_scale', None)
+if _cs:
+    Image._meta.sorted_field_names.remove('coord_scale')
+    Image._meta.columns.pop(_cs.column_name, None)
+del _cs
 
 
 class Project(Model):

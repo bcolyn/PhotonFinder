@@ -7,6 +7,8 @@ from typing import Callable, List
 
 from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
+from astropy.io.fits import Header
+from astropy.wcs.utils import proj_plane_pixel_scales
 from peewee import JOIN, fn
 
 from photonfinder.core import ApplicationContext, compress, decompress
@@ -272,6 +274,8 @@ class ImageReindexWorker(BackgroundLoaderBase):
                         if header is None:
                             continue
 
+                        # There is no information from plate solving with an external tool - try to extract from
+                        # the file header
                         if not hasattr(header_record.file, 'filewcs') and has_been_plate_solved(header):
                             solution = extract_wcs_cards(header)
                             if Importer.is_xisf_by_name(header_record.file.name):
@@ -402,13 +406,17 @@ class FileProcessingTask(ProgressBackgroundTask):
 class PlateSolveTask(FileProcessingTask):
 
     def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File],
-                 solver: SolverBase, backup_solver: SolverBase = None, hint: SolverHint = None):
+                 solver: SolverBase, backup_solver: SolverBase = None, hint: SolverHint = None,
+                 camera_scale_cache: dict = None, use_camera_scales: bool = False):
         super().__init__(context, search_criteria, files)
         self.solved_files = list()
         self.file_results = list()  # list of (file, success: bool, error_msg: str | None)
+        self.first_solution: tuple | None = None  # (ra, dec, scale_arcsec) of first successful solve
         self.solver = solver
         self.backup_solver = backup_solver
         self.hint = hint
+        self.camera_scale_cache = camera_scale_cache if camera_scale_cache is not None else {}
+        self.use_camera_scales = use_camera_scales
 
     def _solver_name(self, solver: SolverBase) -> str:
         from photonfinder.platesolver import ASTAPSolver, AstrometryNetSolver, SolveFieldSolver
@@ -487,36 +495,73 @@ class PlateSolveTask(FileProcessingTask):
         self.message.emit(f"Processing file {index + 1}/{self.total}:\n {file.full_filename()}")
 
         file_wcs = FileWCS.get_or_none(FileWCS.file == file)
+        primary_name = self._solver_name(self.solver)
+        backup_name = self._solver_name(self.backup_solver) if self.backup_solver else None
 
-        def _try_solve(solver):
-            with solver:
-                return solver.solve(
-                    Path(file.full_filename()), file.image, self.hint,
-                    output_callback=lambda line: self.message.emit(f"    {line}"),
-                    file_wcs=file_wcs,
-                )
-
-        try:
-            solution = None
-            used_solver = self.solver
+        def _try_with_fallback(attempt_hint):
+            """Try primary then backup solver. Returns (solution, used_solver) or raises."""
             try:
-                solution = _try_solve(self.solver)
+                with self.solver:
+                    sol = self.solver.solve(
+                        Path(file.full_filename()), file.image, attempt_hint,
+                        output_callback=lambda line: self.message.emit(f"    {line}"),
+                        file_wcs=file_wcs,
+                    )
+                return sol, self.solver
             except (SolverFailure, SolverError) as primary_error:
                 if self.cancelled:
-                    return
+                    return None, self.solver
                 if self.backup_solver:
-                    self.message.emit(f"  → {self._solver_name(self.solver)} failed ({primary_error}), trying {self._solver_name(self.backup_solver)}…")
-                    solution = _try_solve(self.backup_solver)
-                    used_solver = self.backup_solver
-                else:
-                    raise
+                    self.message.emit(
+                        f"  → {primary_name} failed ({primary_error}), trying {backup_name}…"
+                    )
+                    with self.backup_solver:
+                        sol = self.backup_solver.solve(
+                            Path(file.full_filename()), file.image, attempt_hint,
+                            output_callback=lambda line: self.message.emit(f"    {line}"),
+                            file_wcs=file_wcs,
+                        )
+                    return sol, self.backup_solver
+                raise
+
+        # Build list of hints to try: original hint first, then cached scales for this camera
+        hints_to_try = [self.hint]
+        if self.use_camera_scales and file.image:
+            camera = getattr(file.image, 'camera', None)
+            if camera:
+                tried_scale = self.hint.scale if self.hint else None
+                for s in self.camera_scale_cache.get(camera, []):
+                    if s != tried_scale:
+                        hints_to_try.append(SolverHint(
+                            ra=self.hint.ra if self.hint else None,
+                            dec=self.hint.dec if self.hint else None,
+                            scale=s,
+                            mode='fallback',
+                        ))
+
+        try:
+            solution: Header|None = None
+            used_solver, last_exc = self.solver, None
+            for i, attempt_hint in enumerate(hints_to_try):
+                try:
+                    solution, used_solver = _try_with_fallback(attempt_hint)
+                    if solution:
+                        break
+                except (SolverFailure, SolverError) as e:
+                    last_exc = e
+                    if i < len(hints_to_try) - 1:
+                        cached_scale = attempt_hint.scale if attempt_hint else None
+                        scale_str = f"{cached_scale:.2f}\"/px" if cached_scale else "no scale"
+                        self.message.emit(f"  → {scale_str} failed, trying next cached scale…")
+            if solution is None and last_exc is not None:
+                raise last_exc
 
             if solution:
                 from photonfinder.platesolver import stamp_wcs_origin
                 stamp_wcs_origin(solution, used_solver.wcs_origin)
                 self.context.status_reporter.update_status(f"Solved file {file.full_filename()}")
-                wcs = FileWCS(file=file, wcs=compress(solution.tostring().encode()))
-                FileWCS.insert(wcs.__data__).on_conflict_replace().execute()
+                file_wcs = FileWCS(file=file, wcs=compress(solution.tostring().encode()))
+                FileWCS.insert(file_wcs.__data__).on_conflict_replace().execute()
                 ra, dec, healpix, radius = get_image_center_coords(solution)
                 Image.update(coord_ra=ra, coord_dec=dec, coord_pix256=healpix, coord_radius=radius
                              ).where(Image.file == file).execute()
@@ -525,11 +570,31 @@ class PlateSolveTask(FileProcessingTask):
                 file.image.coord_dec = dec
                 file.image.coord_pix256 = healpix
                 file.image.coord_radius = radius
+
+                # Persist image dimensions and update in-memory scale cache
+                naxis1 = solution.get('NAXIS1')
+                naxis2 = solution.get('NAXIS2')
+                if naxis1 and naxis2:
+                    w, h = int(naxis1), int(naxis2)
+                    Image.update(width=w, height=h).where(Image.file == file).execute()
+                    file.image.width  = w
+                    file.image.height = h
+                    camera = getattr(file.image, 'camera', None)
+                    if camera and radius:
+                        diag_px   = math.hypot(w, h)
+                        new_scale = round((radius * 2 * 3600) / diag_px, 2)
+                        scales    = self.camera_scale_cache.setdefault(camera, [])
+                        if new_scale not in scales:
+                            scales.append(new_scale)
+
                 self.solved_files.append(file)
                 self.file_results.append((file, True, None))
-                cd11 = solution.get('CD1_1') or solution.get('CDELT1') or 0
-                cd21 = solution.get('CD2_1', 0)
-                scale_arcsec = math.hypot(cd11, cd21) * 3600
+                pixel_scales = proj_plane_pixel_scales(WCS(solution))  # in degrees/pixel
+                scale = float(pixel_scales[0]) * 3600  # convert to arcsec/pixel
+                scale_arcsec = round(scale, 3)
+
+                if self.first_solution is None:
+                    self.first_solution = (ra, dec, scale_arcsec)
                 logger.info(
                     "Solved %s: RA=%.4f°  Dec=%.4f°  scale=%.2f\"/px",
                     file.name, ra, dec, scale_arcsec,

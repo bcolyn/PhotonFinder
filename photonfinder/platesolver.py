@@ -48,7 +48,7 @@ _SOLVER_TYPE_ORIGIN = {
 }
 
 
-def stamp_wcs_origin(header, origin: str) -> None:
+def stamp_wcs_origin(header: Header, origin: str) -> None:
     """Add a COMMENT card recording how the WCS solution was obtained."""
     header.add_comment(f"WCS_ORIGIN={origin}")
 
@@ -180,7 +180,7 @@ class ASTAPSolver(SolverBase):
     def _run_astap(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None):
         """Execute ASTAP with the given parameters."""
         params = [self._exe, "-f", str(tmp_image_file), "-update", "-platesolve"]
-        options = {"-r": "180"} #  "-s": "100" ?
+        options = {"--speed": "slow", "-z": "1"}
         if hint is not None:
             options.update(hint)
         params.extend([item for k in options for item in (k, options[k])])
@@ -204,6 +204,7 @@ class ASTAPSolver(SolverBase):
         temp_image = self._create_temp_fits(image_path, file_wcs)
         header = fits.getheader(temp_image)
         astap_hint = self.extract_hint(header, image)
+        file_has_position = '-ra' in astap_hint  # RA/DEC came from the file itself
 
         if hint:
             naxis2 = header.get('NAXIS2')
@@ -219,10 +220,16 @@ class ASTAPSolver(SolverBase):
                     astap_hint['-spd'] = str(90 + float(hint.dec))
                 if hint.scale is not None and '-fov' not in astap_hint and naxis2:
                     astap_hint['-fov'] = str(int(naxis2) * hint.scale / 3600)
-            if naxis2 > 2000:
-                astap_hint['-z'] = "2"
-            else:
-                astap_hint['-z'] = "0"
+
+            # in practice, downscaling seems to often cause wider-field images (5-6 deg) to fail
+            # if naxis2 > 2000:
+            #     astap_hint['-z'] = "2"
+            # else:
+            #     astap_hint['-z'] = "0"
+
+        # Reduce search radius when we have a reliable position; full-sky only when blind
+        user_override_position = hint and hint.mode == 'override' and hint.ra is not None
+        astap_hint.setdefault('-r', '30' if (file_has_position or user_override_position) else '180')
 
         return self._solve(temp_image, astap_hint)
 
@@ -401,7 +408,7 @@ class SolveFieldSolver(SolverBase):
         if scale is None:
             return None, None
         scale = float(scale)
-        return scale * 0.5, scale * 2
+        return scale * 0.8, scale * 1.2
 
     def _run_solve_field(self, cmd: list, env: dict,
                          output_callback: typing.Callable[[str], None] = None) -> list[str]:

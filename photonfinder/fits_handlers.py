@@ -107,6 +107,9 @@ class FitsHeaderHandler:
         # Extract coordinates and HEALPix value
         coord_ra, coord_dec, coord_pix256 = self._get_coordinates(header)
 
+        n1 = header.get('NAXIS1')
+        n2 = header.get('NAXIS2')
+
         # Create and return an Image object
         return Image(
             file=file,
@@ -123,7 +126,9 @@ class FitsHeaderHandler:
             date_obs=date_obs,
             coord_ra=coord_ra,
             coord_dec=coord_dec,
-            coord_pix256=coord_pix256
+            coord_pix256=coord_pix256,
+            width=int(n1) if n1 is not None else None,
+            height=int(n2) if n2 is not None else None,
         )
 
     # def get_wcs_values(self, header: Header) -> dict:
