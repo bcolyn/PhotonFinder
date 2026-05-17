@@ -368,13 +368,15 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
                 folder_item.setData(0, _FILE_DATA_ROLE, (root_id, root_label, file_dir, None, None))
                 for obj_name, filepath, froot_id, froot_label, ffile_dir, file_name in folder_matches:
                     file_item = QTreeWidgetItem(folder_item)
+                    file_item.setFirstColumnSpanned(True)
                     file_item.setText(0, file_name)
                     file_item.setData(0, _FILE_DATA_ROLE, (froot_id, froot_label, ffile_dir, file_name, obj_name))
 
         header = self.treeWidget.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for col in range(1, self.treeWidget.columnCount()):
-            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+            header.resizeSectionToContents(col)
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
 
         self._apply_text_filter(self.filterEdit.text())
 
