@@ -351,6 +351,32 @@ def load_hyperleda_bz2(path: Path) -> list[tuple]:
 _CR_RA_RE = re.compile(r"(\d+)h\s*(\d+)m\s*([\d.]+)s", re.I)
 _CR_DEC_RE = re.compile(r"([+-]?)(\d+)[°º]\s*(\d+)['′]\s*([\d.]+)\s*[\"″]?")
 _CR_SIZE_RE = re.compile(r"[\d.]+")
+# Cross-reference patterns: plain NGC integer (optionally followed by parenthetical),
+# IC number, M45 (only Messier not reachable via NGC), Melotte number.
+_CR_XREF_NGC_RE = re.compile(r"^(\d+)\s*(?:\(|$)")
+_CR_XREF_IC_RE  = re.compile(r"^IC\s*(\d+)", re.I)
+_CR_XREF_MEL_RE = re.compile(r"^\(?Mel(?:otte)?[.\s]+(\d+)", re.I)
+
+
+def _cr_canonical(xref: str) -> tuple[str | None, bool]:
+    """Return (canonical_id, skip_row) for a Collinder cross-reference field."""
+    s = xref.strip()
+    if not s or s.lower() in ("nl", "n/a"):
+        return None, False
+    if s.startswith("(incorrectly)"):
+        return None, True
+    m = _CR_XREF_NGC_RE.match(s)
+    if m:
+        return f"NGC_{int(m.group(1))}", False
+    m = _CR_XREF_IC_RE.match(s)
+    if m:
+        return f"IC_{int(m.group(1))}", False
+    if re.match(r"^M45\b", s, re.I):
+        return "Messier_45", False
+    m = _CR_XREF_MEL_RE.match(s)
+    if m:
+        return f"Mel_{int(m.group(1))}", False
+    return None, False
 
 
 def _cr_magnitude(s: str) -> float | None:
@@ -383,6 +409,10 @@ def load_collinder_tsv(path: Path) -> list[tuple]:
                 continue
             cr_id = str(int(cr_id_m.group(1)))
 
+            canonical_id, skip = _cr_canonical(parts[1])
+            if skip:
+                continue
+
             ra_m = _CR_RA_RE.match(parts[3].strip())
             if not ra_m:
                 logging.warning(f"{path.name}:{line_no}: bad RA for Cr {cr_id}, skipping")
@@ -396,7 +426,7 @@ def load_collinder_tsv(path: Path) -> list[tuple]:
             sign = -1 if dec_m.group(1) == "-" else 1
             dec = sign * (float(dec_m.group(2)) + float(dec_m.group(3)) / 60 + float(dec_m.group(4)) / 3600)
 
-            rows.append((ra, dec, "Cr", cr_id, None,
+            rows.append((ra, dec, "Cr", cr_id, canonical_id,
                          _cr_size(parts[7]), None, None, _cr_magnitude(parts[5]),
                          _healpix(ra, dec)))
     return rows
