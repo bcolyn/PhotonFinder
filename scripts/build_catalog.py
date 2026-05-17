@@ -345,6 +345,64 @@ def load_hyperleda_bz2(path: Path) -> list[tuple]:
 
 
 # ---------------------------------------------------------------------------
+# Collinder catalogue loader
+# ---------------------------------------------------------------------------
+
+_CR_RA_RE = re.compile(r"(\d+)h\s*(\d+)m\s*([\d.]+)s", re.I)
+_CR_DEC_RE = re.compile(r"([+-]?)(\d+)[°º]\s*(\d+)['′]\s*([\d.]+)\s*[\"″]?")
+_CR_SIZE_RE = re.compile(r"[\d.]+")
+
+
+def _cr_magnitude(s: str) -> float | None:
+    s = re.sub(r"[vp]$", "", s.strip(), flags=re.I)
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _cr_size(s: str) -> float:
+    m = _CR_SIZE_RE.search(s.strip())
+    return float(m.group()) if m else 0.0
+
+
+def load_collinder_tsv(path: Path) -> list[tuple]:
+    rows: list[tuple] = []
+    with path.open(encoding="utf-8") as f:
+        for line_no, raw in enumerate(f, start=1):
+            line = raw.rstrip("\n")
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) < 8:
+                logging.warning(f"{path.name}:{line_no}: too few columns, skipping")
+                continue
+
+            cr_id_m = re.match(r"(\d+)", parts[0].strip())
+            if not cr_id_m:
+                continue
+            cr_id = str(int(cr_id_m.group(1)))
+
+            ra_m = _CR_RA_RE.match(parts[3].strip())
+            if not ra_m:
+                logging.warning(f"{path.name}:{line_no}: bad RA for Cr {cr_id}, skipping")
+                continue
+            ra = (float(ra_m.group(1)) + float(ra_m.group(2)) / 60 + float(ra_m.group(3)) / 3600) * 15
+
+            dec_m = _CR_DEC_RE.match(parts[4].strip())
+            if not dec_m:
+                logging.warning(f"{path.name}:{line_no}: bad Dec for Cr {cr_id}, skipping")
+                continue
+            sign = -1 if dec_m.group(1) == "-" else 1
+            dec = sign * (float(dec_m.group(2)) + float(dec_m.group(3)) / 60 + float(dec_m.group(4)) / 3600)
+
+            rows.append((ra, dec, "Cr", cr_id, None,
+                         _cr_size(parts[7]), None, None, _cr_magnitude(parts[5]),
+                         _healpix(ra, dec)))
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # Overrides
 # ---------------------------------------------------------------------------
 
@@ -371,6 +429,7 @@ def apply_overrides(con: sqlite3.Connection, path: Path) -> None:
 
 CATALOG_SOURCES: list[tuple[str, Callable[[Path], list[tuple]]]] = [
     ("openngc/*.csv",          load_openngc_csv),
+    ("collinder.tsv",          load_collinder_tsv),
     ("vizier/*.csv",           load_generic_csv),
     ("hyperleda/*.txt.bz2",    load_hyperleda_bz2),
 ]
@@ -396,7 +455,9 @@ def build(output: Path = OUTPUT_DB, source_dir: Path = CATALOG_DIR) -> None:
 
         total = 0
         for pattern, loader in CATALOG_SOURCES:
-            files = sorted((source_dir / pattern.split("/")[0]).glob(pattern.split("/")[1]))
+            parts = pattern.split("/", 1)
+            files = sorted((source_dir / parts[0]).glob(parts[1]) if len(parts) == 2
+                           else source_dir.glob(parts[0]))
             for path in files:
                 logging.info(f"Loading {path.name} ({loader.__name__}) ...")
                 rows = loader(path)
