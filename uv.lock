@@ -1023,6 +1023,7 @@ dependencies = [
     { name = "pyqt-distutils" },
     { name = "pyside6" },
     { name = "requests" },
+    { name = "sep" },
     { name = "setuptools" },
     { name = "timezonefinder" },
     { name = "tzdata" },
@@ -1067,6 +1068,7 @@ requires-dist = [
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.10.0" },
     { name = "pytest-qt", marker = "extra == 'dev'", specifier = ">=4.2.0" },
     { name = "requests", specifier = "~=2.33.0" },
+    { name = "sep", specifier = ">=1.4.0" },
     { name = "setuptools", specifier = "<81" },
     { name = "timezonefinder", specifier = ">=6.0.0" },
     { name = "tzdata" },
@@ -1571,6 +1573,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/46/f5af3402b579fd5e11573ce652019a67074317e18c1935cc0b4ba9b35552/secretstorage-3.5.0-py3-none-any.whl", hash = "sha256:0ce65888c0725fcb2c5bc0fdb8e5438eece02c523557ea40ce0703c266248137", size = 15554, upload-time = "2025-11-23T19:02:51.545Z" },
+]
+
+[[package]]
+name = "sep"
+version = "1.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a5/34/14537815638e3878209ad14aa51099a5ec73aca7ef517ad49b2b85072241/sep-1.4.1.tar.gz", hash = "sha256:a0c8324ab66ee716080472cb212e4303e6c3e33b0d43763075b20d4cab793b25", size = 569714, upload-time = "2025-02-18T15:01:17.517Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8e/06/733f858c4a1c5439f47cf34bcd2f0e146537d3a9584e5a472f7dc9aca052/sep-1.4.1-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:05109415551332238569cc9420226d815554ed9b4a6623b613bcc281bc84d3dc", size = 499019, upload-time = "2025-02-18T15:00:39.805Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/eb/98d7aca6ceeed08a5f873a7f936a12b50918416c0624572966ab796d5ddd/sep-1.4.1-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:b01c05e21b03154df11737d872683b04fb72eeb11ccf7ab5ed816297608a36e1", size = 265419, upload-time = "2025-02-18T15:00:41.265Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/f3/a8cd4f99d3dbf39ecd032b13481ec08d8c3709c89656d61b408b00806e09/sep-1.4.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:a4f76d04871d2ae3c42d4dbae66b12b390d1828c81a63eb15e987ef95d9de783", size = 239688, upload-time = "2025-02-18T15:00:43.504Z" },
+    { url = "https://files.pythonhosted.org/packages/05/89/66922ada991c21cdb0560e0b9741007d84888a98ec1607727f1ae45e94a1/sep-1.4.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2c602100d04196d3a16f71ec17245f5c35b84c0f230eca007306decf4aacbece", size = 1377250, upload-time = "2025-02-18T15:00:45.233Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/d6/27c3593c1dcb2da13844a9d49aa2a4932886454999c738ee7c819c2f938b/sep-1.4.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b9f70e1fee306d0803823c04f6dfbbb373603897b2551390b919dea36e75988c", size = 1436504, upload-time = "2025-02-18T15:00:46.974Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/3b/f1c309700ae9c7f20db4ac242dd9126127e93f1af211914a3888f02272e5/sep-1.4.1-cp313-cp313-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:83e7ae07a2f38d9c3f07aa8aa088ef6449bc85c615c312008850390df17ac629", size = 1351597, upload-time = "2025-02-18T15:00:49.454Z" },
+    { url = "https://files.pythonhosted.org/packages/48/ef/d1b521be6552e713425fe791b1ebf9bfcbef496e35bbbaf0efb933a8229b/sep-1.4.1-cp313-cp313-win32.whl", hash = "sha256:66a98d6b98d6f4bb597133397b505787499e9cf3a3230967f5d3867e4f7eb7fd", size = 190864, upload-time = "2025-02-18T15:00:50.948Z" },
+    { url = "https://files.pythonhosted.org/packages/af/a1/6b61f2668d28b6f8db76285952dbee264fe41e6ea4ef1b815b962f700e76/sep-1.4.1-cp313-cp313-win_amd64.whl", hash = "sha256:9f6f6fb74cfb92d0fd71ee6b263c20c349f44dfe8e8d1db138b25655f4e67e9b", size = 218665, upload-time = "2025-02-18T15:00:52.295Z" },
 ]
 
 [[package]]

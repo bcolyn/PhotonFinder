@@ -13,15 +13,16 @@ from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext, decompress, Change
-from photonfinder.filesystem import Importer, is_compressed, is_compressible, header_from_xisf_dict, parse_FITS_header
+from photonfinder.filesystem import Importer, is_compressible, header_from_xisf_dict, parse_FITS_header
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
     FileWCS, ProjectFile, LibraryRoot
-from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask
+from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask, ImageAnalysisTask
 from .DateRangeDialog import DateRangeDialog
-from .PlateSolveDialog import PlateSolveDialog
 from .HeaderDialog import HeaderDialog
+from .ImageAnalysisDialog import ImageAnalysisDialog
 from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .MetadataReportDialog import MetadataReportDialog
+from .PlateSolveDialog import PlateSolveDialog
 from .ProgressDialog import ProgressDialog
 from .common import _format_ra, _format_dec, _format_date, _format_file_size, _format_timestamp, ensure_header_widths, \
     ColumnVisibilityController
@@ -68,7 +69,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.data_model.setHorizontalHeaderLabels([
             "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
             "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved",
-            "Projects"
+            "Projects", "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation",
         ])
         self.proxy_model = QSortFilterProxyModel()
         self.proxy_model.setSortRole(SORT_ROLE)
@@ -471,11 +472,36 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             # Store the full filename in the name_item's data
             name_item.setData(file, ROWID_ROLE)
 
+            # Columns 19-23: ImageStats
+            bg_median_item = QStandardItem("")
+            bg_rms_item = QStandardItem("")
+            stars_item = QStandardItem("")
+            fwhm_item = QStandardItem("")
+            elongation_item = QStandardItem("")
+            stats = file.imagestats if hasattr(file, 'imagestats') and file.imagestats else None
+            if stats is not None:
+                if stats.background_median is not None:
+                    bg_median_item.setText(f"{stats.background_median:.1f}")
+                    bg_median_item.setData(stats.background_median, SORT_ROLE)
+                if stats.background_rms is not None:
+                    bg_rms_item.setText(f"{stats.background_rms:.2f}")
+                    bg_rms_item.setData(stats.background_rms, SORT_ROLE)
+                if stats.star_count is not None:
+                    stars_item.setText(str(stats.star_count))
+                    stars_item.setData(stats.star_count, SORT_ROLE)
+                if stats.fwhm_median is not None:
+                    fwhm_item.setText(f"{stats.fwhm_median:.2f}")
+                    fwhm_item.setData(stats.fwhm_median, SORT_ROLE)
+                if stats.elongation_median is not None:
+                    elongation_item.setText(f"{stats.elongation_median:.3f}")
+                    elongation_item.setData(stats.elongation_median, SORT_ROLE)
+
             # Add row to model
             self.data_model.appendRow([
                 name_item, type_item, filter_item, exposure_item, gain_item, offset_item,
                 binning_item, set_temp_item, camera_item, telescope_item, object_item, date_obs_item,
-                path_item, size_item, date_item, ra_item, dec_item, solved_item, projects_item
+                path_item, size_item, date_item, ra_item, dec_item, solved_item, projects_item,
+                bg_median_item, bg_rms_item, stars_item, fwhm_item, elongation_item,
             ])
 
         # Resize columns to content
@@ -601,6 +627,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         plate_solve_action.triggered.connect(self.plate_solve_files)
         clear_solution_action = menu.addAction("Clear Plate Solution")
         clear_solution_action.setEnabled(is_solved)
+        analyse_action = menu.addAction("Analyse Images...")
         menu.addSeparator()
         mark_bad_action = menu.addAction("Mark as bad")
         menu.addSeparator()
@@ -670,6 +697,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             file = self.get_file_at_row(index.row())
             if file:
                 self.clear_plate_solution(file, index.row())
+        elif action == analyse_action:
+            self.analyse_images()
         elif action == mark_bad_action:
             file = self.get_file_at_row(index.row())
             if file:
@@ -1395,6 +1424,51 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         dialog.solving_complete.connect(self.on_files_solved)
         dialog.wcs_copied.connect(self.on_files_solved)
         dialog.show()
+
+    def analyse_images(self):
+        selected_files = self.get_selected_files()
+        if not selected_files and self.total_files > 100:
+            if QMessageBox.question(
+                self, "Image Analysis",
+                f"No files selected. Analyse all {self.total_files} files matching the current filters?",
+                QMessageBox.Yes | QMessageBox.No,
+            ) == QMessageBox.No:
+                return
+        dialog = ImageAnalysisDialog(
+            context=self.context,
+            files=selected_files if selected_files else None,
+            search_criteria=self.search_criteria,
+            parent=self,
+        )
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.analysis_complete.connect(self.on_files_analysed)
+        dialog.show()
+
+    def on_files_analysed(self, task: ImageAnalysisTask):
+        if not task.analyzed_files:
+            return
+        result_map = {f: r for f, r in task.analyzed_files}
+        model = self.dataView.model()
+        for row in range(model.rowCount()):
+            file = model.index(row, 0).data(ROWID_ROLE)
+            if file not in result_map:
+                continue
+            r = result_map[file]
+
+            def _set(col, text, val, _row=row):
+                model.setData(model.index(_row, col), text, Qt.DisplayRole)
+                model.setData(model.index(_row, col), val, SORT_ROLE)
+
+            if r.background_median is not None:
+                _set(19, f"{r.background_median:.1f}", r.background_median)
+            if r.background_rms is not None:
+                _set(20, f"{r.background_rms:.2f}", r.background_rms)
+            if r.star_count is not None:
+                _set(21, str(r.star_count), r.star_count)
+            if r.fwhm_median is not None:
+                _set(22, f"{r.fwhm_median:.2f}", r.fwhm_median)
+            if r.elongation_median is not None:
+                _set(23, f"{r.elongation_median:.3f}", r.elongation_median)
 
     def on_files_solved(self, task: PlateSolveTask):
         solved_files = {f: f for f in task.solved_files}

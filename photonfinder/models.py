@@ -732,7 +732,20 @@ class FileWCS(Model):
     wcs = BlobField(null=False)
 
 
-CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS, Project, ProjectFile]
+class ImageStats(Model):
+    rowid = RowIDField()
+    file = ForeignKeyField(File, on_delete='CASCADE', unique=True, backref='imagestats')
+    background_median = FloatField(null=True)
+    background_rms = FloatField(null=True)
+    star_count = IntegerField(null=True)
+    fwhm_median = FloatField(null=True)
+    elongation_median = FloatField(null=True)
+
+    class Meta:
+        database = None
+
+
+CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS, Project, ProjectFile, ImageStats]
 
 
 class CatalogEntry(Model):

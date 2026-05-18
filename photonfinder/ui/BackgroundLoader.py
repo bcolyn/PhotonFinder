@@ -14,7 +14,8 @@ from peewee import JOIN, fn
 from photonfinder.core import ApplicationContext, compress, decompress
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, ProjectFile, \
-    Project
+    Project, ImageStats
+from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
 from astropy.wcs import WCS
 from photonfinder.platesolver import SolverBase, get_image_center_coords, SolverHint, \
@@ -181,10 +182,11 @@ class SearchResultsLoader(BackgroundLoaderBase):
                       Image.date_obs, File.path, File.size, File.mtime_millis, Image.coord_ra, Image.coord_dec,
                       FileWCS.wcs.is_null(False).alias('has_wcs'), project_names_subq.c.project_names.alias('project_names')]
             query = (File
-                     .select(*(fields + [File, Image, LibraryRoot]))
+                     .select(*(fields + [File, Image, LibraryRoot, ImageStats]))
                      .join_from(File, LibraryRoot)
                      .join_from(File, Image, JOIN.LEFT_OUTER)
                      .join_from(File, FileWCS, JOIN.LEFT_OUTER)
+                     .join_from(File, ImageStats, JOIN.LEFT_OUTER)
                      .join_from(File, project_names_subq, JOIN.LEFT_OUTER, on=(File.rowid == project_names_subq.c.file_id))
                      )
 
@@ -655,3 +657,37 @@ class FileListTask(FileProcessingTask):
         self.message.emit(f"Processing file {index + 1}/{self.total}:\n {file.full_filename()}")
         self.fd.write(f"{str(Path(file.full_filename()))}\n")
         self.progress.emit(index)
+
+
+class ImageAnalysisTask(FileProcessingTask):
+    """Per-file image quality analysis. Stores results in ImageStats (upsert)."""
+
+    def __init__(self, context: ApplicationContext,
+                 search_criteria: SearchCriteria, files: List[File]):
+        super().__init__(context, search_criteria, files)
+        self.analyzed_files: list[tuple[File, ImageAnalysisResult]] = []
+
+    def _process_file(self, file: File, index: int):
+        super()._process_file(file, index)
+        self.message.emit(f"Analysing {index + 1}/{self.total}: {file.name}")
+        try:
+            image_type = file.image.image_type if hasattr(file, 'image') and file.image else None
+            detect_sources = image_type not in CALIBRATION_TYPES
+            result = analyze_file(file.full_filename(), detect_sources=detect_sources)
+            if result.error:
+                self.message.emit(f"  Warning: {result.error}")
+            (ImageStats
+             .insert(
+                 file=file,
+                 background_median=result.background_median,
+                 background_rms=result.background_rms,
+                 star_count=result.star_count,
+                 fwhm_median=result.fwhm_median,
+                 elongation_median=result.elongation_median,
+             )
+             .on_conflict_replace()
+             .execute())
+            self.analyzed_files.append((file, result))
+        except Exception as exc:
+            self.message.emit(f"  Error: {file.name}: {exc}")
+            logger.error("ImageAnalysisTask error on %s", file.name, exc_info=True)
