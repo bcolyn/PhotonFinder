@@ -252,6 +252,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.actionManage_Projects.setChecked(False)
             self.dockWidget.hide()
 
+    def select_project_in_window(self, project):
+        if not self.projects_window:
+            self.show_projects_window(True)
+            self.projects_window.select_project_after_load(project)
+        else:
+            self.show_projects_window(True)
+            self.projects_window.select_project(project)
+
     def clear_projects_window(self):
         projects_window = self.projects_window
         projects_window.save_cols()

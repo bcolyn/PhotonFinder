@@ -24,6 +24,7 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
         self.main_window = main_window
         self._loader = ProjectsLoader(context)
         self._loader.projects_loaded.connect(self._on_projects_loaded)
+        self._pending_select_project = None
         self.connect_signals()
 
         text_color = self.palette().color(QPalette.WindowText)
@@ -70,11 +71,32 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
                 image = project.image
                 self.tableWidget.setItem(row, 3, QTableWidgetItem(_format_ra(image.coord_ra)))
                 self.tableWidget.setItem(row, 4, QTableWidgetItem(_format_dec(image.coord_dec)))
-                coord = image.get_sky_coord()
-                self.tableWidget.setItem(row, 5, QTableWidgetItem(coord.get_constellation()))
+                self.tableWidget.setItem(row, 5, QTableWidgetItem(getattr(project, '_constellation', "")))
 
         self.tableWidget.resizeColumnsToContents()
         self.enable_disable_actions()
+        if self._pending_select_project is not None:
+            self._select_project_row(self._pending_select_project)
+            self._pending_select_project = None
+
+    def select_project_after_load(self, project: Project):
+        """Select the given project after the next load completes."""
+        self._pending_select_project = project.rowid
+
+    def select_project(self, project: Project):
+        """Select the given project immediately if the table is populated, otherwise defer."""
+        if self.tableWidget.rowCount() > 0:
+            self._select_project_row(project.rowid)
+        else:
+            self._pending_select_project = project.rowid
+
+    def _select_project_row(self, project_rowid: int):
+        for row in range(self.tableWidget.rowCount()):
+            item = self.tableWidget.item(row, 0)
+            if item and item.data(Qt.UserRole) and item.data(Qt.UserRole).rowid == project_rowid:
+                self.tableWidget.selectRow(row)
+                self.tableWidget.scrollToItem(item)
+                return
 
     def populate_table(self):
         self._loader.reload_projects()

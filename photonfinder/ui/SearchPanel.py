@@ -682,6 +682,26 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             selected_file is not None and is_compressible(selected_file.name)
         )
 
+        select_project_actions = []
+        if selected_file:
+            with self.context.database.bind_ctx(CORE_MODELS):
+                file_projects = list(
+                    Project.select().join(ProjectFile).where(ProjectFile.file == selected_file.rowid)
+                )
+            if file_projects:
+                menu.addSeparator()
+                if len(file_projects) == 1:
+                    a = menu.addAction(f"Select Project: {file_projects[0].name}")
+                    a.setData(file_projects[0])
+                    select_project_actions.append(a)
+                else:
+                    select_project_submenu = QMenu("Select Project", self)
+                    menu.addMenu(select_project_submenu)
+                    for proj in file_projects:
+                        a = select_project_submenu.addAction(proj.name)
+                        a.setData(proj)
+                        select_project_actions.append(a)
+
         # Show the menu and get the selected action
         action = menu.exec(self.dataView.viewport().mapToGlobal(position))
 
@@ -718,6 +738,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         elif action in project_actions:
             project = action.data()
             self.mainWindow.add_selection_to_project(project)
+        elif action in select_project_actions:
+            self.mainWindow.select_project_in_window(action.data())
 
     def open_file(self, index):
         """Open the file at the given index."""

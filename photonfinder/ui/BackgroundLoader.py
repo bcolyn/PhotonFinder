@@ -80,6 +80,24 @@ class ProjectsLoader(BackgroundLoaderBase):
     def _reload_projects_task(self):
         try:
             projects = Project.list_projects_with_image_data()
+
+            projects_with_coords = [p for p in projects
+                                    if hasattr(p, 'image') and p.image.coord_ra and p.image.coord_dec]
+            if projects_with_coords:
+                from astropy.coordinates import SkyCoord, get_constellation
+                import astropy.units as u
+                coords = SkyCoord(
+                    [p.image.coord_ra for p in projects_with_coords],
+                    [p.image.coord_dec for p in projects_with_coords],
+                    unit=u.deg, frame='icrs',
+                )
+                constellations = get_constellation(coords)
+                for p, c in zip(projects_with_coords, constellations):
+                    p._constellation = str(c)
+            for p in projects:
+                if not hasattr(p, '_constellation'):
+                    p._constellation = ""
+
             self.projects_loaded.emit(projects)
         except Exception as e:
             logging.error(f"Error loading projects: {e}")
