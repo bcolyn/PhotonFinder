@@ -107,6 +107,88 @@ def template_filename(file: File, template: string.Template, settings: Settings,
     return result
 
 
+def build_file_session_dates(
+    session_keys: list[SessionKey],
+    sessions: dict[SessionKey, list[File]],
+    calib_selections: dict[int, dict[str, Optional[CalibrationCandidate]]],
+    use_master: bool,
+) -> dict[int, datetime.date]:
+    """Map file rowid → session date. Calibration files get the date of the session they matched."""
+    file_session_dates = {}
+    for row, key in enumerate(session_keys):
+        d = key.session_date
+        if d is None:
+            continue
+        for f in sessions[key]:
+            if f.rowid is not None:
+                file_session_dates[f.rowid] = d
+        for candidate in calib_selections[row].values():
+            if candidate:
+                files = [candidate.master] if use_master and candidate.master else candidate.files
+                for f in files:
+                    if f.rowid is not None and f.rowid not in file_session_dates:
+                        file_session_dates[f.rowid] = d
+    return file_session_dates
+
+
+def collect_calibration_files(
+    calib_selections: dict[int, dict[str, Optional[CalibrationCandidate]]],
+    use_master: bool,
+) -> list[File]:
+    """Return all unique calibration files selected in the grid, respecting the Use Master flag."""
+    seen_ids: set[int] = set()
+    result: list[File] = []
+    for row_sel in calib_selections.values():
+        for candidate in row_sel.values():
+            if not candidate:
+                continue
+            files_to_add = [candidate.master] if use_master and candidate.master else candidate.files
+            for f in files_to_add:
+                if f.rowid not in seen_ids:
+                    seen_ids.add(f.rowid)
+                    result.append(f)
+    return result
+
+
+def build_file_headers_map(
+    session_keys: list[SessionKey],
+    sessions: dict[SessionKey, list[File]],
+    calib_selections: dict[int, dict[str, Optional[CalibrationCandidate]]],
+    calib_headers: dict[int, str],
+) -> dict[int, dict]:
+    """Map file rowid → parsed custom FITS headers for each session that has headers set.
+
+    Headers from a session are applied to its light files and selected calibration files
+    (candidate.files only — master is not used here). First-assignment wins for shared files.
+    """
+    file_headers = {}
+    for row, key in enumerate(session_keys):
+        raw = calib_headers.get(row, "")
+        if not raw.strip():
+            continue
+        parsed = {}
+        for line in raw.strip().split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            if '=' not in line:
+                logging.warning(f"Ignoring malformed custom header line (expected KEY=VALUE): {line!r}")
+                continue
+            k, v = line.split('=', 1)
+            parsed[k.strip()] = coerce_value(v.strip())
+        if not parsed:
+            continue
+        for f in sessions[key]:
+            if f.rowid is not None:
+                file_headers[f.rowid] = parsed
+        for candidate in calib_selections[row].values():
+            if candidate:
+                for f in candidate.files:
+                    if f.rowid is not None and f.rowid not in file_headers:
+                        file_headers[f.rowid] = parsed
+    return file_headers
+
+
 _CALIB_LABEL_FLAGS = {
     "DARK":     dict(show_filter=False, show_exposure=True,  show_temperature=True),
     "FLAT":     dict(show_filter=True,  show_exposure=True,  show_temperature=False),
@@ -655,19 +737,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         return shared_ids
 
     def _collect_calibration_files(self) -> List[File]:
-        use_master = self.useMasterCheckBox.isChecked()
-        seen_ids: set[int] = set()
-        result: List[File] = []
-        for row_sel in self._calib_selections.values():
-            for candidate in row_sel.values():
-                if not candidate:
-                    continue
-                files_to_add = [candidate.master] if use_master and candidate.master else candidate.files
-                for f in files_to_add:
-                    if f.rowid not in seen_ids:
-                        seen_ids.add(f.rowid)
-                        result.append(f)
-        return result
+        return collect_calibration_files(self._calib_selections, self.useMasterCheckBox.isChecked())
 
     def _open_headers_dialog(self, row: int):
         dlg = HeadersDialog(self._calib_headers.get(row, ""), parent=self)
@@ -686,52 +756,15 @@ class ExportDialog(QDialog, Ui_ExportDialog):
                 btn.setText("✎" if text else "…")
 
     def _build_file_session_dates(self) -> dict:
-        """Map file rowid → session date."""
-        file_session_dates = {}
-        for row, key in enumerate(self._session_keys):
-            d = key.session_date
-            if d is None:
-                continue
-            for f in self.sessions[key]:
-                if f.rowid is not None:
-                    file_session_dates[f.rowid] = d
-            for candidate in self._calib_selections[row].values():
-                if candidate:
-                    for f in candidate.files:
-                        if f.rowid is not None and f.rowid not in file_session_dates:
-                            file_session_dates[f.rowid] = d
-        return file_session_dates
+        return build_file_session_dates(
+            self._session_keys, self.sessions, self._calib_selections,
+            self.useMasterCheckBox.isChecked()
+        )
 
     def _build_file_headers_map(self) -> dict:
-        """Map file rowid → parsed custom headers dict for each session that has headers set."""
-        file_headers = {}
-        for row, key in enumerate(self._session_keys):
-            raw = self._calib_headers.get(row, "")
-            if not raw.strip():
-                continue
-            parsed = {}
-            for line in raw.strip().split('\n'):
-                line = line.strip()
-                if not line:
-                    continue
-                if '=' not in line:
-                    logging.warning(f"Ignoring malformed custom header line (expected KEY=VALUE): {line!r}")
-                    continue
-                k, v = line.split('=', 1)
-                parsed[k.strip()] = coerce_value(v.strip())
-            if not parsed:
-                continue
-            # Apply to this session's light files
-            for f in self.sessions[key]:
-                if f.rowid is not None:
-                    file_headers[f.rowid] = parsed
-            # Apply to this session's chosen calibration files (first-assignment wins for shared files)
-            for candidate in self._calib_selections[row].values():
-                if candidate:
-                    for f in candidate.files:
-                        if f.rowid is not None and f.rowid not in file_headers:
-                            file_headers[f.rowid] = parsed
-        return file_headers
+        return build_file_headers_map(
+            self._session_keys, self.sessions, self._calib_selections, self._calib_headers
+        )
 
     def _open_variables_docs(self):
         docs_path = Path(__file__).parent.parent.parent / "docs" / "export-templates.md"
