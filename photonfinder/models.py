@@ -57,6 +57,25 @@ class SearchCriteria:
     exposure_tolerance: float | None = None   # ±seconds; None = exact match
     temperature_tolerance: float | None = None  # ±°C; None = exact match
     plate_solved: bool | None = None  # True = solved only, False = unsolved only, None = any
+    # Image dimensions (pixels)
+    width_min: int | None = None
+    width_max: int | None = None
+    height_min: int | None = None
+    height_max: int | None = None
+    # Plate scale (arcsec/pixel, virtual generated column)
+    scale_min: float | None = None
+    scale_max: float | None = None
+    # Image quality stats (from ImageStats table)
+    star_count_min: int | None = None
+    star_count_max: int | None = None
+    fwhm_min: float | None = None
+    fwhm_max: float | None = None
+    background_min: float | None = None
+    background_max: float | None = None
+    background_rms_min: float | None = None
+    background_rms_max: float | None = None
+    elongation_min: float | None = None
+    elongation_max: float | None = None
 
     def is_empty(self):
         return self == SearchCriteria()
@@ -83,6 +102,14 @@ class SearchCriteria:
             result.append(f"({self.coord_ra}{self.coord_dec})+-{self.coord_radius}d")
         if self.start_datetime and self.end_datetime:
             result.append(f"{self.start_datetime.isoformat()} to {self.end_datetime.isoformat()}")
+        if self.width_min is not None or self.width_max is not None or self.height_min is not None or self.height_max is not None:
+            result.append(f"Size: {self.width_min or ''}–{self.width_max or ''}×{self.height_min or ''}–{self.height_max or ''}")
+        if self.scale_min is not None or self.scale_max is not None:
+            result.append(f"Scale: {self.scale_min or ''}–{self.scale_max or ''} arcsec/px")
+        if any(v is not None for v in [self.star_count_min, self.star_count_max, self.fwhm_min, self.fwhm_max,
+                                        self.background_min, self.background_max, self.background_rms_min,
+                                        self.background_rms_max, self.elongation_min, self.elongation_max]):
+            result.append("Image Statistics filter")
         return ', '.join(result)
 
     @classmethod
@@ -547,6 +574,49 @@ class Image(Model):
                     conditions.append(fn.decompress(FitsHeader.header).contains(criteria.header_text))
             except ValueError:
                 conditions.append(fn.decompress(FitsHeader.header).contains(criteria.header_text))
+
+        if criteria.width_min is not None:
+            conditions.append(Image.width >= criteria.width_min)
+        if criteria.width_max is not None:
+            conditions.append(Image.width <= criteria.width_max)
+        if criteria.height_min is not None:
+            conditions.append(Image.height >= criteria.height_min)
+        if criteria.height_max is not None:
+            conditions.append(Image.height <= criteria.height_max)
+
+        if criteria.scale_min is not None:
+            conditions.append(Image.coord_scale >= criteria.scale_min)
+        if criteria.scale_max is not None:
+            conditions.append(Image.coord_scale <= criteria.scale_max)
+
+        # ImageStats filter: use a subquery to avoid conflicting with any pre-existing
+        # LEFT OUTER JOIN on ImageStats that callers (e.g. BackgroundLoader) may have added.
+        _stats_subq_conditions = []
+        if criteria.star_count_min is not None:
+            _stats_subq_conditions.append(ImageStats.star_count >= criteria.star_count_min)
+        if criteria.star_count_max is not None:
+            _stats_subq_conditions.append(ImageStats.star_count <= criteria.star_count_max)
+        if criteria.fwhm_min is not None:
+            _stats_subq_conditions.append(ImageStats.fwhm_median >= criteria.fwhm_min)
+        if criteria.fwhm_max is not None:
+            _stats_subq_conditions.append(ImageStats.fwhm_median <= criteria.fwhm_max)
+        if criteria.background_min is not None:
+            _stats_subq_conditions.append(ImageStats.background_median >= criteria.background_min)
+        if criteria.background_max is not None:
+            _stats_subq_conditions.append(ImageStats.background_median <= criteria.background_max)
+        if criteria.background_rms_min is not None:
+            _stats_subq_conditions.append(ImageStats.background_rms >= criteria.background_rms_min)
+        if criteria.background_rms_max is not None:
+            _stats_subq_conditions.append(ImageStats.background_rms <= criteria.background_rms_max)
+        if criteria.elongation_min is not None:
+            _stats_subq_conditions.append(ImageStats.elongation_median >= criteria.elongation_min)
+        if criteria.elongation_max is not None:
+            _stats_subq_conditions.append(ImageStats.elongation_median <= criteria.elongation_max)
+        if _stats_subq_conditions:
+            stats_subq = ImageStats.select(ImageStats.file)
+            for cond in _stats_subq_conditions:
+                stats_subq = stats_subq.where(cond)
+            conditions.append(File.rowid.in_(stats_subq))
 
         if criteria.plate_solved is True:
             conditions.append(File.rowid.in_(FileWCS.select(FileWCS.file)))

@@ -1,6 +1,9 @@
 <RCC>
   <qresource>
     <file>res/stack.svg</file>
+    <file>res/crosshair.svg</file>
+    <file>res/crop.svg</file>
+    <file>res/bar-chart-line-fill.svg</file>
     <file>res/window-plus.svg</file>
     <file>res/hdd.svg</file>
     <file>res/card-image.svg</file>

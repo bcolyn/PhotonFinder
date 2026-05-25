@@ -58,7 +58,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionCatalog_Report.setIcon(create_colored_svg_icon(":/res/table.svg", size, text_color))
 
         self.actionExposure.setIcon(create_colored_svg_icon(":/res/clock.svg", size, text_color))
-        self.actionCoordinates.setIcon(create_colored_svg_icon(":/res/rulers.svg", size, text_color))
+        self.actionCoordinates.setIcon(create_colored_svg_icon(":/res/crosshair.svg", size, text_color))
         self.actionDate.setIcon(create_colored_svg_icon(":/res/calendar3.svg", size, text_color))
         self.actionTelescope.setIcon(create_colored_svg_icon(":/res/telescope-icon-original.svg", size, text_color))
         self.actionBinning.setIcon(create_colored_svg_icon(":/res/border-outer.svg", size, text_color))
@@ -66,6 +66,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionTemperature.setIcon(create_colored_svg_icon(":/res/thermometer-half.svg", size, text_color))
         self.actionPlateSolved.setIcon(create_colored_svg_icon(":/res/stars.svg", size, text_color))
         self.actionPlate_solve_files.setIcon(create_colored_svg_icon(":/res/stars.svg", size, text_color))
+        self.actionImageSize.setIcon(create_colored_svg_icon(":/res/crop.svg", size, text_color))
+        self.actionPlateScale.setIcon(create_colored_svg_icon(":/res/rulers.svg", size, text_color))
+        self.actionImageQuality.setIcon(create_colored_svg_icon(":/res/bar-chart-line-fill.svg", size, text_color))
 
         # hide the dock initially
         self.dockWidget.hide()
@@ -98,6 +101,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionGain.triggered.connect(self.add_gain_filter)
         self.actionTemperature.triggered.connect(self.add_temperature_filter)
         self.actionPlateSolved.triggered.connect(self.add_plate_solved_filter)
+        self.actionImageSize.triggered.connect(self.add_image_size_filter)
+        self.actionPlateScale.triggered.connect(self.add_plate_scale_filter)
+        self.actionImageQuality.triggered.connect(self.add_image_quality_filter)
         self.action_Create_Backup.triggered.connect(self.create_backup)
         self.action_Create_Database.triggered.connect(self.create_database)
         self.action_Open_Database.triggered.connect(self.open_database)
@@ -355,6 +361,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.get_current_search_panel().add_plate_solved_filter()
         self.enable_actions_for_current_tab()
 
+    def add_image_size_filter(self):
+        self.get_current_search_panel().add_image_size_filter()
+        self.enable_actions_for_current_tab()
+
+    def add_plate_scale_filter(self):
+        self.get_current_search_panel().add_plate_scale_filter()
+        self.enable_actions_for_current_tab()
+
+    def add_image_quality_filter(self):
+        self.get_current_search_panel().add_image_quality_filter()
+        self.enable_actions_for_current_tab()
+
     def add_header_text_filter(self):
         self.get_current_search_panel().add_header_text_filter()
 
@@ -603,6 +621,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionGain.setChecked(AdvancedFilter.GAIN in current_panel.advanced_options)
         self.actionTemperature.setChecked(AdvancedFilter.TEMPERATURE in current_panel.advanced_options)
         self.actionPlateSolved.setChecked(AdvancedFilter.PLATE_SOLVED in current_panel.advanced_options)
+        self.actionImageSize.setChecked(AdvancedFilter.IMAGE_SIZE in current_panel.advanced_options)
+        self.actionPlateScale.setChecked(AdvancedFilter.PLATE_SCALE in current_panel.advanced_options)
+        self.actionImageQuality.setChecked(AdvancedFilter.IMAGE_QUALITY in current_panel.advanced_options)
 
     def add_selection_to_project(self, project: Project):
         edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)

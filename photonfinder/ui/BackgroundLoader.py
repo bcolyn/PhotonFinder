@@ -180,9 +180,14 @@ class SearchResultsLoader(BackgroundLoaderBase):
             fields = [File.name, Image.image_type, Image.filter, Image.exposure, Image.gain, Image.offset,
                       Image.binning, Image.set_temp, Image.camera, Image.telescope, Image.object_name,
                       Image.date_obs, File.path, File.size, File.mtime_millis, Image.coord_ra, Image.coord_dec,
-                      FileWCS.wcs.is_null(False).alias('has_wcs'), project_names_subq.c.project_names.alias('project_names')]
+                      FileWCS.wcs.is_null(False).alias('has_wcs'), project_names_subq.c.project_names.alias('project_names'),
+                      ImageStats.background_median.alias('stats_background_median'),
+                      ImageStats.background_rms.alias('stats_background_rms'),
+                      ImageStats.star_count.alias('stats_star_count'),
+                      ImageStats.fwhm_median.alias('stats_fwhm_median'),
+                      ImageStats.elongation_median.alias('stats_elongation_median')]
             query = (File
-                     .select(*(fields + [File, Image, LibraryRoot, ImageStats]))
+                     .select(*(fields + [File, Image, LibraryRoot]))
                      .join_from(File, LibraryRoot)
                      .join_from(File, Image, JOIN.LEFT_OUTER)
                      .join_from(File, FileWCS, JOIN.LEFT_OUTER)

@@ -102,6 +102,9 @@
     <addaction name="actionGain"/>
     <addaction name="actionTemperature"/>
     <addaction name="actionPlateSolved"/>
+    <addaction name="actionImageSize"/>
+    <addaction name="actionPlateScale"/>
+    <addaction name="actionImageQuality"/>
     <addaction name="action_filter_no_project"/>
     <addaction name="separator"/>
     <addaction name="actionHeader_Text"/>
@@ -372,6 +375,39 @@
    </property>
    <property name="text">
     <string>Plate Solved</string>
+   </property>
+  </action>
+  <action name="actionImageSize">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Image Size</string>
+   </property>
+   <property name="toolTip">
+    <string>Filter by image width and height</string>
+   </property>
+  </action>
+  <action name="actionPlateScale">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Image Scale</string>
+   </property>
+   <property name="toolTip">
+    <string>Filter by image scale (arcsec/pixel)</string>
+   </property>
+  </action>
+  <action name="actionImageQuality">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Image Statistics</string>
+   </property>
+   <property name="toolTip">
+    <string>Filter by image quality stats (stars, FWHM, background, elongation)</string>
    </property>
   </action>
   <action name="action_Export_Data">

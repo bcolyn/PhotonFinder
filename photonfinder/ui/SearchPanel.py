@@ -122,6 +122,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.toolbar.addAction(mainWindow.actionGain)
         self.toolbar.addAction(mainWindow.actionTemperature)
         self.toolbar.addAction(mainWindow.actionPlateSolved)
+        self.toolbar.addAction(mainWindow.actionImageSize)
+        self.toolbar.addAction(mainWindow.actionPlateScale)
+        self.toolbar.addAction(mainWindow.actionImageQuality)
 
         # connect to signal bus
         self.context.signal_bus.projects_changed.connect(self.on_projects_changed)
@@ -229,6 +232,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 self.add_plate_solved_filter()
             case AdvancedFilter.PROJECT:
                 pass
+            case AdvancedFilter.IMAGE_SIZE:
+                self.add_image_size_filter()
+            case AdvancedFilter.PLATE_SCALE:
+                self.add_plate_scale_filter()
+            case AdvancedFilter.IMAGE_QUALITY:
+                self.add_image_quality_filter()
         self.mainWindow.enable_actions_for_current_tab()
 
     def remove_filter_button(self):
@@ -472,29 +481,32 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             # Store the full filename in the name_item's data
             name_item.setData(file, ROWID_ROLE)
 
-            # Columns 19-23: ImageStats
+            # Columns 19-23: ImageStats (values come from aliased JOIN columns in __data__)
             bg_median_item = QStandardItem("")
             bg_rms_item = QStandardItem("")
             stars_item = QStandardItem("")
             fwhm_item = QStandardItem("")
             elongation_item = QStandardItem("")
-            stats = file.imagestats if hasattr(file, 'imagestats') and file.imagestats else None
-            if stats is not None:
-                if stats.background_median is not None:
-                    bg_median_item.setText(f"{stats.background_median:.1f}")
-                    bg_median_item.setData(stats.background_median, SORT_ROLE)
-                if stats.background_rms is not None:
-                    bg_rms_item.setText(f"{stats.background_rms:.2f}")
-                    bg_rms_item.setData(stats.background_rms, SORT_ROLE)
-                if stats.star_count is not None:
-                    stars_item.setText(str(stats.star_count))
-                    stars_item.setData(stats.star_count, SORT_ROLE)
-                if stats.fwhm_median is not None:
-                    fwhm_item.setText(f"{stats.fwhm_median:.2f}")
-                    fwhm_item.setData(stats.fwhm_median, SORT_ROLE)
-                if stats.elongation_median is not None:
-                    elongation_item.setText(f"{stats.elongation_median:.3f}")
-                    elongation_item.setData(stats.elongation_median, SORT_ROLE)
+            bg_median = file.__data__.get('stats_background_median')
+            bg_rms = file.__data__.get('stats_background_rms')
+            star_count = file.__data__.get('stats_star_count')
+            fwhm = file.__data__.get('stats_fwhm_median')
+            elongation = file.__data__.get('stats_elongation_median')
+            if bg_median is not None:
+                bg_median_item.setText(f"{bg_median:.1f}")
+                bg_median_item.setData(bg_median, SORT_ROLE)
+            if bg_rms is not None:
+                bg_rms_item.setText(f"{bg_rms:.2f}")
+                bg_rms_item.setData(bg_rms, SORT_ROLE)
+            if star_count is not None:
+                stars_item.setText(str(star_count))
+                stars_item.setData(star_count, SORT_ROLE)
+            if fwhm is not None:
+                fwhm_item.setText(f"{fwhm:.2f}")
+                fwhm_item.setData(fwhm, SORT_ROLE)
+            if elongation is not None:
+                elongation_item.setText(f"{elongation:.3f}")
+                elongation_item.setData(elongation, SORT_ROLE)
 
             # Add row to model
             self.data_model.appendRow([
@@ -1113,6 +1125,95 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def reset_plate_solved_criteria(self):
         self.search_criteria.plate_solved = None
 
+    def add_image_size_filter(self):
+        from .RangeFilterDialogs import ImageSizeDialog
+        dialog = ImageSizeDialog(self)
+        selected_image = self.get_selected_image()
+        if selected_image and (selected_image.width is not None or selected_image.height is not None):
+            dialog.set_from_image(selected_image)
+        else:
+            dialog.set_from_criteria(
+                self.search_criteria.width_min, self.search_criteria.width_max,
+                self.search_criteria.height_min, self.search_criteria.height_max,
+            )
+        if dialog.exec():
+            width_min, width_max, height_min, height_max = dialog.get_size_criteria()
+            parts = []
+            if width_min is not None or width_max is not None:
+                parts.append(f"W:{width_min or ''}–{width_max or ''}")
+            if height_min is not None or height_max is not None:
+                parts.append(f"H:{height_min or ''}–{height_max or ''}")
+            text = "Size: " + ", ".join(parts) if parts else "Image Size"
+            filter_button = FilterButton(self, text, AdvancedFilter.IMAGE_SIZE)
+            filter_button.on_remove_filter.connect(self.reset_image_size_criteria)
+            self.add_filter_button_control(filter_button)
+            self.search_criteria.width_min = width_min
+            self.search_criteria.width_max = width_max
+            self.search_criteria.height_min = height_min
+            self.search_criteria.height_max = height_max
+            self.update_search_criteria()
+
+    def reset_image_size_criteria(self):
+        self.search_criteria.width_min = None
+        self.search_criteria.width_max = None
+        self.search_criteria.height_min = None
+        self.search_criteria.height_max = None
+
+    def add_plate_scale_filter(self):
+        from .RangeFilterDialogs import PlateScaleDialog
+        dialog = PlateScaleDialog(self)
+        selected_image = self.get_selected_image()
+        if selected_image and selected_image.coord_scale is not None:
+            dialog.set_from_image(selected_image)
+        else:
+            dialog.set_from_criteria(self.search_criteria.scale_min, self.search_criteria.scale_max)
+        if dialog.exec():
+            scale_min, scale_max = dialog.get_scale_criteria()
+            parts = []
+            if scale_min is not None:
+                parts.append(f"≥{scale_min}")
+            if scale_max is not None:
+                parts.append(f"≤{scale_max}")
+            text = "Scale: " + " ".join(parts) + " arcsec/px" if parts else "Image Scale"
+            filter_button = FilterButton(self, text, AdvancedFilter.PLATE_SCALE)
+            filter_button.on_remove_filter.connect(self.reset_plate_scale_criteria)
+            self.add_filter_button_control(filter_button)
+            self.search_criteria.scale_min = scale_min
+            self.search_criteria.scale_max = scale_max
+            self.update_search_criteria()
+
+    def reset_plate_scale_criteria(self):
+        self.search_criteria.scale_min = None
+        self.search_criteria.scale_max = None
+
+    def add_image_quality_filter(self):
+        from .RangeFilterDialogs import ImageQualityDialog
+        dialog = ImageQualityDialog(self)
+        selected_file = self.get_selected_file()
+        stats = None
+        if selected_file is not None and hasattr(selected_file, 'imagestats'):
+            stats = selected_file.imagestats if selected_file.imagestats else None
+        if stats is not None:
+            dialog.set_from_stats(stats)
+        else:
+            dialog.set_from_criteria(self.search_criteria)
+        if dialog.exec():
+            q = dialog.get_quality_criteria()
+            active = [k for k, v in q.items() if v is not None]
+            text = f"Quality ({len(active)} filter{'s' if len(active) != 1 else ''})" if active else "Image Statistics"
+            filter_button = FilterButton(self, text, AdvancedFilter.IMAGE_QUALITY)
+            filter_button.on_remove_filter.connect(self.reset_image_quality_criteria)
+            self.add_filter_button_control(filter_button)
+            for key, value in q.items():
+                setattr(self.search_criteria, key, value)
+            self.update_search_criteria()
+
+    def reset_image_quality_criteria(self):
+        for attr in ["star_count_min", "star_count_max", "fwhm_min", "fwhm_max",
+                     "background_min", "background_max", "background_rms_min",
+                     "background_rms_max", "elongation_min", "elongation_max"]:
+            setattr(self.search_criteria, attr, None)
+
     def add_temperature_filter(self):
         from .TemperatureDialog import TemperatureDialog
         dialog = TemperatureDialog(self.context)
@@ -1400,6 +1501,41 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button.on_remove_filter.connect(self.reset_project_criteria)
             self.add_filter_button_control(filter_button)
 
+        if any(v is not None for v in [criteria.width_min, criteria.width_max,
+                                        criteria.height_min, criteria.height_max]):
+            parts = []
+            if criteria.width_min is not None or criteria.width_max is not None:
+                parts.append(f"W:{criteria.width_min or ''}–{criteria.width_max or ''}")
+            if criteria.height_min is not None or criteria.height_max is not None:
+                parts.append(f"H:{criteria.height_min or ''}–{criteria.height_max or ''}")
+            text = "Size: " + ", ".join(parts) if parts else "Image Size"
+            filter_button = FilterButton(self, text, AdvancedFilter.IMAGE_SIZE)
+            filter_button.on_remove_filter.connect(self.reset_image_size_criteria)
+            self.add_filter_button_control(filter_button)
+
+        if criteria.scale_min is not None or criteria.scale_max is not None:
+            parts = []
+            if criteria.scale_min is not None:
+                parts.append(f"≥{criteria.scale_min}")
+            if criteria.scale_max is not None:
+                parts.append(f"≤{criteria.scale_max}")
+            text = "Scale: " + " ".join(parts) + " arcsec/px" if parts else "Image Scale"
+            filter_button = FilterButton(self, text, AdvancedFilter.PLATE_SCALE)
+            filter_button.on_remove_filter.connect(self.reset_plate_scale_criteria)
+            self.add_filter_button_control(filter_button)
+
+        _quality_vals = [criteria.star_count_min, criteria.star_count_max,
+                         criteria.fwhm_min, criteria.fwhm_max,
+                         criteria.background_min, criteria.background_max,
+                         criteria.background_rms_min, criteria.background_rms_max,
+                         criteria.elongation_min, criteria.elongation_max]
+        if any(v is not None for v in _quality_vals):
+            active = sum(1 for v in _quality_vals if v is not None)
+            text = f"Quality ({active} filter{'s' if active != 1 else ''})"
+            filter_button = FilterButton(self, text, AdvancedFilter.IMAGE_QUALITY)
+            filter_button.on_remove_filter.connect(self.reset_image_quality_criteria)
+            self.add_filter_button_control(filter_button)
+
         self.update_search_criteria()
 
     def plate_solve_files(self):
@@ -1610,3 +1746,6 @@ class AdvancedFilter(Enum):
     HEADER_TEXT = 8
     PROJECT = 9
     PLATE_SOLVED = 10
+    IMAGE_SIZE = 11
+    PLATE_SCALE = 12
+    IMAGE_QUALITY = 13
