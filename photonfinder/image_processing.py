@@ -308,7 +308,7 @@ def is_linear(data: np.ndarray) -> bool:
 # Debayering
 # ---------------------------------------------------------------------------
 
-def debayer_opencv(data: np.ndarray, pattern: str) -> np.ndarray:
+def debayer_opencv(data: np.ndarray, pattern: str, flipped=True) -> np.ndarray:
     """Demosaic a Bayer-pattern image using OpenCV edge-aware interpolation.
 
     Input:  2D array — uint16, signed int (FITS BZERO convention), or float32 [0, 1].
@@ -319,12 +319,20 @@ def debayer_opencv(data: np.ndarray, pattern: str) -> np.ndarray:
     import cv2
 
     pattern = pattern.upper()
+    # FITS stores rows bottom-up, so OpenCV sees the image flipped vertically relative to
+    # what the BAYERPAT header describes. A vertical flip maps RGGB↔BGGR and GRBG↔GBRG.
     code_map = {
+        'RGGB': cv2.COLOR_BAYER_BG2RGB_EA,
+        'BGGR': cv2.COLOR_BAYER_RG2RGB_EA,
+        'GRBG': cv2.COLOR_BAYER_GB2RGB_EA,
+        'GBRG': cv2.COLOR_BAYER_GR2RGB_EA,
+    } if flipped else {
         'RGGB': cv2.COLOR_BAYER_RG2RGB_EA,
         'BGGR': cv2.COLOR_BAYER_BG2RGB_EA,
         'GRBG': cv2.COLOR_BAYER_GR2RGB_EA,
         'GBRG': cv2.COLOR_BAYER_GB2RGB_EA,
     }
+
     if pattern not in code_map:
         raise ValueError(f"Unsupported Bayer pattern: {pattern}")
 
