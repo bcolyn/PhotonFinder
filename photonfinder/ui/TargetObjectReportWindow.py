@@ -1,6 +1,14 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QMainWindow, QTableWidget, QTableWidgetItem, QDialogButtonBox
 
+
+class _NumericItem(QTableWidgetItem):
+    def __lt__(self, other):
+        try:
+            return float(self.text()) < float(other.text())
+        except ValueError:
+            return super().__lt__(other)
+
 from photonfinder.core import ApplicationContext
 from photonfinder.models import File, Image, SearchCriteria
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
@@ -40,7 +48,7 @@ class TargetObjectReportWindow(QMainWindow, Ui_TargetObjectReportWindow, TableWi
         for row, data in enumerate(result):
             for col, value in enumerate(data):
                 if value:
-                    item = QTableWidgetItem(str(value))
+                    item = _NumericItem(str(value)) if col == 4 else QTableWidgetItem(str(value))
                     item.setFlags(item.flags() & ~ Qt.ItemFlag.ItemIsEditable)
                     item.setTextAlignment(Qt.AlignTop)
                     self.tableWidget.setItem(row, col, item)
