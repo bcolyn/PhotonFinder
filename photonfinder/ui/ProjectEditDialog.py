@@ -23,13 +23,14 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
     links_to_delete: Set[ProjectFile]
     links_to_add: Set[ProjectFile]
 
-    def __init__(self, context: ApplicationContext, project: Project, parent=None):
+    def __init__(self, context: ApplicationContext, project: Project, parent=None, main_window=None):
         super(ProjectEditDialog, self).__init__(parent)
         self.setupUi(self)
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.setWindowFlags(Qt.Window)
         self.context = context
         self.project = project
+        self.main_window = main_window
         self.name_edit.setText(self.project.name)
         self.links_to_delete = set()
         self.links_to_add = set()
@@ -108,6 +109,7 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         self.buttonBox.button(QDialogButtonBox.StandardButton.Save).clicked.connect(self.save_data_and_close)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(self.reload_data)
         self.tableWidget.itemSelectionChanged.connect(self.enable_disable_actions)
+        self.tableWidget.doubleClicked.connect(self._open_image_viewer)
         self.name_edit.textEdited.connect(self.enable_disable_actions)
         self.remove_button.clicked.connect(self.delete_selected)
         self.add_button.clicked.connect(self.add_files)
@@ -172,6 +174,17 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         files = self.get_current_files()
         files_with_coords = [pf for pf in files if pf.file.image.coord_ra]
         self.scan_more_button.setEnabled(len(files_with_coords) > 0)
+
+    def _open_image_viewer(self, index):
+        if self.main_window is None:
+            return
+        item = self.tableWidget.item(index.row(), 0)
+        if item is None:
+            return
+        project_file = item.data(Qt.UserRole)
+        if project_file is None:
+            return
+        self.main_window.view_image(project_file.file)
 
     def dirty(self) -> bool:
         return not (self.name_edit.text() == self.project.name and

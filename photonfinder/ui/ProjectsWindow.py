@@ -44,6 +44,7 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
         self.actionUseAsFilter.triggered.connect(self.use_as_filter_action)
         self.tableWidget.itemSelectionChanged.connect(self.enable_disable_actions)
         self.tableWidget.doubleClicked.connect(self.edit_action)
+        self.filterEdit.textChanged.connect(self._apply_filter)
         self.context.signal_bus.projects_changed.connect(self.on_projects_changed)
         self.context.signal_bus.project_links_changed.connect(self.on_project_links_changed)
 
@@ -74,10 +75,18 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
                 self.tableWidget.setItem(row, 5, QTableWidgetItem(getattr(project, '_constellation', "")))
 
         self.tableWidget.resizeColumnsToContents()
-        self.enable_disable_actions()
+        self._apply_filter(self.filterEdit.text())
         if self._pending_select_project is not None:
             self._select_project_row(self._pending_select_project)
             self._pending_select_project = None
+
+    def _apply_filter(self, text: str):
+        needle = text.strip().lower()
+        for row in range(self.tableWidget.rowCount()):
+            item = self.tableWidget.item(row, 0)
+            hidden = bool(needle) and (item is None or needle not in item.text().lower())
+            self.tableWidget.setRowHidden(row, hidden)
+        self.enable_disable_actions()
 
     def select_project_after_load(self, project: Project):
         """Select the given project after the next load completes."""
@@ -137,7 +146,7 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
 
     def create_action(self):
         project = Project()
-        dialog = ProjectEditDialog(context=self.context, parent=self, project=project)
+        dialog = ProjectEditDialog(context=self.context, parent=self, project=project, main_window=self.main_window)
         dialog.show()
         dialog.refresh_table()
 
@@ -145,7 +154,7 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
         projects = self.get_selected_projects()
         assert len(projects) == 1
         project = projects[0]
-        dialog = ProjectEditDialog(context=self.context, parent=self, project=project)
+        dialog = ProjectEditDialog(context=self.context, parent=self, project=project, main_window=self.main_window)
         dialog.show()
         dialog.refresh_table()
 

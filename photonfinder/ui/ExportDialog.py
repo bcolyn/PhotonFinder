@@ -505,7 +505,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.dryRunButton.clicked.connect(self.dry_run)
         self.patternComboBox.editTextChanged.connect(self.update_preview)
         self.useRefCheckBox.stateChanged.connect(self.update_preview)
-        self.useMasterCheckBox.stateChanged.connect(self._refresh_all_calib_labels)
+        self.useMasterCheckBox.stateChanged.connect(self._on_use_master_changed)
         self.sharedSessionCheckBox.stateChanged.connect(self._refresh_all_calib_labels)
         self.variablesButton.clicked.connect(self._open_variables_docs)
 
@@ -697,6 +697,26 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         if isinstance(df_widget, QComboBox):
             df_widget.currentIndexChanged.connect(
                 functools.partial(self._on_calib_combo_changed, row, "DARKFLAT"))
+        self._apply_master_flat_darkflat_rule(row)
+        self._refresh_all_calib_labels()
+
+    def _apply_master_flat_darkflat_rule(self, row: int) -> None:
+        """Auto-clear darkflat selection when a master flat will be used for this session."""
+        flat_candidate = self._calib_selections[row].get("FLAT")
+        if not (self.useMasterCheckBox.isChecked()
+                and flat_candidate is not None
+                and flat_candidate.master is not None):
+            return
+        df_widget = self.calibrationTable.cellWidget(row, _CALIB_COL_MAP["DARKFLAT"])
+        if isinstance(df_widget, QComboBox):
+            df_widget.blockSignals(True)
+            df_widget.setCurrentIndex(0)
+            df_widget.blockSignals(False)
+        self._calib_selections[row]["DARKFLAT"] = None
+
+    def _on_use_master_changed(self) -> None:
+        for row in range(len(self._session_keys)):
+            self._apply_master_flat_darkflat_rule(row)
         self._refresh_all_calib_labels()
 
     def _compute_shared_candidates(self) -> dict:

@@ -259,8 +259,8 @@ def detect_bayer_pattern(header: dict) -> str | None:
     return None
 
 
-_BRIGHT_GAP      = 0.02   # normalised offset above background to be "extended content"
-_BRIGHT_FRACTION = 0.01   # if more than this fraction exceeds the threshold → not linear
+_BRIGHT_GAP             = 0.10   # normalised offset above background to be "extended content"
+_BRIGHT_FRACTION_CUTOFF = 0.005  # if more than this fraction exceeds the threshold -> not linear
 
 
 def is_linear(data: np.ndarray) -> bool:
@@ -269,23 +269,39 @@ def is_linear(data: np.ndarray) -> bool:
     Linear images have a sharp background peak with very few pixels beyond it
     (just stars, typically < 0.5 %).  Processed images have the same peak but
     substantially more pixels in the extended wings (galaxies, nebulae, general
-    lifted sky).  This metric is unaffected by noise reduction, which collapses
-    MAD without changing the tail fraction.
+    lifted sky).
 
-    Counts the fraction of pixels more than _BRIGHT_GAP (in normalised [0, 1]
-    units) above the median background.  If that fraction exceeds _BRIGHT_FRACTION
-    the image is considered already stretched.
+    Counts the fraction of pixels more than _BRIGHT_GAP above the median
+    background (in normalised [0, 1] units).  If that fraction exceeds
+    _BRIGHT_FRACTION_CUTOFF the image is considered already stretched.
     """
     flat = data.ravel()
     step = max(1, len(flat) // 50_000)
     sample = flat[::step].astype(np.float64)
 
-    if data.dtype.kind in ('u', 'i'):
-        sample /= 65535.0
+    def _normalize(arr: np.ndarray) -> np.ndarray:
+        if data.dtype.kind == 'u':
+            return arr / float(np.iinfo(data.dtype).max)
+        elif data.dtype.kind == 'i':
+            info = np.iinfo(data.dtype)
+            return (arr - info.min) / float(info.max - info.min)
+        elif arr.max() > 1.0:
+            return arr / float(arr.max())
+        return arr
 
-    bg = float(np.median(sample))
-    bright_fraction = float(np.mean(sample > bg + _BRIGHT_GAP))
-    return bright_fraction < _BRIGHT_FRACTION
+    sample = _normalize(sample)
+
+    bg_s  = float(np.median(sample))
+    bf_s  = float(np.mean(sample > bg_s + _BRIGHT_GAP))
+
+    logger.debug(
+        "is_linear debug | dtype=%s shape=%s pixels=%d sample_n=%d | "
+        "sample: bg=%.4f bright_fraction=%.4f",
+        data.dtype, data.shape, len(flat), len(sample),
+        bg_s, bf_s
+    )
+
+    return bf_s < _BRIGHT_FRACTION_CUTOFF
 
 
 # ---------------------------------------------------------------------------
