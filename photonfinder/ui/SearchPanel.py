@@ -34,6 +34,27 @@ RESET_LABEL = "<any>"
 ROWID_ROLE = Qt.UserRole
 SORT_ROLE = Qt.UserRole + 1
 
+FILE_DRAG_MIME = "application/x-photonfinder-file-ids"
+
+
+class _FileDragProxyModel(QSortFilterProxyModel):
+    def mimeTypes(self):
+        return [FILE_DRAG_MIME]
+
+    def mimeData(self, indexes):
+        mime = QMimeData()
+        rows = sorted({idx.row() for idx in indexes})
+        rowids = []
+        for row in rows:
+            source_idx = self.mapToSource(self.index(row, 0))
+            item = self.sourceModel().itemFromIndex(source_idx)
+            if item:
+                file = item.data(ROWID_ROLE)
+                if file is not None:
+                    rowids.append(str(file.rowid))
+        mime.setData(FILE_DRAG_MIME, QByteArray(",".join(rowids).encode()))
+        return mime
+
 
 # Using the new database-backed tree model for filesystemTreeView
 def _not_empty(current_text):
@@ -71,10 +92,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved",
             "Projects", "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation",
         ])
-        self.proxy_model = QSortFilterProxyModel()
+        self.proxy_model = _FileDragProxyModel()
         self.proxy_model.setSortRole(SORT_ROLE)
         self.proxy_model.setSourceModel(self.data_model)
         self.dataView.setModel(self.proxy_model)
+        self.dataView.setDragEnabled(True)
+        self.dataView.setDragDropMode(QAbstractItemView.DragOnly)
         self.dataView.verticalScrollBar().valueChanged.connect(self.on_scroll)
         self.dataView.doubleClicked.connect(self.on_item_double_clicked)
         self.dataView.setEditTriggers(QAbstractItemView.NoEditTriggers)

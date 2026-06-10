@@ -1,15 +1,17 @@
 from datetime import datetime
 from typing import List, Collection
 
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize, QEvent
 from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import QTableWidgetItem, QDialog, QMessageBox, QWidget
+from PySide6.QtWidgets import QTableWidgetItem, QMessageBox, QWidget, QToolTip
+from peewee import JOIN
 
 from photonfinder.core import ApplicationContext, Change
-from photonfinder.models import Project, ProjectFile
+from photonfinder.models import Project, ProjectFile, File, Image
 from photonfinder.ui.BackgroundLoader import ProjectsLoader
 from photonfinder.ui.generated.ProjectsWindow_ui import Ui_ProjectsWindow
 from .ProjectEditDialog import ProjectEditDialog
+from .SearchPanel import FILE_DRAG_MIME
 from .common import _format_ra, _format_dec, _format_date, create_colored_svg_icon, ColumnVisibilityController
 
 
@@ -35,6 +37,9 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
         self.visibility_controller.load_visibility(hidden_cols)
 
         self._loader.reload_projects()
+
+        self.tableWidget.viewport().setAcceptDrops(True)
+        self.tableWidget.viewport().installEventFilter(self)
 
     def connect_signals(self):
         self.actionCreate.triggered.connect(self.create_action)
@@ -109,6 +114,60 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
                 self.tableWidget.selectRow(row)
                 self.tableWidget.scrollToItem(item)
                 return
+
+    def eventFilter(self, obj, event):
+        if obj is self.tableWidget.viewport():
+            t = event.type()
+            if t == QEvent.DragEnter:
+                if event.mimeData().hasFormat(FILE_DRAG_MIME):
+                    event.acceptProposedAction()
+                    return True
+            elif t == QEvent.DragMove:
+                if event.mimeData().hasFormat(FILE_DRAG_MIME):
+                    item = self.tableWidget.itemAt(event.position().toPoint())
+                    if item:
+                        self.tableWidget.selectRow(item.row())
+                        project = self.tableWidget.item(item.row(), 0).data(Qt.UserRole)
+                        if project:
+                            QToolTip.showText(
+                                self.tableWidget.viewport().mapToGlobal(event.position().toPoint()),
+                                f"Add to: {project.name}",
+                                self.tableWidget.viewport()
+                            )
+                    else:
+                        self.tableWidget.clearSelection()
+                        QToolTip.hideText()
+                    event.acceptProposedAction()
+                    return True
+            elif t == QEvent.DragLeave:
+                self.tableWidget.clearSelection()
+                QToolTip.hideText()
+            elif t == QEvent.Drop:
+                return self._handle_file_drop(event)
+        return super().eventFilter(obj, event)
+
+    def _handle_file_drop(self, event):
+        mime = event.mimeData()
+        if not mime.hasFormat(FILE_DRAG_MIME):
+            return False
+        item = self.tableWidget.itemAt(event.position().toPoint())
+        if item is None:
+            return False
+        project = self.tableWidget.item(item.row(), 0).data(Qt.UserRole)
+        if not project or project.rowid <= 0:
+            return False
+        raw = bytes(mime.data(FILE_DRAG_MIME)).decode()
+        rowids = [int(x) for x in raw.split(",") if x]
+        files = list(File.select(File, Image).join_from(File, Image, JOIN.LEFT_OUTER).where(File.rowid.in_(rowids)))
+        files_to_add = File.remove_already_mapped(project, files)
+        edit_dialog = ProjectEditDialog(context=self.context, project=project,
+                                        parent=self.main_window, main_window=self.main_window)
+        for file in files_to_add:
+            edit_dialog.add_file(ProjectFile(project=project, file=file))
+        edit_dialog.show()
+        edit_dialog.refresh_table()
+        event.acceptProposedAction()
+        return True
 
     def populate_table(self):
         self._loader.reload_projects()

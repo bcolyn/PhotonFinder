@@ -172,7 +172,7 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         self.remove_button.setEnabled(len(selected) >= 1)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).setEnabled(self.dirty())
         files = self.get_current_files()
-        files_with_coords = [pf for pf in files if pf.file.image.coord_ra]
+        files_with_coords = [pf for pf in files if hasattr(pf.file, 'image') and pf.file.image and pf.file.image.coord_ra]
         self.scan_more_button.setEnabled(len(files_with_coords) > 0)
 
     def _open_image_viewer(self, index):
