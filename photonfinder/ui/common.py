@@ -123,7 +123,8 @@ def ensure_header_widths(table_view, extra_padding=12):
 
 _BUILTIN_PRESETS = {
     "Essentials": {"Gain", "Offset", "Binning", "Set Temp", "Camera", "Telescope",
-                   "Size", "Modified", "RA", "DEC", "Solved", "Paths"},
+                   "Size", "Modified", "RA", "DEC", "Solved", "Path",
+                   "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation"},
     "Standard": {"Size", "Modified", "RA", "DEC", "Solved"},
     "Full": set(),
 }
