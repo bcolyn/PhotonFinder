@@ -10,9 +10,11 @@ from photonfinder.ui.ExportDialog import (
     template_filename,
     template_filename_with_ref,
     ExportWorker,
+    ExportEntry,
     _make_shared_template_str,
     build_file_session_dates,
     collect_calibration_files,
+    collect_calibration_entries,
     build_file_headers_map,
 )
 from .sample_models import *
@@ -183,62 +185,26 @@ class TestBuildFileSessionDates:
     def test_light_files_get_session_date(self):
         key = _key(D1)
         f = _file(1)
-        result = build_file_session_dates([key], {key: [f]}, {0: {}}, use_master=False)
+        result = build_file_session_dates([key], {key: [f]})
         assert result[1] == D1
 
-    def test_calib_files_get_matched_session_date_no_master(self):
-        key = _key(D1)
-        light = _file(1)
-        calib = _file(100)
-        cand = _candidate([calib])
-        result = build_file_session_dates(
-            [key], {key: [light]}, {0: {"DARK": cand}}, use_master=False
-        )
-        assert result[100] == D1
-
-    def test_master_file_gets_session_date_when_use_master(self):
-        """The bug fix: master rowid must be in the map when use_master=True."""
-        key = _key(D1)
-        light = _file(1)
-        sub = _file(100)
-        master = _file(101)
-        cand = _candidate([sub], master=master)
-        result = build_file_session_dates(
-            [key], {key: [light]}, {0: {"DARK": cand}}, use_master=True
-        )
-        assert result[101] == D1
-        assert 100 not in result
-
-    def test_sub_files_used_when_no_master(self):
-        key = _key(D1)
-        light = _file(1)
-        sub = _file(100)
-        cand = _candidate([sub], master=None)
-        result = build_file_session_dates(
-            [key], {key: [light]}, {0: {"DARK": cand}}, use_master=True
-        )
-        assert result[100] == D1
-
-    def test_first_assignment_wins_for_shared_calib(self):
+    def test_multiple_sessions(self):
         k1, k2 = _key(D1), _key(D2)
-        shared = _file(50)
-        cand1 = _candidate([shared])
-        cand2 = _candidate([shared])
-        sessions = {k1: [_file(1)], k2: [_file(2)]}
-        calib_sel = {0: {"DARK": cand1}, 1: {"DARK": cand2}}
-        result = build_file_session_dates([k1, k2], sessions, calib_sel, use_master=False)
-        assert result[50] == D1
+        f1, f2 = _file(1), _file(2)
+        result = build_file_session_dates([k1, k2], {k1: [f1], k2: [f2]})
+        assert result[1] == D1
+        assert result[2] == D2
 
     def test_none_rowid_skipped(self):
         key = _key(D1)
         f = _file(None)
-        result = build_file_session_dates([key], {key: [f]}, {0: {}}, use_master=False)
+        result = build_file_session_dates([key], {key: [f]})
         assert result == {}
 
     def test_none_session_date_skipped(self):
         key = _key(None)
         f = _file(1)
-        result = build_file_session_dates([key], {key: [f]}, {0: {}}, use_master=False)
+        result = build_file_session_dates([key], {key: [f]})
         assert result == {}
 
 
@@ -353,3 +319,85 @@ class TestBuildFileHeadersMap:
         )
         assert result[100] == {"K": "v"}
         assert 101 not in result
+
+
+class TestCollectCalibrationEntries:
+    def test_no_selections_returns_empty(self):
+        key = _key(D1)
+        result = collect_calibration_entries([key], {0: {"DARK": None}}, use_master=False)
+        assert result == []
+
+    def test_single_session_single_file(self):
+        key = _key(D1)
+        f = _file(10)
+        cand = _candidate([f])
+        result = collect_calibration_entries([key], {0: {"DARK": cand}}, use_master=False)
+        assert result == [ExportEntry(file=f, session_date=D1)]
+
+    def test_session_date_bundled_in_entry(self):
+        key = _key(D2)
+        f = _file(10)
+        cand = _candidate([f])
+        result = collect_calibration_entries([key], {0: {"DARK": cand}}, use_master=False)
+        assert result[0].session_date == D2
+
+    def test_use_master_returns_master(self):
+        key = _key(D1)
+        sub = _file(100)
+        master = _file(999)
+        cand = _candidate([sub], master=master)
+        result = collect_calibration_entries([key], {0: {"DARK": cand}}, use_master=True)
+        assert [e.file.rowid for e in result] == [999]
+
+    def test_use_master_falls_back_to_subs_when_no_master(self):
+        key = _key(D1)
+        sub = _file(100)
+        cand = _candidate([sub], master=None)
+        result = collect_calibration_entries([key], {0: {"DARK": cand}}, use_master=True)
+        assert [e.file.rowid for e in result] == [100]
+
+    def test_dedup_within_same_session_and_type(self):
+        """Same file selected via two calib types in one session → appears once."""
+        key = _key(D1)
+        shared = _file(1)
+        cand1 = _candidate([shared])
+        cand2 = _candidate([shared, _file(2)])
+        result = collect_calibration_entries([key], {0: {"DARK": cand1, "FLAT": cand2}}, use_master=False)
+        assert [e.file.rowid for e in result] == [1, 2]
+
+    def test_regression_shared_dark_copied_to_both_sessions(self):
+        """Two sessions selecting the same master dark both receive a copy.
+
+        This is the bug that was fixed: previously the second session's dark was
+        silently dropped because collect_calibration_files deduplicated by rowid
+        and build_file_session_dates used first-assignment-wins, so only the first
+        session's folder ever received the file.
+        """
+        k1, k2 = _key(D1), _key(D2)
+        dark = _file(50)
+        cand1 = _candidate([dark])
+        cand2 = _candidate([dark])
+        calib_sel = {0: {"DARK": cand1}, 1: {"DARK": cand2}}
+
+        result = collect_calibration_entries([k1, k2], calib_sel, use_master=False)
+
+        assert len(result) == 2, "Both sessions must receive an export entry for the shared dark"
+        dates = {e.session_date for e in result}
+        assert dates == {D1, D2}, "Each entry must carry its own session date"
+        assert all(e.file.rowid == 50 for e in result)
+
+    def test_truly_shared_file_single_entry_per_session(self):
+        """Different files per session → one entry each, independent."""
+        k1, k2 = _key(D1), _key(D2)
+        dark1, dark2 = _file(1), _file(2)
+        calib_sel = {0: {"DARK": _candidate([dark1])}, 1: {"DARK": _candidate([dark2])}}
+        result = collect_calibration_entries([k1, k2], calib_sel, use_master=False)
+        assert [(e.file.rowid, e.session_date) for e in result] == [(1, D1), (2, D2)]
+
+    def test_none_session_date_propagated(self):
+        """Session with no date produces an entry with session_date=None."""
+        key = _key(None)
+        f = _file(10)
+        cand = _candidate([f])
+        result = collect_calibration_entries([key], {0: {"DARK": cand}}, use_master=False)
+        assert result == [ExportEntry(file=f, session_date=None)]

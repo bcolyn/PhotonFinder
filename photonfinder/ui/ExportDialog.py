@@ -8,7 +8,7 @@ import shutil
 import string
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, NamedTuple, Optional
 
 import numpy as np
 from PySide6.QtCore import Signal, QUrl, Qt
@@ -107,28 +107,54 @@ def template_filename(file: File, template: string.Template, settings: Settings,
     return result
 
 
+class ExportEntry(NamedTuple):
+    """A file paired with the session date that determines its destination folder."""
+    file: File
+    session_date: Optional[datetime.date]
+
+
 def build_file_session_dates(
     session_keys: list[SessionKey],
     sessions: dict[SessionKey, list[File]],
-    calib_selections: dict[int, dict[str, Optional[CalibrationCandidate]]],
-    use_master: bool,
 ) -> dict[int, datetime.date]:
-    """Map file rowid → session date. Calibration files get the date of the session they matched."""
+    """Map light-file rowid → session date."""
     file_session_dates = {}
-    for row, key in enumerate(session_keys):
+    for key in session_keys:
         d = key.session_date
         if d is None:
             continue
         for f in sessions[key]:
             if f.rowid is not None:
                 file_session_dates[f.rowid] = d
-        for candidate in calib_selections[row].values():
-            if candidate:
-                files = [candidate.master] if use_master and candidate.master else candidate.files
-                for f in files:
-                    if f.rowid is not None and f.rowid not in file_session_dates:
-                        file_session_dates[f.rowid] = d
     return file_session_dates
+
+
+def collect_calibration_entries(
+    session_keys: list[SessionKey],
+    calib_selections: dict[int, dict[str, Optional[CalibrationCandidate]]],
+    use_master: bool,
+) -> list[ExportEntry]:
+    """Return one ExportEntry per (session, file) pair.
+
+    Unlike collect_calibration_files, the same file may appear multiple times
+    when selected by multiple sessions, each carrying its own session_date.
+    Deduplicates only within the same (rowid, date) to avoid double entries
+    when one session selects the same file via two calib types.
+    """
+    seen: set[tuple] = set()
+    result: list[ExportEntry] = []
+    for row, key in enumerate(session_keys):
+        d = key.session_date
+        for candidate in calib_selections[row].values():
+            if not candidate:
+                continue
+            files = [candidate.master] if use_master and candidate.master else candidate.files
+            for f in files:
+                pair = (f.rowid, d)
+                if pair not in seen:
+                    seen.add(pair)
+                    result.append(ExportEntry(file=f, session_date=d))
+    return result
 
 
 def collect_calibration_files(
@@ -225,7 +251,7 @@ class ExportWorker(BackgroundLoaderBase):
     def __init__(self, context: ApplicationContext):
         super().__init__(context)
         self.total_files = 0
-        self.files = None
+        self.entries: list[ExportEntry] = []
         self.search_criteria = None
         self.output_path = ""
         self.decompress = False
@@ -234,21 +260,20 @@ class ExportWorker(BackgroundLoaderBase):
         self.export_xisf_as_fits = False
         self.override_platesolve = False
         self.file_headers = {}        # file rowid → {KEY: value}
-        self.file_session_dates = {}  # file rowid → datetime.date (session date)
         self.shared_file_ids = set()  # file rowids exported to "shared" path
         self.shared_pattern = None
         self.project = None
         self.project_file_ids = set()  # file rowids to add to the project (lights only)
 
     def export_files(self, search_criteria: SearchCriteria,
-                     files: Optional[List[File]], output_path: str, decompress: bool,
+                     entries: List[ExportEntry], output_path: str, decompress: bool,
                      pattern: str, total_files: int, export_xisf_as_fits: bool = False,
                      override_platesolve: bool = False, file_headers: dict = None,
-                     file_session_dates: dict = None, project: Project = None,
+                     project: Project = None,
                      shared_file_ids: set = None, project_file_ids: set = None):
         """Start the export process in a background thread."""
         self.search_criteria = search_criteria
-        self.files = files
+        self.entries = entries
         self.output_path = output_path
         self.decompress = decompress
         self.pattern = string.Template(pattern)
@@ -257,7 +282,6 @@ class ExportWorker(BackgroundLoaderBase):
         self.export_xisf_as_fits = export_xisf_as_fits
         self.override_platesolve = override_platesolve
         self.file_headers = file_headers or {}
-        self.file_session_dates = file_session_dates or {}
         self.shared_file_ids = shared_file_ids or set()
         self.shared_pattern = string.Template(_make_shared_template_str(pattern)) if self.shared_file_ids else None
         self.project = project
@@ -267,20 +291,21 @@ class ExportWorker(BackgroundLoaderBase):
     def _export_files_task(self):
         """Background task to export files."""
         try:
-            for i, file in enumerate(self.files):
+            for i, entry in enumerate(self.entries):
                 if self.cancelled:
                     break
-                self._process_file(file, i)
+                self._process_entry(entry, i)
             self.finished.emit()
         except Exception as e:
             logging.error(f"Error exporting files: {e}", exc_info=True)
             self.error.emit(str(e))
 
-    def _process_file(self, file: File, index: int):
-        """Process a single file during export."""
+    def _process_entry(self, entry: ExportEntry, index: int):
+        """Process a single export entry."""
+        file = entry.file
         source_path = file.full_filename()
         custom_headers = self.file_headers.get(file.rowid, {})
-        sess_date = self.file_session_dates.get(file.rowid)
+        sess_date = entry.session_date
 
         is_shared = file.rowid in self.shared_file_ids
         active_pattern = self.shared_pattern if (is_shared and self.shared_pattern) else self.pattern
@@ -776,10 +801,37 @@ class ExportDialog(QDialog, Ui_ExportDialog):
                 btn.setText("✎" if text else "…")
 
     def _build_file_session_dates(self) -> dict:
-        return build_file_session_dates(
-            self._session_keys, self.sessions, self._calib_selections,
-            self.useMasterCheckBox.isChecked()
+        return build_file_session_dates(self._session_keys, self.sessions)
+
+    def _collect_calibration_entries(self) -> list[ExportEntry]:
+        return collect_calibration_entries(
+            self._session_keys, self._calib_selections, self.useMasterCheckBox.isChecked()
         )
+
+    def _build_all_entries(self, shared_file_ids: set) -> list[ExportEntry]:
+        """Build the complete ordered list of ExportEntry objects for this export."""
+        if not self.light_files:
+            return [ExportEntry(f, None) for f in self.calib_preselect_files]
+
+        file_session_dates = self._build_file_session_dates()
+        light_entries = [ExportEntry(f, file_session_dates.get(f.rowid)) for f in self.light_files]
+        calib_entries = self._collect_calibration_entries()
+
+        # When shared-session is active, a file that maps to the shared/ path must only
+        # appear once in the list even if multiple sessions selected it.
+        if shared_file_ids:
+            seen_shared: set[int] = set()
+            deduped: list[ExportEntry] = []
+            for entry in calib_entries:
+                if entry.file.rowid in shared_file_ids:
+                    if entry.file.rowid not in seen_shared:
+                        seen_shared.add(entry.file.rowid)
+                        deduped.append(entry)
+                else:
+                    deduped.append(entry)
+            calib_entries = deduped
+
+        return light_entries + calib_entries
 
     def _build_file_headers_map(self) -> dict:
         return build_file_headers_map(
@@ -840,22 +892,21 @@ class ExportDialog(QDialog, Ui_ExportDialog):
                               last_change=datetime.datetime.now())
             project.save()
 
-        calib_files = self.calib_preselect_files if not self.light_files else self._collect_calibration_files()
-        all_files = self.light_files + calib_files
+        shared_file_ids = self._build_shared_file_ids()
+        all_entries = self._build_all_entries(shared_file_ids)
 
         self.export_worker.export_files(
             self.search_criteria,
-            all_files,
+            all_entries,
             self.outputPathEdit.text(),
             self.decompressCheckBox.isChecked(),
             self.patternComboBox.currentText(),
-            len(all_files),
+            len(all_entries),
             self.exportXisfAsFitsCheckBox.isChecked(),
             self.overridePlatesolveCheckBox.isChecked(),
             self._build_file_headers_map(),
-            self._build_file_session_dates(),
             project,
-            self._build_shared_file_ids(),
+            shared_file_ids,
             {f.rowid for f in self.light_files}
         )
 
@@ -871,21 +922,17 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         decompress = self.decompressCheckBox.isChecked()
         export_xisf_as_fits = self.exportXisfAsFitsCheckBox.isChecked()
 
-        calib_files = self.calib_preselect_files if not self.light_files else self._collect_calibration_files()
-        all_files = self.light_files + calib_files
-
         shared_file_ids = self._build_shared_file_ids()
-        file_session_dates = self._build_file_session_dates()
+        all_entries = self._build_all_entries(shared_file_ids)
 
         lines = []
-        for file in all_files:
-            source_path = file.full_filename()
-            sess_date = file_session_dates.get(file.rowid)
-            is_shared = file.rowid in shared_file_ids
+        for entry in all_entries:
+            source_path = entry.file.full_filename()
+            is_shared = entry.file.rowid in shared_file_ids
             active_tpl = shared_tpl if is_shared else tpl
             output_filename = template_filename_with_ref(
-                file, ref_file, active_tpl, self.context.settings,
-                decompress, export_xisf_as_fits, sess_date=sess_date)
+                entry.file, ref_file, active_tpl, self.context.settings,
+                decompress, export_xisf_as_fits, sess_date=entry.session_date)
             dest_path = os.path.join(output_path, output_filename)
             lines.append(f"{source_path}  →  {dest_path}")
 
