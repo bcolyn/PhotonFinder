@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 
 from PySide6.QtCore import QSize
-from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter, QAction
+from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter, QPen, QAction, QColor
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QStyle, QTableView, QMenu, QInputDialog, QMessageBox, QDialog, QVBoxLayout, QListWidget, QPushButton, QDialogButtonBox, QHBoxLayout
 
@@ -84,7 +84,7 @@ def coerce_value(value: str):
     return value
 
 
-def create_colored_svg_icon(svg_path: str, size: QSize, color) -> QIcon:
+def create_colored_svg_icon(svg_path: str, size: QSize, color, add_slash=False) -> QIcon:
     renderer = QSvgRenderer(svg_path)
     pixmap = QPixmap(size)
     pixmap.fill(Qt.transparent)
@@ -93,6 +93,14 @@ def create_colored_svg_icon(svg_path: str, size: QSize, color) -> QIcon:
     renderer.render(painter)
     painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
     painter.fillRect(pixmap.rect(), color)
+
+    if add_slash:
+        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+        pen = QPen(QColor(128, 128, 128), max(1, size.width() // 8))
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(pixmap.rect().topLeft(), pixmap.rect().bottomRight())
+
     painter.end()
 
     return QIcon(pixmap)

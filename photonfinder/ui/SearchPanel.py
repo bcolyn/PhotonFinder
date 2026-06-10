@@ -148,6 +148,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.toolbar.addAction(mainWindow.actionImageSize)
         self.toolbar.addAction(mainWindow.actionPlateScale)
         self.toolbar.addAction(mainWindow.actionImageQuality)
+        self.toolbar.addAction(mainWindow.action_filter_no_project)
 
         # connect to signal bus
         self.context.signal_bus.projects_changed.connect(self.on_projects_changed)

@@ -69,6 +69,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionImageSize.setIcon(create_colored_svg_icon(":/res/crop.svg", size, text_color))
         self.actionPlateScale.setIcon(create_colored_svg_icon(":/res/rulers.svg", size, text_color))
         self.actionImageQuality.setIcon(create_colored_svg_icon(":/res/bar-chart-line-fill.svg", size, text_color))
+        self.action_filter_no_project.setIcon(create_colored_svg_icon(":/res/stack.svg", size, text_color, add_slash=True))
 
         # hide the dock initially
         self.dockWidget.hide()
