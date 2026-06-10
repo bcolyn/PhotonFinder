@@ -510,6 +510,11 @@ class ExportDialog(QDialog, Ui_ExportDialog):
 
         if not self.light_files:
             self.calibrationTable.hide()
+            self.useMasterCheckBox.hide()
+            self.label_10.hide()
+            self.sharedSessionCheckBox.hide()
+            self.label_shared.hide()
+            self.line.hide()
 
         if self.search_criteria.reference_file:
             self.useRefCheckBox.setEnabled(True)
@@ -555,10 +560,10 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         for f in files:
             image = f.image if hasattr(f, 'image') else None
             itype = (image.image_type or "").upper() if image else ""
-            if itype in ("DARK", "FLAT", "BIAS"):
-                others.append(f)
-            else:
+            if itype == "LIGHT":
                 lights.append(f)
+            else:
+                others.append(f)
         return lights, others
 
     def _setup_calibration_table(self):
@@ -839,8 +844,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         )
 
     def _open_variables_docs(self):
-        docs_path = Path(__file__).parent.parent.parent / "docs" / "export-templates.md"
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(docs_path)))
+        QDesktopServices.openUrl(QUrl("https://github.com/bcolyn/PhotonFinder/blob/master/docs/export-templates.md"))
 
     def load_settings(self):
         settings = self.context.settings

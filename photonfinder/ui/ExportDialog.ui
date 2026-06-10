@@ -29,27 +29,6 @@
    </item>
    <item>
     <layout class="QFormLayout" name="formLayout">
-     <item row="0" column="0">
-      <widget class="QLabel" name="label">
-       <property name="text">
-        <string>Root Output Folder:</string>
-       </property>
-      </widget>
-     </item>
-     <item row="0" column="1">
-      <layout class="QHBoxLayout" name="horizontalLayout">
-       <item>
-        <widget class="QLineEdit" name="outputPathEdit"/>
-       </item>
-       <item>
-        <widget class="QPushButton" name="browseButton">
-         <property name="text">
-          <string>Browse...</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
      <item row="1" column="0">
       <widget class="QLabel" name="label_shared">
        <property name="text">
@@ -60,46 +39,67 @@
      <item row="1" column="1">
       <widget class="QCheckBox" name="sharedSessionCheckBox">
        <property name="text">
-        <string>Save disk space by using a "shared" session</string>
+        <string>Save disk space by using a &quot;shared&quot; session</string>
        </property>
       </widget>
      </item>
      <item row="2" column="0">
-      <widget class="QLabel" name="label_11">
+      <widget class="QLabel" name="label_10">
        <property name="text">
-        <string>Group/Project</string>
+        <string>Use master frames:</string>
        </property>
       </widget>
      </item>
      <item row="2" column="1">
-      <widget class="QCheckBox" name="createGroupCheckBox">
+      <widget class="QCheckBox" name="useMasterCheckBox">
        <property name="text">
-        <string>Create group/project for exported light frames</string>
+        <string>Use pre-existing master frames instead of subframes, if found</string>
        </property>
       </widget>
      </item>
-     <item row="3" column="0">
+     <item row="3" column="1">
+      <widget class="Line" name="line">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="0">
       <widget class="QLabel" name="label_2">
        <property name="text">
         <string>Decompress Files:</string>
        </property>
       </widget>
      </item>
-     <item row="3" column="1">
+     <item row="4" column="1">
       <widget class="QCheckBox" name="decompressCheckBox">
        <property name="text">
         <string>Decompress compressed files</string>
        </property>
       </widget>
      </item>
-     <item row="4" column="0">
+     <item row="6" column="0">
+      <widget class="QLabel" name="label_11">
+       <property name="text">
+        <string>Group/Project</string>
+       </property>
+      </widget>
+     </item>
+     <item row="6" column="1">
+      <widget class="QCheckBox" name="createGroupCheckBox">
+       <property name="text">
+        <string>Create group/project for exported light frames</string>
+       </property>
+      </widget>
+     </item>
+     <item row="7" column="0">
       <widget class="QLabel" name="label_7">
        <property name="text">
         <string>Use same subfolder as reference</string>
        </property>
       </widget>
      </item>
-     <item row="4" column="1">
+     <item row="7" column="1">
       <widget class="QCheckBox" name="useRefCheckBox">
        <property name="enabled">
         <bool>false</bool>
@@ -109,63 +109,42 @@
        </property>
       </widget>
      </item>
-     <item row="5" column="0">
+     <item row="8" column="0">
       <widget class="QLabel" name="label_8">
        <property name="text">
         <string>Export XISF as FITS:</string>
        </property>
       </widget>
      </item>
-     <item row="5" column="1">
+     <item row="8" column="1">
       <widget class="QCheckBox" name="exportXisfAsFitsCheckBox">
        <property name="text">
         <string>Convert XISF files to FITS format during export</string>
        </property>
       </widget>
      </item>
-     <item row="6" column="0">
+     <item row="9" column="0">
       <widget class="QLabel" name="label_9">
        <property name="text">
         <string>Override WCS headers:</string>
        </property>
       </widget>
      </item>
-     <item row="6" column="1">
+     <item row="9" column="1">
       <widget class="QCheckBox" name="overridePlatesolveCheckBox">
        <property name="text">
         <string>Override FITS headers with plate solving solution, if available</string>
        </property>
       </widget>
      </item>
-     <item row="7" column="0">
-      <widget class="QLabel" name="label_10">
-       <property name="text">
-        <string>Use master frames:</string>
-       </property>
-      </widget>
-     </item>
-     <item row="7" column="1">
-      <widget class="QCheckBox" name="useMasterCheckBox">
-       <property name="text">
-        <string>Use pre-existing master frames instead of subframes, if found</string>
-       </property>
-      </widget>
-     </item>
-     <item row="8" column="1">
-      <widget class="Line" name="line">
-       <property name="orientation">
-        <enum>Qt::Orientation::Horizontal</enum>
-       </property>
-      </widget>
-     </item>
-     <item row="9" column="0">
+     <item row="12" column="0">
       <widget class="QLabel" name="label_3">
        <property name="text">
         <string>Output Pattern:</string>
        </property>
       </widget>
      </item>
-     <item row="9" column="1">
+     <item row="12" column="1">
       <layout class="QHBoxLayout" name="patternLayout">
        <item>
         <widget class="QComboBox" name="patternComboBox">
@@ -189,17 +168,45 @@
        </item>
       </layout>
      </item>
-     <item row="10" column="0">
+     <item row="13" column="0">
       <widget class="QLabel" name="label_4">
        <property name="text">
         <string>Output Preview:</string>
        </property>
       </widget>
      </item>
-     <item row="10" column="1">
+     <item row="13" column="1">
       <widget class="QLabel" name="outputPreview">
        <property name="text">
         <string/>
+       </property>
+      </widget>
+     </item>
+     <item row="11" column="0">
+      <widget class="QLabel" name="label">
+       <property name="text">
+        <string>Root Output Folder:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="11" column="1">
+      <layout class="QHBoxLayout" name="horizontalLayout">
+       <item>
+        <widget class="QLineEdit" name="outputPathEdit"/>
+       </item>
+       <item>
+        <widget class="QPushButton" name="browseButton">
+         <property name="text">
+          <string>Browse...</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item row="10" column="1">
+      <widget class="Line" name="line_2">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
        </property>
       </widget>
      </item>
