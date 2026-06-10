@@ -73,6 +73,9 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
                 self.tableWidget.setItem(row, 3, QTableWidgetItem(_format_ra(image.coord_ra)))
                 self.tableWidget.setItem(row, 4, QTableWidgetItem(_format_dec(image.coord_dec)))
                 self.tableWidget.setItem(row, 5, QTableWidgetItem(getattr(project, '_constellation', "")))
+            last_change = project.last_change
+            last_change_dt = datetime.fromisoformat(last_change) if isinstance(last_change, str) else last_change
+            self.tableWidget.setItem(row, 6, QTableWidgetItem(_format_date(last_change_dt)))
 
         self.tableWidget.resizeColumnsToContents()
         self._apply_filter(self.filterEdit.text())

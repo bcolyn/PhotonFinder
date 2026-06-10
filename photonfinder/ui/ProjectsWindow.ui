@@ -93,6 +93,11 @@
        <string>Constellation</string>
       </property>
      </column>
+     <column>
+      <property name="text">
+       <string>Last Changed</string>
+      </property>
+     </column>
     </widget>
    </item>
   </layout>
