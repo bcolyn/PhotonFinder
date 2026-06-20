@@ -14,7 +14,6 @@ If no path is given the script looks for the database in the default app-data
 location (%LOCALAPPDATA%\photonfinder\astroFileManager.db).
 """
 
-import json
 import logging
 import sys
 from pathlib import Path
@@ -23,8 +22,8 @@ from astropy.io.fits import Header
 from astropy.wcs import WCS
 from peewee import SqliteDatabase
 
-from photonfinder.core import compress, decompress, register_udfs
-from photonfinder.filesystem import Importer, header_from_xisf_dict, parse_FITS_header
+from photonfinder.core import compress, register_udfs
+from photonfinder.filesystem import Importer, decode_header_blob
 from photonfinder.models import CORE_MODELS, File, FitsHeader, FileWCS
 from photonfinder.platesolver import extract_wcs_cards, flip_wcs_vertical, has_been_plate_solved, stamp_wcs_origin
 
@@ -50,13 +49,7 @@ def open_db(path: Path) -> SqliteDatabase:
 
 
 def deserialize_header(header_record) -> Header | None:
-    name = header_record.file.name
-    raw = decompress(header_record.header)
-    if Importer.is_fits_by_name(name):
-        return parse_FITS_header(raw)
-    if Importer.is_xisf_by_name(name):
-        return header_from_xisf_dict(json.loads(raw))
-    return None
+    return decode_header_blob(header_record.header)
 
 
 def fix_file(header_record, db: SqliteDatabase) -> str:

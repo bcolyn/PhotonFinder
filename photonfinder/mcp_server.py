@@ -22,7 +22,7 @@ from typing import Optional
 import anyio
 from peewee import JOIN
 
-from photonfinder.core import ApplicationContext, decompress
+from photonfinder.core import ApplicationContext
 from photonfinder.models import (
     CORE_MODELS, SearchCriteria, File, Image, LibraryRoot, Project, ProjectFile,
     FitsHeader, FileWCS,
@@ -54,13 +54,8 @@ def _coerce_header_value(value):
 
 def _header_to_dict(blob: bytes) -> dict:
     """Decompress a stored FITS header blob into a flat keyword dict."""
-    from astropy.io.fits import Header
-    from photonfinder.filesystem import header_from_xisf_dict
-    raw = decompress(blob)
-    if raw.startswith(b'{'):
-        header = header_from_xisf_dict(json.loads(raw))
-    else:
-        header = Header.fromstring(raw)
+    from photonfinder.filesystem import decode_header_blob
+    header = decode_header_blob(blob)
     out = {}
     for key in header:
         if key in ("COMMENT", "HISTORY", ""):

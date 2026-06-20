@@ -42,8 +42,8 @@ class CatalogReportLoader(BackgroundLoaderBase):
         import numpy as np
         from astropy.io.fits import Header
         from astropy.wcs import WCS
-        from astropy_healpix import HEALPix
         import astropy.units as u
+        from photonfinder.core import hp
         from photonfinder.models import File, Image, LibraryRoot, FileWCS
 
         catalog = self._catalog
@@ -54,7 +54,6 @@ class CatalogReportLoader(BackgroundLoaderBase):
             return
 
         t0 = time.monotonic()
-        hp = HEALPix(nside=256, order='nested', frame='icrs')
         only_matching = self._only_matching
         catalog_entries = []
 

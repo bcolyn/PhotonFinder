@@ -2,7 +2,6 @@
 One-off script: backfill Image.coord_radius from existing FileWCS records.
 Run from the project root:  uv run python backfill_coord_radius.py
 """
-import json
 import sys
 import warnings
 import zstd
@@ -58,12 +57,8 @@ def main():
                 # FITS files store a FITS header string; XISF files store a JSON dict.
                 fits_rec = FitsHeader.get_or_none(FitsHeader.file == row.file_id)
                 if fits_rec:
-                    raw = decompress(fits_rec.header).decode()
-                    if raw.startswith('{'):
-                        from photonfinder.filesystem import header_from_xisf_dict
-                        fits_header = header_from_xisf_dict(json.loads(raw))
-                    else:
-                        fits_header = Header.fromstring(raw)
+                    from photonfinder.filesystem import decode_header_blob
+                    fits_header = decode_header_blob(fits_rec.header)
                     naxis1 = fits_header.get('NAXIS1')
                     naxis2 = fits_header.get('NAXIS2')
                     if naxis1 and naxis2:

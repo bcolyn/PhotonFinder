@@ -9,7 +9,7 @@ from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
 
 from photonfinder.core import ApplicationContext, decompress
-from photonfinder.filesystem import parse_FITS_header, header_from_xisf_dict
+from photonfinder.filesystem import decode_header_blob
 from peewee import JOIN
 from photonfinder.models import File, FileWCS, FitsHeader, Image, SearchCriteria
 from photonfinder.platesolver import (
@@ -60,13 +60,8 @@ _SOLVERS = [
 
 def _infer_scale_from_header(file: File):
     try:
-        import json
         fh = FitsHeader.get(FitsHeader.file == file)
-        raw = decompress(fh.header)
-        if file.name.lower().endswith('.xisf'):
-            header = header_from_xisf_dict(json.loads(raw))
-        else:
-            header = parse_FITS_header(raw)
+        header = decode_header_blob(fh.header)
         scale = header.get("SCALE") or header.get("PIXSCALE")
         if scale is not None:
             return float(scale)

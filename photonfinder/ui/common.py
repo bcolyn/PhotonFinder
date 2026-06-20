@@ -30,9 +30,9 @@ def _format_date(value: datetime):
 
 
 def _format_ra(ra_deg: float):
-    if not ra_deg:
-        return ""
     """Format RA from decimal degrees to string format."""
+    if ra_deg is None:
+        return ""
     total_hours = ra_deg / 15.0
     hours = int(total_hours)
     minutes = int((total_hours - hours) * 60)
@@ -41,9 +41,9 @@ def _format_ra(ra_deg: float):
 
 
 def _format_dec(dec_deg: float):
-    if not dec_deg:
-        return ""
     """Format DEC from decimal degrees to string format."""
+    if dec_deg is None:
+        return ""
     sign = "+" if dec_deg >= 0 else "-"
     abs_deg = abs(dec_deg)
     degrees = int(abs_deg)

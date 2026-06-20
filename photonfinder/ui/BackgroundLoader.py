@@ -1,4 +1,3 @@
-import json
 import logging
 import math
 from collections.abc import Iterable
@@ -16,10 +15,10 @@ from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, ProjectFile, \
     Project, ImageStats, search_files
 from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
-from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
+from photonfinder.filesystem import decode_header_blob, build_wcs_from_header
 from astropy.wcs import WCS
 from photonfinder.platesolver import SolverBase, get_image_center_coords, SolverHint, \
-    has_been_plate_solved, extract_wcs_cards, flip_wcs_vertical, SolverFailure, SolverError
+    SolverFailure, SolverError
 
 logger = logging.getLogger(__name__)
 
@@ -239,32 +238,18 @@ class ImageReindexWorker(BackgroundLoaderBase):
                     try:
                         # Deserialize the header
                         from astropy.io.fits import Header
-                        header = None
-                        if Importer.is_fits_by_name(header_record.file.name):
-                            header = parse_FITS_header(decompress(header_record.header))
-                        elif Importer.is_xisf_by_name(header_record.file.name):
-                            header = header_from_xisf_dict(json.loads(decompress(header_record.header)))
+                        header = decode_header_blob(header_record.header)
 
                         if header is None:
                             continue
 
                         # There is no information from plate solving with an external tool - try to extract from
                         # the file header
-                        if not hasattr(header_record.file, 'filewcs') and has_been_plate_solved(header):
-                            solution = extract_wcs_cards(header)
-                            if Importer.is_xisf_by_name(header_record.file.name):
-                                naxis2 = solution.get('NAXIS2')
-                                wcs_obj = flip_wcs_vertical(WCS(solution), naxis2)
-                                flipped = wcs_obj.to_header(relax=True)
-                                for k in ('NAXIS', 'NAXIS1', 'NAXIS2'):
-                                    if k in solution:
-                                        flipped[k] = solution[k]
-                                solution = flipped
-                            from photonfinder.platesolver import stamp_wcs_origin
-                            stamp_wcs_origin(solution, "IMPORT")
-                            wcs = FileWCS(file=header_record.file, wcs=compress(solution.tostring().encode()))
-                            FileWCS.insert(wcs.__data__).on_conflict_ignore().execute()
-                            setattr(header_record.file, 'filewcs', wcs)
+                        if not hasattr(header_record.file, 'filewcs'):
+                            wcs = build_wcs_from_header(header_record.file, header)
+                            if wcs is not None:
+                                FileWCS.insert(wcs.__data__).on_conflict_ignore().execute()
+                                setattr(header_record.file, 'filewcs', wcs)
 
                         self.context.settings.add_known_fits_keywords(header.keys())
                         # Process the header

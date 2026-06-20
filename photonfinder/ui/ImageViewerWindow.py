@@ -1303,10 +1303,9 @@ class ImageViewerWindow(QMainWindow):
     def _on_show_metadata(self):
         if self._current_file is None or self._context is None:
             return
-        import json
         from PySide6.QtCore import Qt
         from photonfinder.models import CORE_MODELS, FitsHeader, FileWCS
-        from photonfinder.filesystem import Importer, parse_FITS_header, header_from_xisf_dict
+        from photonfinder.filesystem import parse_FITS_header, decode_header_blob
         from photonfinder.core import decompress
         from .HeaderDialog import HeaderDialog
         file = self._current_file
@@ -1314,12 +1313,7 @@ class ImageViewerWindow(QMainWindow):
             try:
                 fits_header = FitsHeader.get(FitsHeader.file == file)
                 wcs = FileWCS.get_or_none(FileWCS.file == file)
-                header_bytes = decompress(fits_header.header)
-                if Importer.is_fits_by_name(file.name):
-                    header = parse_FITS_header(header_bytes)
-                else:
-                    header_dict = json.loads(header_bytes.decode('utf-8'))
-                    header = header_from_xisf_dict(header_dict)
+                header = decode_header_blob(fits_header.header)
                 wcs_header = None
                 if wcs:
                     wcs_header = parse_FITS_header(decompress(wcs.wcs))

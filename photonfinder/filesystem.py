@@ -18,7 +18,7 @@ from fs.info import Info
 from peewee import JOIN
 from xisf import XISF
 
-from photonfinder.core import StatusReporter, compress
+from photonfinder.core import StatusReporter, compress, decompress
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import File, LibraryRoot, FitsHeader, Image, norm_db_path, FileWCS
 
@@ -176,26 +176,13 @@ def _handle_file_metadata(file, status_reporter, settings):
             FitsHeader(file=file, header=compress(header_bytes)).save()
             header = header_from_xisf_dict(header_dict)
     if header is not None:
-        from photonfinder.platesolver import has_been_plate_solved, extract_wcs_cards, flip_wcs_vertical
-        from astropy.wcs import WCS
         settings.add_known_fits_keywords(header.keys())
         image = normalize_fits_header(file, header, status_reporter)
         if image is not None:
             Image.insert(image.__data__).on_conflict_replace().execute()
-        if has_been_plate_solved(header):
-            from photonfinder.platesolver import stamp_wcs_origin
-            solution = extract_wcs_cards(header)
-            if Importer.is_xisf_by_name(file.name):
-                naxis2 = solution.get('NAXIS2')
-                wcs_obj = flip_wcs_vertical(WCS(solution), naxis2)
-                flipped = wcs_obj.to_header(relax=True)
-                for k in ('NAXIS', 'NAXIS1', 'NAXIS2'):
-                    if k in solution:
-                        flipped[k] = solution[k]
-                solution = flipped
-            stamp_wcs_origin(solution, "IMPORT")
-            wcs = FileWCS(file=file, wcs=compress(solution.tostring().encode()))
-            FileWCS.insert(wcs.__data__).on_conflict_ignore().execute()
+        file_wcs = build_wcs_from_header(file, header)
+        if file_wcs is not None:
+            FileWCS.insert(file_wcs.__data__).on_conflict_ignore().execute()
 
 
 def header_from_xisf_dict(header_dict: dict[str, list]) -> Header:
@@ -227,6 +214,45 @@ def parse_FITS_header(header_bytes: bytes) -> Header:
         # log(WARN, f"FITS header contains tab characters: {header_bytes}")
         header_bytes = header_bytes.replace(b'\x09', b' ')
     return Header.fromstring(header_bytes)
+
+
+def build_wcs_from_header(file: File, header: Header) -> 'FileWCS | None':
+    """Build a (not-yet-persisted) FileWCS from a plate-solve solution embedded in *header*.
+
+    Returns None when the header carries no usable WCS. For XISF files the solution is
+    flipped vertically (FITS row order) before being stored, matching how solutions are
+    recorded elsewhere. Used by both the initial import and the header-cache rebuild.
+    """
+    from astropy.wcs import WCS
+    from photonfinder.platesolver import (
+        has_been_plate_solved, extract_wcs_cards, flip_wcs_vertical, stamp_wcs_origin,
+    )
+    if not has_been_plate_solved(header):
+        return None
+    solution = extract_wcs_cards(header)
+    if Importer.is_xisf_by_name(file.name):
+        naxis2 = solution.get('NAXIS2')
+        wcs_obj = flip_wcs_vertical(WCS(solution), naxis2)
+        flipped = wcs_obj.to_header(relax=True)
+        for k in ('NAXIS', 'NAXIS1', 'NAXIS2'):
+            if k in solution:
+                flipped[k] = solution[k]
+        solution = flipped
+    stamp_wcs_origin(solution, "IMPORT")
+    return FileWCS(file=file, wcs=compress(solution.tostring().encode()))
+
+
+def decode_header_blob(blob: bytes) -> Header:
+    """Decompress a stored header blob and parse it into an astropy ``Header``.
+
+    Headers are stored compressed; XISF headers as a JSON keyword dict, FITS headers
+    as the raw header bytes. The blob's first byte distinguishes the two. This is the
+    single decode path used wherever a cached header is read back from the database.
+    """
+    raw = decompress(blob)
+    if raw.startswith(b'{'):
+        return header_from_xisf_dict(json.loads(raw))
+    return parse_FITS_header(raw)
 
 
 def check_missing_header_cache(status_reporter, settings):

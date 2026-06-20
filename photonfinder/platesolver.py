@@ -21,10 +21,9 @@ import numpy as np
 from astroquery.astrometry_net import AstrometryNet
 from xisf import XISF
 
-from photonfinder.core import get_default_astap_path, decompress
+from photonfinder.core import get_default_astap_path, decompress, hp
 from photonfinder.image_processing import is_linear
 from photonfinder.filesystem import fopen, Importer, header_from_xisf_dict
-from photonfinder.fits_handlers import hp
 
 
 class SolverType(Enum):

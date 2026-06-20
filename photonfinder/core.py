@@ -10,7 +10,13 @@ import zstd
 from PySide6.QtCore import QSettings, QObject, Signal
 from astropy.coordinates import SkyCoord
 from astropy.io.fits import Header
+from astropy_healpix import HEALPix
 from peewee import SqliteDatabase
+
+# Sky tessellation used for spatial indexing (cone searches). This is the single
+# source of truth for the HEALPix parameters used throughout the application.
+HEALPIX_NSIDE = 256
+hp = HEALPix(nside=HEALPIX_NSIDE, order='nested', frame='icrs')
 
 
 def get_default_astap_path():
@@ -76,14 +82,6 @@ def register_udfs(db: SqliteDatabase):
         coord2 = SkyCoord(ra2, dec2, unit=u.deg, frame='icrs')
         retval = coord1.separation(coord2).value
         return retval
-
-    @db.func("hp_cone_search", 3)
-    def db_hp_cone_search(ra, dec, radius_deg):
-        import json
-        from astropy_healpix import HEALPix
-        _hp = HEALPix(nside=256, order='nested', frame='icrs')
-        pixels = _hp.cone_search_lonlat(ra * u.deg, dec * u.deg, radius_deg * u.deg)
-        return json.dumps(pixels.tolist())
 
 
 class ApplicationContext:
@@ -239,6 +237,45 @@ class ApplicationContext:
 
 
 class Settings:
+    # Declarative spec for plain value-backed settings: (method_suffix, qsettings_key,
+    # default, type). A get_<suffix>()/set_<suffix>() pair is generated for each entry by
+    # _install_setting_accessors() after the class body. Settings that need custom logic
+    # (sets, JSON, the in-memory keyword cache) are written out as methods below instead.
+    _SPECS = [
+        ("last_export_path", "last_export_path", "", str),
+        ("last_export_decompress", "last_export_decompress", True, bool),
+        ("last_export_patterns", "last_export_patterns", [], list),
+        ("last_light_path", "last_light_path", "", str),
+        ("last_database_path", "last_database_path", "", str),
+        ("astap_path", "astap_path", "", str),
+        ("astrometry_net_api_key", "astrometry_net_api_key", "", str),
+        ("astrometry_net_force_image_upload", "astrometry_net_force_image_upload", False, bool),
+        ("solve_field_path", "solve_field_path", "", str),
+        ("solve_field_wsl_distro", "solve_field_wsl_distro", "", str),
+        ("solve_field_timeout", "wsl_solver_timeout", 300, int),
+        ("plate_solve_primary_solver", "plate_solve_primary_solver", 0, int),
+        ("plate_solve_backup_solver", "plate_solve_backup_solver", -1, int),
+        ("plate_solve_hint_ra", "plate_solve_hint_ra", "", str),
+        ("plate_solve_hint_dec", "plate_solve_hint_dec", "", str),
+        ("plate_solve_hint_scale", "plate_solve_hint_scale", 0.0, float),
+        ("plate_solve_hint_mode", "plate_solve_hint_mode", "fallback", str),
+        ("mcp_enabled", "mcp_enabled", False, bool),
+        ("mcp_port", "mcp_port", 8765, int),
+        ("last_export_xisf_as_fits", "last_export_xisf_as_fits", False, bool),
+        ("last_export_override_platesolve", "last_export_override_platesolve", False, bool),
+        ("last_export_custom_headers", "last_export_custom_headers", "", str),
+        ("last_export_use_master", "last_export_use_master", False, bool),
+        ("last_export_shared_session", "last_export_shared_session", False, bool),
+        ("last_catalog", "last_catalog", "", str),
+        ("bad_file_patterns", "bad_file_patterns", "bad*", str),
+        ("bad_dir_patterns", "bad_dir_patterns", "bad*", str),
+        ("project_hidden_cols", "project_hidden_cols", "", str),
+        ("use_internal_viewer", "use_internal_viewer", True, bool),
+        ("compress_parallelism", "compress_parallelism", 2, int),
+        ("compress_level", "compress_level", 9, int),
+        ("obs_timezone", "obs_timezone", "", str),
+        ("annotation_mag_limit", "annotation_mag_limit", 19.0, float),
+    ]
 
     def __init__(self, organization_name="AstroFileManager", application_name="AstroFileManager"):
         self.settings = QSettings(organization_name, application_name)
@@ -258,189 +295,13 @@ class Settings:
         """Check if a setting exists."""
         return self.settings.contains(key)
 
-    def get_last_export_path(self):
-        """Get the last export path."""
-        return self.settings.value("last_export_path", "", str)
-
-    def set_last_export_path(self, value):
-        """Set the last export path."""
-        self.settings.setValue("last_export_path", value)
-
-    def get_last_export_decompress(self):
-        """Get the last export decompress option."""
-        return self.settings.value("last_export_decompress", True, bool)
-
-    def set_last_export_decompress(self, value):
-        """Set the last export decompress option."""
-        self.settings.setValue("last_export_decompress", value)
-
-    def get_last_export_patterns(self):
-        """Get the last export patterns."""
-        return self.settings.value("last_export_patterns", [], list)
-
-    def set_last_export_patterns(self, value):
-        """Set the last export patterns."""
-        self.settings.setValue("last_export_patterns", value)
-
-    def get_last_light_path(self):
-        return self.settings.value("last_light_path", "", str)
-
-    def set_last_light_path(self, value):
-        self.settings.setValue("last_light_path", value)
-
-    def get_last_database_path(self):
-        return self.settings.value("last_database_path", "", str)
-
-    def set_last_database_path(self, value):
-        self.settings.setValue("last_database_path", value)
-
-    def get_astap_path(self):
-        """Get the path to the ASTAP executable."""
-        return self.settings.value("astap_path", "", str)
-
-    def set_astap_path(self, value):
-        """Set the path to the ASTAP executable."""
-        self.settings.setValue("astap_path", value)
-
-    def get_astrometry_net_api_key(self):
-        """Get the API key for astrometry.net."""
-        return self.settings.value("astrometry_net_api_key", "", str)
-
-    def set_astrometry_net_api_key(self, value):
-        """Set the API key for astrometry.net."""
-        self.settings.setValue("astrometry_net_api_key", value)
-
-    def get_astrometry_net_force_image_upload(self):
-        return self.settings.value('astrometry_net_force_image_upload', False, bool)
-
-    def set_astrometry_net_force_image_upload(self, value):
-        return self.settings.setValue('astrometry_net_force_image_upload', value)
-
-    def get_solve_field_path(self) -> str:
-        return self.settings.value('solve_field_path', '', str)
-
-    def set_solve_field_path(self, value: str):
-        self.settings.setValue('solve_field_path', value)
-
-    def get_solve_field_wsl_distro(self) -> str:
-        return self.settings.value('solve_field_wsl_distro', '', str)
-
-    def set_solve_field_wsl_distro(self, value: str):
-        self.settings.setValue('solve_field_wsl_distro', value)
-
-    def get_solve_field_timeout(self) -> int:
-        return self.settings.value('wsl_solver_timeout', 300, int)
-
-    def set_solve_field_timeout(self, value: int):
-        self.settings.setValue('wsl_solver_timeout', value)
-
-    def get_plate_solve_primary_solver(self) -> int:
-        return self.settings.value('plate_solve_primary_solver', 0, int)
-
-    def set_plate_solve_primary_solver(self, value: int):
-        self.settings.setValue('plate_solve_primary_solver', value)
-
-    def get_plate_solve_backup_solver(self) -> int:
-        return self.settings.value('plate_solve_backup_solver', -1, int)
-
-    def set_plate_solve_backup_solver(self, value: int):
-        self.settings.setValue('plate_solve_backup_solver', value)
-
-    def get_plate_solve_hint_ra(self) -> str:
-        return self.settings.value('plate_solve_hint_ra', '', str)
-
-    def set_plate_solve_hint_ra(self, value: str):
-        self.settings.setValue('plate_solve_hint_ra', value)
-
-    def get_plate_solve_hint_dec(self) -> str:
-        return self.settings.value('plate_solve_hint_dec', '', str)
-
-    def set_plate_solve_hint_dec(self, value: str):
-        self.settings.setValue('plate_solve_hint_dec', value)
-
-    def get_plate_solve_hint_scale(self) -> float:
-        return self.settings.value('plate_solve_hint_scale', 0.0, float)
-
-    def set_plate_solve_hint_scale(self, value: float):
-        self.settings.setValue('plate_solve_hint_scale', value)
-
-    def get_plate_solve_hint_mode(self) -> str:
-        return self.settings.value('plate_solve_hint_mode', 'fallback', str)
-
-    def set_plate_solve_hint_mode(self, value: str):
-        self.settings.setValue('plate_solve_hint_mode', value)
-
-    def get_mcp_enabled(self) -> bool:
-        return self.settings.value('mcp_enabled', False, bool)
-
-    def set_mcp_enabled(self, value: bool):
-        self.settings.setValue('mcp_enabled', value)
-
-    def get_mcp_port(self) -> int:
-        return self.settings.value('mcp_port', 8765, int)
-
-    def set_mcp_port(self, value: int):
-        self.settings.setValue('mcp_port', value)
-
-    def get_last_export_xisf_as_fits(self):
-        return self.settings.value("last_export_xisf_as_fits", False, bool)
-
-    def get_last_export_override_platesolve(self):
-        return self.settings.value("last_export_override_platesolve", False, bool)
-
-    def get_last_export_custom_headers(self):
-        return self.settings.value("last_export_custom_headers", "", str)
-
-    def set_last_export_xisf_as_fits(self, value: bool):
-        self.settings.setValue("last_export_xisf_as_fits", value)
-
-    def set_last_export_override_platesolve(self, value: bool):
-        self.settings.setValue("last_export_override_platesolve", value)
-
-    def get_last_export_use_master(self):
-        return self.settings.value("last_export_use_master", False, bool)
-
-    def set_last_export_use_master(self, value: bool):
-        self.settings.setValue("last_export_use_master", value)
-
-    def get_last_export_shared_session(self) -> bool:
-        return self.settings.value("last_export_shared_session", False, bool)
-
-    def set_last_export_shared_session(self, value: bool):
-        self.settings.setValue("last_export_shared_session", value)
-
-    def set_last_export_custom_headers(self, value: str):
-        self.settings.setValue("last_export_custom_headers", value)
-
-    def get_last_catalog(self):
-        return self.settings.value("last_catalog", "", str)
-
-    def set_last_catalog(self, value: str):
-        self.settings.setValue("last_catalog", value)
-
-    def get_bad_file_patterns(self):
-        return self.settings.value("bad_file_patterns", "bad*", str)
-
-    def get_bad_dir_patterns(self):
-        return self.settings.value("bad_dir_patterns", "bad*", str)
-
-    def set_bad_file_patterns(self, value) -> str:
-        self.settings.setValue("bad_file_patterns", value)
-
-    def set_bad_dir_patterns(self, value) -> str:
-        self.settings.setValue("bad_dir_patterns", value)
+    # --- Settings needing custom (non value-backed) logic ---------------------
 
     def get_known_fits_keywords(self):
         return sorted(self.known_fits_keywords)
 
     def add_known_fits_keywords(self, keywords: list[str]):
         self.known_fits_keywords.update(keywords)
-
-    def get_project_hidden_cols(self):
-        return self.settings.value("project_hidden_cols", "", str)
-
-    def set_project_hidden_cols(self, value) -> str:
-        self.settings.setValue("project_hidden_cols", value)
 
     def get_column_presets(self) -> dict:
         import json
@@ -454,37 +315,6 @@ class Settings:
         import json
         self.settings.setValue("column_presets", json.dumps(presets))
 
-    def get_use_internal_viewer(self) -> bool:
-        return self.settings.value("use_internal_viewer", True, bool)
-
-    def set_use_internal_viewer(self, value: bool):
-        self.settings.setValue("use_internal_viewer", value)
-
-    def get_compress_parallelism(self) -> int:
-        return self.settings.value('compress_parallelism', 2, int)
-
-    def set_compress_parallelism(self, value: int):
-        self.settings.setValue('compress_parallelism', value)
-
-    def get_compress_level(self) -> int:
-        return self.settings.value('compress_level', 9, int)
-
-    def set_compress_level(self, value: int):
-        self.settings.setValue('compress_level', value)
-
-    def get_obs_timezone(self) -> str:
-        """Get the configured observatory timezone name (e.g. 'Europe/Brussels'). Empty = system default."""
-        return self.settings.value('obs_timezone', '', str)
-
-    def set_obs_timezone(self, value: str):
-        self.settings.setValue('obs_timezone', value)
-
-    def get_annotation_mag_limit(self) -> float:
-        return self.settings.value('annotation_mag_limit', 19.0, float)
-
-    def set_annotation_mag_limit(self, value: float):
-        self.settings.setValue('annotation_mag_limit', value)
-
     def get_annotation_collapsed_catalogs(self) -> set[str]:
         raw = self.settings.value('annotation_collapsed_catalogs', '', str)
         return set(raw.split(',')) - {''} if raw else set()
@@ -496,6 +326,31 @@ class Settings:
         """Ensure settings are saved to disk."""
         self.settings.setValue("known_fits_keywords", "|".join(self.known_fits_keywords))
         self.settings.sync()
+
+
+def _install_setting_accessors(cls) -> None:
+    """Generate get_<suffix>/set_<suffix> methods on *cls* from its ``_SPECS`` table.
+
+    Custom methods already defined on the class take precedence and are never overwritten.
+    """
+    def _make_getter(key, default, typ):
+        def getter(self):
+            return self.settings.value(key, default, typ)
+        return getter
+
+    def _make_setter(key):
+        def setter(self, value):
+            self.settings.setValue(key, value)
+        return setter
+
+    for suffix, key, default, typ in cls._SPECS:
+        if f"get_{suffix}" not in cls.__dict__:
+            setattr(cls, f"get_{suffix}", _make_getter(key, default, typ))
+        if f"set_{suffix}" not in cls.__dict__:
+            setattr(cls, f"set_{suffix}", _make_setter(key))
+
+
+_install_setting_accessors(Settings)
 
 
 def backup_database(db: SqliteDatabase, backup_path: str | Path):

@@ -1,5 +1,4 @@
 import csv
-import json
 import sys
 from pathlib import Path
 from typing import List, Tuple
@@ -10,7 +9,7 @@ from astropy.io.fits import Header
 from peewee import JOIN
 
 from photonfinder.core import ApplicationContext, decompress
-from photonfinder.filesystem import header_from_xisf_dict, Importer, parse_FITS_header
+from photonfinder.filesystem import decode_header_blob
 from photonfinder.models import SearchCriteria, File, Image, FitsHeader, FileWCS
 from photonfinder.platesolver import SolverBase
 from photonfinder.ui.BackgroundLoader import FileProcessingTask
@@ -122,14 +121,8 @@ class MetadataReportTask(FileProcessingTask):
                 header = file.header_obj
             else:
                 if hasattr(file, 'fitsheader') and file.fitsheader:
-                    if Importer.is_xisf_by_name(file.name):
-                        header_dict = json.loads(decompress(file.fitsheader.header))
-                        header = header_from_xisf_dict(header_dict)
-                        file.header_obj = header
-                    else:
-                        header_data = decompress(file.fitsheader.header)
-                        header = parse_FITS_header(header_data)
-                        file.header_obj = header
+                    header = decode_header_blob(file.fitsheader.header)
+                    file.header_obj = header
                 else:
                     header = None
             return header.get(field_name, None) if header else None

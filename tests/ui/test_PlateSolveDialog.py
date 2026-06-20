@@ -1,4 +1,3 @@
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,8 +27,7 @@ def _call_infer_scale(header_dict, filename="image.fits"):
     mock_fh = MagicMock()
     mock_fh.header = b"ignored"
     with patch("photonfinder.ui.PlateSolveDialog.FitsHeader") as mock_FH, \
-         patch("photonfinder.ui.PlateSolveDialog.decompress", return_value=b"raw"), \
-         patch("photonfinder.ui.PlateSolveDialog.parse_FITS_header", return_value=header_dict):
+         patch("photonfinder.ui.PlateSolveDialog.decode_header_blob", return_value=header_dict):
         mock_FH.get.return_value = mock_fh
         return _infer_scale_from_header(file)
 
@@ -76,34 +74,30 @@ def test_infer_scale_db_exception_returns_none():
         assert _infer_scale_from_header(file) is None
 
 
-def test_infer_scale_xisf_uses_xisf_parser():
+def test_infer_scale_xisf_uses_decoded_header():
     file = _mock_file("image.xisf")
     mock_fh = MagicMock()
     mock_fh.header = b"ignored"
-    header_mock = {"SCALE": "1.5"}
     with patch("photonfinder.ui.PlateSolveDialog.FitsHeader") as mock_FH, \
-         patch("photonfinder.ui.PlateSolveDialog.decompress", return_value=json.dumps({}).encode()), \
-         patch("photonfinder.ui.PlateSolveDialog.header_from_xisf_dict", return_value=header_mock) as mock_xisf, \
-         patch("photonfinder.ui.PlateSolveDialog.parse_FITS_header") as mock_fits:
+         patch("photonfinder.ui.PlateSolveDialog.decode_header_blob",
+               return_value={"SCALE": "1.5"}) as mock_decode:
         mock_FH.get.return_value = mock_fh
         result = _infer_scale_from_header(file)
     assert result == pytest.approx(1.5)
-    mock_xisf.assert_called_once()
-    mock_fits.assert_not_called()
+    mock_decode.assert_called_once_with(b"ignored")
 
 
-def test_infer_scale_fits_file_uses_fits_parser():
+def test_infer_scale_fits_file_uses_decoded_header():
     file = _mock_file("image.fits")
     mock_fh = MagicMock()
     mock_fh.header = b"ignored"
     with patch("photonfinder.ui.PlateSolveDialog.FitsHeader") as mock_FH, \
-         patch("photonfinder.ui.PlateSolveDialog.decompress", return_value=b"raw"), \
-         patch("photonfinder.ui.PlateSolveDialog.parse_FITS_header", return_value={"SCALE": "0.5"}) as mock_fits, \
-         patch("photonfinder.ui.PlateSolveDialog.header_from_xisf_dict") as mock_xisf:
+         patch("photonfinder.ui.PlateSolveDialog.decode_header_blob",
+               return_value={"SCALE": "0.5"}) as mock_decode:
         mock_FH.get.return_value = mock_fh
-        _infer_scale_from_header(file)
-    mock_fits.assert_called_once()
-    mock_xisf.assert_not_called()
+        result = _infer_scale_from_header(file)
+    assert result == pytest.approx(0.5)
+    mock_decode.assert_called_once_with(b"ignored")
 
 
 # ---------------------------------------------------------------------------

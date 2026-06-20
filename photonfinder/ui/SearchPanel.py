@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import subprocess
@@ -13,7 +12,7 @@ from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext, decompress, Change
-from photonfinder.filesystem import Importer, is_compressible, header_from_xisf_dict, parse_FITS_header
+from photonfinder.filesystem import is_compressible, parse_FITS_header, decode_header_blob
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
     FileWCS, ProjectFile, LibraryRoot
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask, ImageAnalysisTask
@@ -924,12 +923,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 fits_header = FitsHeader.get(FitsHeader.file == file)
                 wcs: FileWCS = FileWCS.get_or_none(FileWCS.file == file)
                 from astropy.io.fits import Header
-                header_bytes = decompress(fits_header.header)
-                if Importer.is_fits_by_name(file.name):
-                    header: Header = parse_FITS_header(header_bytes)
-                elif Importer.is_xisf_by_name(file.name):
-                    header_dict = json.loads(header_bytes.decode('utf-8'))
-                    header = header_from_xisf_dict(header_dict)
+                header: Header = decode_header_blob(fits_header.header)
 
                 if wcs:
                     wcs_bytes = decompress(wcs.wcs)

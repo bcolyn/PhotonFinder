@@ -10,12 +10,10 @@ from typing import Optional
 
 import astropy.units as u
 from astropy.coordinates import SkyCoord
-from astropy_healpix import HEALPix
 from peewee import *
 from playhouse.sqlite_ext import RowIDField
 
-# Create HEALPix object with the same parameters as used in fits_handlers.py
-hp = HEALPix(nside=256, order='nested', frame='icrs')
+from photonfinder.core import hp
 
 
 
@@ -112,6 +110,14 @@ class SearchCriteria:
             result.append("Image Statistics filter")
         return ', '.join(result)
 
+    @staticmethod
+    def _with_reference(criteria: 'SearchCriteria', reference_frame: 'Image') -> 'SearchCriteria':
+        """Attach the reference frame's File (with its Image) to the criteria."""
+        if reference_file := reference_frame.file:
+            reference_file.image = reference_frame
+            criteria.reference_file = reference_file
+        return criteria
+
     @classmethod
     def find_dark(cls, reference_frame: 'Image') -> 'SearchCriteria':
         criteria = cls()
@@ -129,11 +135,7 @@ class SearchCriteria:
             criteria.offset = int(reference_frame.offset)
 
         criteria.type = "DARK"
-
-        if reference_file := reference_frame.file:
-            reference_file.image = reference_frame
-            criteria.reference_file = reference_file
-        return criteria
+        return cls._with_reference(criteria, reference_frame)
 
     @classmethod
     def find_flat(cls, reference_frame: 'Image', timedelta_days=7) -> 'SearchCriteria':
@@ -148,11 +150,7 @@ class SearchCriteria:
             criteria.start_datetime = reference_frame.date_obs - timedelta(days=timedelta_days)
             criteria.end_datetime = reference_frame.date_obs + timedelta(days=timedelta_days)
         criteria.type = "FLAT"
-
-        if reference_file := reference_frame.file:
-            reference_file.image = reference_frame
-            criteria.reference_file = reference_file
-        return criteria
+        return cls._with_reference(criteria, reference_frame)
 
     @classmethod
     def find_bias(cls, reference_frame: 'Image') -> 'SearchCriteria':
@@ -167,10 +165,7 @@ class SearchCriteria:
             criteria.offset = int(reference_frame.offset)
         # note: bias should be temperature-independent, so don't match thatfor
         criteria.type = "BIAS"
-        if reference_file := reference_frame.file:
-            reference_file.image = reference_frame
-            criteria.reference_file = reference_file
-        return criteria
+        return cls._with_reference(criteria, reference_frame)
 
     @classmethod
     def find_dark_flat(cls, flat_frame: 'Image') -> 'SearchCriteria':
@@ -190,10 +185,7 @@ class SearchCriteria:
         if reference_frame.object_name:
             criteria.object_name = str(reference_frame.object_name)
         criteria.type = "LIGHT"
-        if reference_file := reference_frame.file:
-            reference_file.image = reference_frame
-            criteria.reference_file = reference_file
-        return criteria
+        return cls._with_reference(criteria, reference_frame)
 
     @classmethod
     def find_master(cls, subs: list['Image'],
@@ -267,7 +259,7 @@ class SearchCriteria:
         elif isinstance(value, dict):
             return SearchCriteria._inflate_dict(value)
         else:
-            raise f"Can't inflate value {value}"
+            raise ValueError(f"Can't inflate value {value}")
 
     @staticmethod
     def _inflate_dict(data_dict):

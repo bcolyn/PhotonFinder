@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from peewee import JOIN
 
-from photonfinder.core import ApplicationContext, decompress
+from photonfinder.core import ApplicationContext
 from photonfinder.fits_handlers import _datetime, _float
 from photonfinder.models import File, Image, FitsHeader, SearchCriteria
 
@@ -168,9 +168,7 @@ class CalibrationMatcher:
         """Batch-load FITS header info for given files."""
         if not hasattr(self, 'context') or not files:
             return {}
-        import json
-        from astropy.io.fits import Header as AstropyHeader
-        from photonfinder.filesystem import header_from_xisf_dict
+        from photonfinder.filesystem import decode_header_blob
         file_ids = [f.id for f in files if hasattr(f, 'id') and f.id is not None]
         if not file_ids:
             return {}
@@ -179,12 +177,7 @@ class CalibrationMatcher:
             with self.context.database.bind_ctx([FitsHeader]):
                 for fh in FitsHeader.select().where(FitsHeader.file_id.in_(file_ids)):
                     try:
-                        raw = decompress(fh.header)
-                        if raw.startswith(b'{'):
-                            hdr = header_from_xisf_dict(json.loads(raw))
-                        else:
-                            hdr = AstropyHeader.fromstring(raw)
-                        result[fh.file_id] = _session_info_from_header(hdr)
+                        result[fh.file_id] = _session_info_from_header(decode_header_blob(fh.header))
                     except Exception:
                         pass
         except Exception:
@@ -221,15 +214,19 @@ class CalibrationMatcher:
             key=lambda kv: (kv[0].session_date or datetime.date.min, kv[0].filter or "")
         ))
 
-    def find_candidates(self, criteria: SearchCriteria) -> list[CalibrationCandidate]:
-        """Run a calibration search and group results by night into CalibrationCandidate list."""
+    def _query_files(self, criteria: SearchCriteria) -> list[File]:
+        """Run a SearchCriteria query and return File rows with joined Image data."""
         with self.context.database.bind_ctx([File, Image]):
             query = (File
                      .select(File, Image)
                      .join(Image, JOIN.LEFT_OUTER)
                      .order_by(File.root, File.path, File.name))
             query = Image.apply_search_criteria(query, criteria)
-            files = list(query)
+            return list(query)
+
+    def find_candidates(self, criteria: SearchCriteria) -> list[CalibrationCandidate]:
+        """Run a calibration search and group results by night into CalibrationCandidate list."""
+        files = self._query_files(criteria)
 
         session_info = self._load_session_info(files)
         fallback_tz = self._fallback_tz()
@@ -381,13 +378,7 @@ class CalibrationMatcher:
         criteria = SearchCriteria.find_master(images)
         if not criteria.type:
             return []
-        with self.context.database.bind_ctx([File, Image]):
-            query = (File
-                     .select(File, Image)
-                     .join(Image, JOIN.LEFT_OUTER)
-                     .order_by(File.root, File.path, File.name))
-            query = Image.apply_search_criteria(query, criteria)
-            return list(query)
+        return self._query_files(criteria)
 
     def preselect_from_existing(self, sessions: dict[SessionKey, list[File]],
                                 existing_files: list[File]) -> dict[

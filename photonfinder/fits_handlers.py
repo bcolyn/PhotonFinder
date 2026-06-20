@@ -8,13 +8,9 @@ from typing import Optional, Tuple
 import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astropy.io.fits import Header
-from astropy_healpix import HEALPix
 
 from photonfinder.models import File, Image
-from photonfinder.core import StatusReporter
-
-# Calculate HEALPix value with nside=256
-hp = HEALPix(nside=256, order='nested', frame='icrs')
+from photonfinder.core import StatusReporter, hp
 
 
 def _upper(value: str):
@@ -205,8 +201,8 @@ class FitsHeaderHandler:
             return None, None, None
 
         def _try_parse(value):
-            if isinstance(ra_value, (int, float)):
-                return ra_value
+            if isinstance(value, (int, float)):
+                return value
             try:
                 return float(value)
             except ValueError:
