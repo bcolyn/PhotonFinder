@@ -14,7 +14,7 @@ from peewee import JOIN, fn
 from photonfinder.core import ApplicationContext, compress, decompress
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, ProjectFile, \
-    Project, ImageStats
+    Project, ImageStats, search_files
 from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
 from photonfinder.filesystem import parse_FITS_header, Importer, header_from_xisf_dict
 from astropy.wcs import WCS
@@ -184,59 +184,8 @@ class SearchResultsLoader(BackgroundLoaderBase):
     def _search_task(self, search_criteria, page):
         """Background task to search for files matching the criteria."""
         try:
-            project_names_subq = (
-                ProjectFile
-                .select(
-                    ProjectFile.file.alias('file_id'),
-                    fn.GROUP_CONCAT(Project.name).alias('project_names')
-                )
-                .join(Project)
-                .group_by(ProjectFile.file)
-            )
-
-            # Start building the query
-            fields = [File.name, Image.image_type, Image.filter, Image.exposure, Image.gain, Image.offset,
-                      Image.binning, Image.set_temp, Image.camera, Image.telescope, Image.object_name,
-                      Image.date_obs, File.path, File.size, File.mtime_millis, Image.coord_ra, Image.coord_dec,
-                      FileWCS.wcs.is_null(False).alias('has_wcs'), project_names_subq.c.project_names.alias('project_names'),
-                      ImageStats.background_median.alias('stats_background_median'),
-                      ImageStats.background_rms.alias('stats_background_rms'),
-                      ImageStats.star_count.alias('stats_star_count'),
-                      ImageStats.fwhm_median.alias('stats_fwhm_median'),
-                      ImageStats.elongation_median.alias('stats_elongation_median')]
-            query = (File
-                     .select(*(fields + [File, Image, LibraryRoot]))
-                     .join_from(File, LibraryRoot)
-                     .join_from(File, Image, JOIN.LEFT_OUTER)
-                     .join_from(File, FileWCS, JOIN.LEFT_OUTER)
-                     .join_from(File, ImageStats, JOIN.LEFT_OUTER)
-                     .join_from(File, project_names_subq, JOIN.LEFT_OUTER, on=(File.rowid == project_names_subq.c.file_id))
-                     )
-
-
-            # Apply search criteria to the query
-            query = Image.apply_search_criteria(query, search_criteria)
-
-            # Apply sorting
-            if search_criteria.sorting_index is None:
-                query = query.order_by(File.root, File.path, File.name)
-            else:
-                field = fields[search_criteria.sorting_index]
-                if field == File.name or field == File.path:
-                    field = field.collate("NOCASE")
-                query = query.order_by(field.desc()) if search_criteria.sorting_desc else query.order_by(field.asc())
-
-            # Get total count for pagination
-            self.total_results = query.count()
-
-            # Apply pagination
-            query = query.paginate(page + 1, self.page_size)
-
-            # Execute the query and get results
-            results = list(query)
-
-            # Check if there are more results
-            has_more = (page + 1) * self.page_size < self.total_results
+            results, total, has_more = search_files(search_criteria, page, self.page_size)
+            self.total_results = total
 
             # Emit signal with the results
             self.results_loaded.emit(results, page, self.total_results, has_more)

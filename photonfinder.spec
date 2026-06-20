@@ -2,20 +2,26 @@
 
 from PyInstaller.utils.hooks import copy_metadata
 from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_submodules
 
 datas = [('icon.png', '.'), ('data/catalog.db', '.')]
 datas += copy_metadata('xisf')
+datas += copy_metadata('mcp')
 datas += collect_data_files('astroquery')
 datas += collect_data_files('photutils')
 datas += collect_data_files('timezonefinder')
 datas += collect_data_files('tzdata')
+
+# uvicorn and the MCP SDK import their loop/protocol/transport implementations
+# dynamically, which PyInstaller cannot detect by static analysis.
+hiddenimports = collect_submodules('uvicorn') + collect_submodules('mcp')
 
 block_cipher = None
 
 a = Analysis(['photonfinder\\main.py'],
              binaries=[],
              datas=datas,
-             hiddenimports=[],
+             hiddenimports=hiddenimports,
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],

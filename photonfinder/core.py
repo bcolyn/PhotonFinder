@@ -370,6 +370,18 @@ class Settings:
     def set_plate_solve_hint_mode(self, value: str):
         self.settings.setValue('plate_solve_hint_mode', value)
 
+    def get_mcp_enabled(self) -> bool:
+        return self.settings.value('mcp_enabled', False, bool)
+
+    def set_mcp_enabled(self, value: bool):
+        self.settings.setValue('mcp_enabled', value)
+
+    def get_mcp_port(self) -> int:
+        return self.settings.value('mcp_port', 8765, int)
+
+    def set_mcp_port(self, value: int):
+        self.settings.setValue('mcp_port', value)
+
     def get_last_export_xisf_as_fits(self):
         return self.settings.value("last_export_xisf_as_fits", False, bool)
 

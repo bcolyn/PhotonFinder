@@ -84,6 +84,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.restore_session()
         self.setAcceptDrops(True)
 
+        self.mcp_controller = None
+        self.start_mcp_server()
+
+    def start_mcp_server(self):
+        """Start the embedded MCP server if enabled in settings."""
+        if not self.context.settings.get_mcp_enabled():
+            return
+        try:
+            from photonfinder.mcp_server import McpServerController
+            self.mcp_controller = McpServerController(
+                self.context, port=self.context.settings.get_mcp_port())
+            self.mcp_controller.start()
+        except Exception as e:
+            logging.error(f"Failed to start MCP server: {e}", exc_info=True)
+            self.mcp_controller = None
+
     def connect_signals(self):
         self.tabWidget.tabCloseRequested.connect(self.close_search_tab)
         self.action_Export_Data.triggered.connect(self.export_data)
@@ -138,6 +154,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def closeEvent(self, event):
         try:
             self.save_session()
+            if self.mcp_controller is not None:
+                self.mcp_controller.stop()
         finally:
             event.accept()  # Accept the event to actually close the window
 

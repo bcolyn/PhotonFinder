@@ -837,3 +837,114 @@ class CatalogEntry(Model):
 
 
 CATALOG_MODELS = [CatalogEntry]
+
+
+# Ordered list of selected columns. The position in this list is what
+# SearchCriteria.sorting_index refers to (it maps to result-table columns), so the
+# order must stay in sync with the SearchPanel result columns.
+def _build_search_query(search_criteria: SearchCriteria):
+    """Build the paginated search query shared by the GUI and the MCP server.
+
+    Returns a tuple of (query, fields) where `fields` is the ordered list of selected
+    columns used both for the SELECT and for resolving SearchCriteria.sorting_index.
+    """
+    project_names_subq = (
+        ProjectFile
+        .select(
+            ProjectFile.file.alias('file_id'),
+            fn.GROUP_CONCAT(Project.name).alias('project_names')
+        )
+        .join(Project)
+        .group_by(ProjectFile.file)
+    )
+
+    fields = [File.name, Image.image_type, Image.filter, Image.exposure, Image.gain, Image.offset,
+              Image.binning, Image.set_temp, Image.camera, Image.telescope, Image.object_name,
+              Image.date_obs, File.path, File.size, File.mtime_millis, Image.coord_ra, Image.coord_dec,
+              FileWCS.wcs.is_null(False).alias('has_wcs'),
+              project_names_subq.c.project_names.alias('project_names'),
+              ImageStats.background_median.alias('stats_background_median'),
+              ImageStats.background_rms.alias('stats_background_rms'),
+              ImageStats.star_count.alias('stats_star_count'),
+              ImageStats.fwhm_median.alias('stats_fwhm_median'),
+              ImageStats.elongation_median.alias('stats_elongation_median')]
+    query = (File
+             .select(*(fields + [File, Image, LibraryRoot]))
+             .join_from(File, LibraryRoot)
+             .join_from(File, Image, JOIN.LEFT_OUTER)
+             .join_from(File, FileWCS, JOIN.LEFT_OUTER)
+             .join_from(File, ImageStats, JOIN.LEFT_OUTER)
+             .join_from(File, project_names_subq, JOIN.LEFT_OUTER,
+                        on=(File.rowid == project_names_subq.c.file_id))
+             )
+    query = Image.apply_search_criteria(query, search_criteria)
+    return query, fields
+
+
+def search_files(search_criteria: SearchCriteria, page: int = 0, page_size: int = 100):
+    """Run a paginated file search for the given criteria.
+
+    Returns (rows, total, has_more) where `rows` are File model instances with joined
+    Image / LibraryRoot data and aliased columns (has_wcs, project_names, stats_*).
+    `page` is zero-based. Must be called with the models bound to a database
+    (e.g. inside `context.database.bind_ctx(CORE_MODELS)`).
+    """
+    query, fields = _build_search_query(search_criteria)
+
+    if search_criteria.sorting_index is None:
+        query = query.order_by(File.root, File.path, File.name)
+    else:
+        field = fields[search_criteria.sorting_index]
+        if field == File.name or field == File.path:
+            field = field.collate("NOCASE")
+        query = query.order_by(field.desc()) if search_criteria.sorting_desc else query.order_by(field.asc())
+
+    total = query.count()
+    rows = list(query.paginate(page + 1, page_size))
+    has_more = (page + 1) * page_size < total
+    return rows, total, has_more
+
+
+_SERIALIZED_IMAGE_FIELDS = (
+    "image_type", "camera", "filter", "exposure", "gain", "offset", "binning",
+    "set_temp", "telescope", "object_name", "coord_ra", "coord_dec",
+    "coord_radius", "width", "height",
+)
+
+
+def serialize_search_row(row: 'File') -> dict:
+    """Flatten one search result row into a JSON-safe dict for the MCP server."""
+    result = {
+        "rowid": row.rowid,
+        "name": row.name,
+        "path": row.path,
+        "size": row.size,
+        "mtime_millis": row.mtime_millis,
+        "full_filename": row.full_filename(),
+        "root": {"rowid": row.root.rowid, "name": row.root.name, "path": row.root.path},
+        "has_wcs": bool(getattr(row, "has_wcs", False)),
+    }
+
+    image = getattr(row, "image", None)
+    if image is not None and image.rowid is not None:
+        image_data = {name: getattr(image, name) for name in _SERIALIZED_IMAGE_FIELDS}
+        date_obs = image.date_obs
+        image_data["date_obs"] = date_obs.isoformat() if isinstance(date_obs, datetime) else date_obs
+        result["image"] = image_data
+    else:
+        result["image"] = None
+
+    if hasattr(row, "projectfile") and getattr(row.projectfile, "project_names", None):
+        result["projects"] = row.projectfile.project_names.split(",")
+    else:
+        result["projects"] = []
+
+    data = row.__data__
+    result["stats"] = {
+        "background_median": data.get("stats_background_median"),
+        "background_rms": data.get("stats_background_rms"),
+        "star_count": data.get("stats_star_count"),
+        "fwhm_median": data.get("stats_fwhm_median"),
+        "elongation_median": data.get("stats_elongation_median"),
+    }
+    return result

@@ -27,6 +27,9 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
 
         self.obs_timezone_edit.setText(self.context.settings.get_obs_timezone())
 
+        self.mcp_enabled_check.setChecked(self.context.settings.get_mcp_enabled())
+        self.mcp_port_spin.setValue(self.context.settings.get_mcp_port())
+
         self.astap_browse_button.clicked.connect(self.browse_astap_executable)
         self.solve_field_browse_button.clicked.connect(self.browse_solve_field_executable)
 
@@ -70,6 +73,9 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.context.settings.set_use_internal_viewer(self.internal_viewer_check.isChecked())
 
         self.context.settings.set_obs_timezone(self.obs_timezone_edit.text().strip())
+
+        self.context.settings.set_mcp_enabled(self.mcp_enabled_check.isChecked())
+        self.context.settings.set_mcp_port(self.mcp_port_spin.value())
 
         self.context.settings.sync()
         super(SettingsDialog, self).accept()
