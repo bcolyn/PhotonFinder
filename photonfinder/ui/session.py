@@ -12,6 +12,7 @@ class Session:
     criteria: SearchCriteria
     title: str
     hidden_columns: str
+    title_is_custom: bool = False
 
     @staticmethod
     def _serialize(value) -> dict:

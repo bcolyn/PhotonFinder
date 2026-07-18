@@ -71,6 +71,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.update_in_progress = False
         self.select_all_pending = False
         self.title = "Loading"
+        self.title_is_custom = False
         self.mainWindow = mainWindow
         self.search_criteria = SearchCriteria() #TODO: previous / next?
         self.advanced_options = dict()
@@ -213,7 +214,16 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.update_search_criteria()
 
     def set_title(self, text: str):
+        """Set an auto-generated tab title; ignored once the user has set a custom title."""
+        if self.title_is_custom:
+            return
         self.title = text
+        self.mainWindow.set_tab_title(self, text)
+
+    def set_custom_title(self, text: str):
+        """Set a user-defined tab title, which takes precedence over auto-generated titles."""
+        self.title = text
+        self.title_is_custom = True
         self.mainWindow.set_tab_title(self, text)
 
     def get_title(self) -> str:

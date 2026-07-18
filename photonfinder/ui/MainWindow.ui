@@ -69,6 +69,7 @@
     </property>
     <addaction name="action_New_Tab"/>
     <addaction name="actionDuplicate_Tab"/>
+    <addaction name="action_Rename_Tab"/>
     <addaction name="action_Close_Tab"/>
     <addaction name="separator"/>
     <addaction name="action_Create_Database"/>
@@ -437,6 +438,11 @@
   <action name="actionDuplicate_Tab">
    <property name="text">
     <string>Duplicate Tab</string>
+   </property>
+  </action>
+  <action name="action_Rename_Tab">
+   <property name="text">
+    <string>Rename Tab...</string>
    </property>
   </action>
   <action name="actionFind_matching_darks">

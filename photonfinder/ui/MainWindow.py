@@ -125,6 +125,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.action_Create_Database.triggered.connect(self.create_database)
         self.action_Open_Database.triggered.connect(self.open_database)
         self.actionDuplicate_Tab.triggered.connect(self.dup_search_tab)
+        self.action_Rename_Tab.triggered.connect(self.rename_current_search_tab)
+        self.tabWidget.tabBar().tabBarDoubleClicked.connect(self.rename_search_tab)
         self.actionFind_matching_darks.triggered.connect(self.find_matching_darks)
         self.actionFind_matching_flats.triggered.connect(self.find_matching_flats)
         self.action_About.triggered.connect(self.show_about_dialog)
@@ -185,7 +187,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             sessions = self.session_manager.load_sessions()
             for session in sessions:
                 panel = self.new_search_tab(session.criteria, hidden_columns=session.hidden_columns)
-                panel.set_title(session.title)
+                if session.title_is_custom:
+                    panel.set_custom_title(session.title)
+                else:
+                    panel.set_title(session.title)
         except Exception as e:
             logging.error(e, exc_info=True)
         finally:
@@ -196,7 +201,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         sessions = [Session(
             criteria=panel.search_criteria,
             hidden_columns=panel.visibility_controller.save_visibility(),
-            title=panel.title
+            title=panel.title,
+            title_is_custom=panel.title_is_custom
         ) for panel in self.get_search_panels()]
         self.session_manager.save_sessions(sessions)
 
@@ -225,6 +231,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         assert isinstance(current_widget, SearchPanel)
         current_criteria = current_widget.search_criteria
         self.new_search_tab(current_criteria)
+
+    def rename_current_search_tab(self):
+        self.rename_search_tab(self.tabWidget.currentIndex())
+
+    def rename_search_tab(self, index):
+        if index < 0:
+            return
+        panel = self.tabWidget.widget(index)
+        assert isinstance(panel, SearchPanel)
+        new_title, ok = QInputDialog.getText(self, "Rename Tab", "Tab name:", text=panel.get_title())
+        if ok and new_title.strip():
+            panel.set_custom_title(new_title.strip())
 
     def close_current_search_tab(self):
         self.close_search_tab(self.tabWidget.currentIndex())
