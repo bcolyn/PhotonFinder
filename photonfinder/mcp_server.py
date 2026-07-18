@@ -17,6 +17,7 @@ import dataclasses
 import json
 import logging
 import threading
+from datetime import datetime
 from typing import Optional
 
 import anyio
@@ -24,12 +25,15 @@ from peewee import JOIN
 
 from photonfinder.core import ApplicationContext
 from photonfinder.models import (
-    CORE_MODELS, SearchCriteria, File, Image, LibraryRoot, Project, ProjectFile,
-    FitsHeader, FileWCS,
+    CORE_MODELS, CATALOG_MODELS, SearchCriteria, File, Image, LibraryRoot, Project,
+    ProjectFile, FitsHeader, FileWCS, CatalogEntry,
     search_files as run_search_files, serialize_search_row, _SERIALIZED_IMAGE_FIELDS,
 )
 
 logger = logging.getLogger(__name__)
+# Search logging is DEBUG-level diagnostic detail; enable it for this module specifically
+# rather than dropping the whole app to DEBUG (root logger stays at main.py's LEVEL).
+logger.setLevel(logging.DEBUG)
 
 MAX_PAGE_SIZE = 500
 
@@ -79,9 +83,15 @@ def query_search(context: ApplicationContext, criteria: Optional[dict] = None,
     page_size = max(1, min(page_size, MAX_PAGE_SIZE))
     # Drop unknown keys so an over-eager agent can't trigger a TypeError.
     clean = {k: v for k, v in criteria.items() if k in _SEARCH_CRITERIA_FIELDS}
+    dropped = criteria.keys() - clean.keys()
+    if dropped:
+        logger.debug("search_files: dropping unknown criteria fields: %s", sorted(dropped))
+    logger.debug("search_files: criteria=%s page=%d page_size=%d", clean, page, page_size)
     with context.database.bind_ctx(CORE_MODELS):
         sc = SearchCriteria.from_json(json.dumps(clean))
         rows, total, has_more = run_search_files(sc, page, page_size)
+        logger.debug("search_files: returned %d rows (total=%d, has_more=%s)",
+                      len(rows), total, has_more)
         return {
             "results": [serialize_search_row(r) for r in rows],
             "page": page,
@@ -97,10 +107,36 @@ def query_library_roots(context: ApplicationContext) -> list[dict]:
                 for r in LibraryRoot.select().order_by(LibraryRoot.name)]
 
 
+def _serialize_project(p: Project) -> dict:
+    date_obs = getattr(p, "date_obs", None)
+    if isinstance(date_obs, str):
+        date_obs = datetime.fromisoformat(date_obs)
+    if isinstance(date_obs, datetime):
+        date_obs = date_obs.isoformat()
+    # `coord_ra`/`coord_dec` come back nested under a synthetic `image` sub-object --
+    # peewee attributes aliased columns to the model whose fields they name-match.
+    image = getattr(p, "image", None)
+    return {
+        "rowid": p.rowid,
+        "name": p.name,
+        "file_count": getattr(p, "file_counts", None) or 0,
+        "last_date_obs": date_obs,
+        "coord_ra": getattr(image, "coord_ra", None),
+        "coord_dec": getattr(image, "coord_dec", None),
+    }
+
+
 def query_projects(context: ApplicationContext) -> list[dict]:
     with context.database.bind_ctx(CORE_MODELS):
-        return [{"rowid": p.rowid, "name": p.name}
-                for p in Project.select().order_by(Project.name)]
+        return [_serialize_project(p) for p in Project.list_projects_with_image_data()]
+
+
+def query_project_details(context: ApplicationContext, rowid: int) -> dict:
+    with context.database.bind_ctx(CORE_MODELS):
+        for p in Project.list_projects_with_image_data():
+            if p.rowid == rowid:
+                return _serialize_project(p)
+        return {"error": f"No project with rowid {rowid}"}
 
 
 def query_distinct_values(context: ApplicationContext, field: str) -> list:
@@ -163,6 +199,38 @@ def query_file_details(context: ApplicationContext, rowid: int) -> dict:
         return details
 
 
+def query_list_catalogs(context: ApplicationContext) -> list[str]:
+    with context.database.bind_ctx(CATALOG_MODELS):
+        return [row[0] for row in
+                CatalogEntry.select(CatalogEntry.catalog).distinct()
+                .order_by(CatalogEntry.catalog).tuples()]
+
+
+def query_lookup_object(context: ApplicationContext, catalog: str, catalog_id: str) -> dict:
+    with context.database.bind_ctx(CATALOG_MODELS):
+        entry = (CatalogEntry
+                 .select()
+                 .where(
+                     (CatalogEntry.catalog == catalog) &
+                     ((CatalogEntry.catalog_id == catalog_id) |
+                      (CatalogEntry.canonical_id == catalog_id))
+                 )
+                 .first())
+        if entry is None:
+            return {"error": f"'{catalog_id}' not found in catalog '{catalog}'."}
+        return {
+            "catalog": entry.catalog,
+            "catalog_id": entry.catalog_id,
+            "canonical_id": entry.canonical_id,
+            "ra": entry.ra,
+            "dec": entry.dec,
+            "size": entry.size,
+            "axis_ratio": entry.axis_ratio,
+            "angle": entry.angle,
+            "magnitude": entry.magnitude,
+        }
+
+
 def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 8765):
     """Construct the FastMCP server with PhotonFinder's read-only tools."""
     from mcp.server.fastmcp import FastMCP
@@ -171,8 +239,11 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
         "PhotonFinder manages an astrophotography file library (FITS/XISF images and "
         "calibration frames). Use `search_files` with a SearchCriteria JSON object to find "
         "files; use `list_library_roots`, `list_projects` and `list_distinct_values` to "
-        "discover valid filter values, and `get_file_details` to inspect one file's full "
-        "metadata and FITS header. All tools are read-only."
+        "discover valid filter values, `get_project_details` to inspect a single project, "
+        "`get_file_details` to inspect one file's full metadata and FITS header, and "
+        "`lookup_object`/`list_catalogs` to resolve an object's RA/Dec from PhotonFinder's "
+        "local catalog database (no online lookups such as Simbad or Telescopius are "
+        "performed). All tools are read-only."
     )
     mcp = FastMCP(
         "PhotonFinder",
@@ -181,6 +252,12 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
         port=port,
         stateless_http=True,
     )
+
+    # The mcp library logs routine per-request/session chatter at INFO (e.g. "Terminating
+    # session: None", "Processing request of type ListToolsRequest"), which drowns out our
+    # own search logging. Quiet it down; our tools still log through `logger` above.
+    logging.getLogger("mcp.server.streamable_http").setLevel(logging.WARNING)
+    logging.getLogger("mcp.server.lowlevel.server").setLevel(logging.WARNING)
 
     @mcp.tool()
     async def search_files(criteria: Optional[dict] = None, page: int = 0,
@@ -194,11 +271,18 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
         `coord_ra`/`coord_dec` (RA in hours, Dec in degrees) plus `coord_radius` (degrees)
         for a cone search, `start_datetime`/`end_datetime` (ISO 8601), `plate_solved`
         (true/false), pixel-dimension and image-quality ranges (`width_min`, `fwhm_max`, ...),
-        and `header_text` (e.g. "GAIN=100", "FOCTEMP<0", or free text). Omit a field to
-        leave it unconstrained.
+        `project` (a project rowid from `list_projects`, or `-1` to match files that are
+        NOT assigned to any project), `header_text` (e.g. "GAIN=100", "FOCTEMP<0", or free
+        text), and `paths` to restrict the search to one or more library roots -- a list of
+        `{"root_id": ...}` objects, where `root_id` comes from `list_library_roots`.
+        Optionally add `path`, a subdirectory prefix within that root to narrow further
+        (omit or use `null` to match the whole root); `root_label` is accepted for
+        symmetry with `list_library_roots` output but is display-only and may be omitted.
+        Omit a field to leave it unconstrained.
 
         Returns `{results, page, page_size, total, has_more}`. `page` is zero-based.
-        Discover valid values for `filter`/`type`/`camera`/etc. via `list_distinct_values`.
+        Discover valid values for `filter`/`type`/`camera`/etc. via `list_distinct_values`,
+        and valid `paths` roots via `list_library_roots`.
         """
         return await anyio.to_thread.run_sync(query_search, context, criteria, page, page_size)
 
@@ -209,8 +293,18 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
 
     @mcp.tool()
     async def list_projects() -> list[dict]:
-        """List projects defined in the library."""
+        """List projects defined in the library, with summary info per project:
+        `file_count`, `last_date_obs` (most recent image's observation time), and the
+        `coord_ra`/`coord_dec` (degrees) of its most recent image. Use the `rowid` with
+        `search_files` (`criteria={"project": rowid}`) to list a project's files, or with
+        `get_project_details` for the same summary for a single project."""
         return await anyio.to_thread.run_sync(query_projects, context)
+
+    @mcp.tool()
+    async def get_project_details(rowid: int) -> dict:
+        """Get summary details for a single project by its rowid: `file_count`,
+        `last_date_obs`, and `coord_ra`/`coord_dec` of its most recent image."""
+        return await anyio.to_thread.run_sync(query_project_details, context, rowid)
 
     @mcp.tool()
     async def list_distinct_values(field: str) -> list:
@@ -226,6 +320,27 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
         FITS header keywords and plate-solve status. Use the `rowid` from `search_files`
         results."""
         return await anyio.to_thread.run_sync(query_file_details, context, rowid)
+
+    @mcp.tool()
+    async def list_catalogs() -> list[str]:
+        """List the local catalog names available for `lookup_object` (e.g. "NGC", "IC",
+        "M"). Backed entirely by PhotonFinder's local catalog database; performs no
+        online lookups."""
+        return await anyio.to_thread.run_sync(query_list_catalogs, context)
+
+    @mcp.tool()
+    async def lookup_object(catalog: str, catalog_id: str) -> dict:
+        """Resolve an object's RA/Dec (degrees) from PhotonFinder's local catalog
+        database only -- no online services (Simbad, Telescopius, etc.) are contacted.
+
+        `catalog` must be one of the names returned by `list_catalogs`. `catalog_id` is
+        matched against either the catalog's own identifier or its canonical identifier
+        (e.g. catalog="NGC", catalog_id="7000").
+
+        Returns object fields (ra, dec, size, axis_ratio, angle, magnitude) or
+        `{"error": ...}` if no match is found.
+        """
+        return await anyio.to_thread.run_sync(query_lookup_object, context, catalog, catalog_id)
 
     return mcp
 

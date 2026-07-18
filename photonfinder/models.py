@@ -20,8 +20,8 @@ from photonfinder.core import hp
 @dataclass(frozen=True)
 class RootAndPath:
     root_id: int
-    root_label: str
-    path: typing.Optional[str]
+    root_label: str = ""  # display-only (see __str__); not used for filtering
+    path: typing.Optional[str] = None
 
     def __str__(self):
         return f"{self.root_label}/{self.path}" if self.path else str(self.root_label)

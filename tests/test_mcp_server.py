@@ -89,6 +89,23 @@ def test_search_filter_by_type(sample):
     assert row["projects"] == ["Andromeda"]
 
 
+def test_search_filter_by_paths(sample):
+    ctx, data = sample
+    root = data["root"]
+    result = mcp_server.query_search(
+        ctx, {"paths": [{"root_id": root.rowid, "root_label": root.name, "path": "darks/"}]})
+    assert result["total"] == 1
+    assert result["results"][0]["name"] == "dark.fits"
+
+
+def test_search_filter_by_paths_without_root_label(sample):
+    ctx, data = sample
+    root = data["root"]
+    result = mcp_server.query_search(ctx, {"paths": [{"root_id": root.rowid, "path": "darks/"}]})
+    assert result["total"] == 1
+    assert result["results"][0]["name"] == "dark.fits"
+
+
 def test_search_filter_by_project_rowid(sample):
     ctx, data = sample
     result = mcp_server.query_search(ctx, {"project": data["project"].rowid})
@@ -130,9 +147,36 @@ def test_list_library_roots(sample):
 
 
 def test_list_projects(sample):
-    ctx, _ = sample
+    ctx, data = sample
     projects = mcp_server.query_projects(ctx)
-    assert projects == [{"rowid": projects[0]["rowid"], "name": "Andromeda"}]
+    assert len(projects) == 1
+    project = projects[0]
+    assert project["rowid"] == data["project"].rowid
+    assert project["name"] == "Andromeda"
+    assert project["file_count"] == 1
+    assert project["last_date_obs"] == "2024-01-01T22:00:00"
+    assert project["coord_ra"] == pytest.approx(10.68)
+    assert project["coord_dec"] == pytest.approx(41.27)
+
+
+def test_get_project_details(sample):
+    ctx, data = sample
+    details = mcp_server.query_project_details(ctx, data["project"].rowid)
+    assert details["name"] == "Andromeda"
+    assert details["file_count"] == 1
+
+
+def test_get_project_details_missing(sample):
+    ctx, _ = sample
+    details = mcp_server.query_project_details(ctx, 999999)
+    assert "error" in details
+
+
+def test_search_files_without_project(sample):
+    ctx, data = sample
+    result = mcp_server.query_search(ctx, {"project": -1})
+    assert result["total"] == 1
+    assert result["results"][0]["name"] == "dark.fits"
 
 
 def test_list_distinct_values(sample):
@@ -164,11 +208,39 @@ def test_get_file_details_missing(sample):
     assert "error" in details
 
 
+def test_list_catalogs(sample):
+    # Uses PhotonFinder's shipped local catalog database (data/catalog.db).
+    ctx, _ = sample
+    catalogs = mcp_server.query_list_catalogs(ctx)
+    assert "NGC" in catalogs
+    assert "Messier" in catalogs
+
+
+def test_lookup_object_by_catalog_id(sample):
+    ctx, _ = sample
+    result = mcp_server.query_lookup_object(ctx, "NGC", "224")
+    assert result["ra"] == pytest.approx(10.68, abs=0.01)
+    assert result["dec"] == pytest.approx(41.27, abs=0.01)
+
+
+def test_lookup_object_by_canonical_id(sample):
+    ctx, _ = sample
+    result = mcp_server.query_lookup_object(ctx, "Messier", "Melotte_22")
+    assert result["catalog_id"] == "45"
+
+
+def test_lookup_object_not_found(sample):
+    ctx, _ = sample
+    result = mcp_server.query_lookup_object(ctx, "NGC", "no-such-id")
+    assert "error" in result
+
+
 def test_build_mcp_registers_expected_tools():
     import asyncio
     mcp = mcp_server.build_mcp(None)
     names = {t.name for t in asyncio.run(mcp.list_tools())}
     assert names == {
         "search_files", "list_library_roots", "list_projects",
-        "list_distinct_values", "get_file_details",
+        "list_distinct_values", "get_file_details", "list_catalogs", "lookup_object",
+        "get_project_details",
     }

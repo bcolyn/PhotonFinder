@@ -18,12 +18,12 @@ def init_logging(path: str = None):
     logger.setLevel(LEVEL)
 
     # Create file handler
+    # Handlers are left at NOTSET (pass everything through) so that individual loggers
+    # can be dropped to DEBUG for targeted diagnostics without changing the global LEVEL.
     file_handler = TimedRotatingFileHandler(f"{path}/photonfinder.log", backupCount=9, when='D')
-    file_handler.setLevel(LEVEL)
 
     # Create console handler
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(LEVEL)
 
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
