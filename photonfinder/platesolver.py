@@ -23,7 +23,7 @@ from xisf import XISF
 
 from photonfinder.core import get_default_astap_path, decompress, hp
 from photonfinder.image_processing import is_linear
-from photonfinder.filesystem import fopen, Importer, header_from_xisf_dict
+from photonfinder.filesystem import fopen, Importer, header_from_xisf_dict, repair_header
 
 
 class SolverType(Enum):
@@ -102,6 +102,7 @@ class SolverBase(metaclass=ABCMeta):
                 with fits.open(source_file) as source_hdu:
                     main_image_data = source_hdu[0].data
                     main_header = source_hdu[0].header
+                    repair_header(main_header)
                     data2d = select_first_channel(main_image_data)
                     header2d = Header(main_header.cards, copy=True)
                     header2d['NAXIS'] = 2
@@ -475,6 +476,7 @@ class SolveFieldSolver(SolverBase):
         try:
             with fits.open(image_path, memmap=False) as hdul:
                 header = hdul[0].header
+                repair_header(header)
         except Exception:
             pass
 

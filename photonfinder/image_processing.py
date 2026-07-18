@@ -138,33 +138,6 @@ def prefetch_image(filename: str) -> None:
         t.start()
 
 
-def _verify_header(header) -> None:
-    """Fix unparsable cards in-place (astropy's Header has no verify(); only Card does).
-
-    Some files contain values with embedded tab/control characters that astropy's own
-    ``verify('fix')`` cannot repair (it refuses to "fix" a value into something still
-    non-ASCII). For those, fall back to stripping the offending characters from the raw
-    card image and reparsing, matching the tab handling in filesystem.parse_FITS_header.
-    """
-    from astropy.io.fits import Card
-
-    for i, card in enumerate(header.cards):
-        try:
-            card.verify('fix')
-            card.value  # force lazy parsing now so failures surface here, not in dict(header)
-        except Exception:
-            # card.image (the public property) itself calls verify() and re-raises the
-            # same error, so read the raw stored image string directly to sanitize it.
-            image = (card._image or '').replace('\t', ' ')
-            try:
-                fixed = Card.fromstring(image)
-                fixed.verify('fix')
-                header[i] = (fixed.value, fixed.comment)
-            except Exception:
-                logger.warning("Dropping unparsable header card %r in position %d", card.keyword, i)
-                header[i] = ('', card.comment)
-
-
 def _load_fits(filename: str) -> tuple[np.ndarray, dict]:
     import time
     from astropy.io import fits
@@ -174,14 +147,14 @@ def _load_fits(filename: str) -> tuple[np.ndarray, dict]:
 
     # astropy handles .gz and .fz natively with mmap; only bz2/xz need fopen()
     if suffix in ('.bz2', '.xz'):
-        from photonfinder.filesystem import fopen
+        from photonfinder.filesystem import fopen, repair_header
         with fopen(filename) as f:
             t1 = time.perf_counter()
             with fits.open(f, memmap=False) as hdul:
                 t2 = time.perf_counter()
                 hdu = hdul[0]
                 data = hdu.data  # memmap=False → already in RAM, no copy needed
-                _verify_header(hdu.header)
+                repair_header(hdu.header)
                 header = dict(hdu.header)
         t3 = time.perf_counter()
         logger.debug(
@@ -189,11 +162,12 @@ def _load_fits(filename: str) -> tuple[np.ndarray, dict]:
             suffix, (t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000, (t3 - t0) * 1000,
         )
     else:
+        from photonfinder.filesystem import repair_header
         with fits.open(filename) as hdul:  # memmap=True by default
             t1 = time.perf_counter()
             hdu = hdul[0]
             data = hdu.data.copy()
-            _verify_header(hdu.header)
+            repair_header(hdu.header)
             header = dict(hdu.header)
         t2 = time.perf_counter()
         logger.debug(

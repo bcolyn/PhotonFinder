@@ -21,7 +21,7 @@ from peewee import JOIN
 
 from photonfinder.calibration import CalibrationMatcher, CalibrationCandidate, SessionKey, session_date_for
 from photonfinder.core import ApplicationContext, Settings, decompress
-from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict
+from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict, repair_header
 from photonfinder.models import Image, File, SearchCriteria, FileWCS, Project, ProjectFile
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
 from photonfinder.ui.common import coerce_value
@@ -353,6 +353,7 @@ class ExportWorker(BackgroundLoaderBase):
             with fits.open(source_fd) as hdul:
                 header = hdul[0].header
                 data = hdul[0].data
+                repair_header(header)
 
                 self._copy_wcs(file, header)
 

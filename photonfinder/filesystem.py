@@ -185,6 +185,34 @@ def _handle_file_metadata(file, status_reporter, settings):
             FileWCS.insert(file_wcs.__data__).on_conflict_ignore().execute()
 
 
+def repair_header(header: Header) -> Header:
+    """Fix unparsable cards in-place (astropy's Header has no verify(); only Card does).
+
+    Some files contain values with embedded tab/control characters that astropy's own
+    ``verify('fix')`` cannot repair (it refuses to "fix" a value into something still
+    non-ASCII). For those, fall back to stripping the offending characters from the raw
+    card image and reparsing. As a last resort, blank the value rather than let a single
+    bad card raise a VerifyError whenever anything later touches the header (``dict()``,
+    ``.get()``, ``.keys()``, etc).
+    """
+    for i, card in enumerate(header.cards):
+        try:
+            card.verify('fix')
+            card.value  # force lazy parsing now so failures surface here, not later
+        except Exception:
+            # card.image (the public property) itself calls verify() and re-raises the
+            # same error, so read the raw stored image string directly to sanitize it.
+            image = (card._image or '').replace('\t', ' ')
+            try:
+                fixed = Card.fromstring(image)
+                fixed.verify('fix')
+                header[i] = (fixed.value, fixed.comment)
+            except Exception:
+                log(WARN, f"Dropping unparsable header card {card.keyword!r} in position {i}")
+                header[i] = ('', card.comment)
+    return header
+
+
 def header_from_xisf_dict(header_dict: dict[str, list]) -> Header:
     result = Header()
 
@@ -204,16 +232,15 @@ def header_from_xisf_dict(header_dict: dict[str, list]) -> Header:
                 card = Card(key, value_dict['comment'])
             else:
                 card = Card(key, try_parse(value_dict['value']), value_dict['comment'])
-            card.verify('fix')
             result.append(card)
-    return result
+    return repair_header(result)
 
 
 def parse_FITS_header(header_bytes: bytes) -> Header:
     if b'\x09' in header_bytes:
         # log(WARN, f"FITS header contains tab characters: {header_bytes}")
         header_bytes = header_bytes.replace(b'\x09', b' ')
-    return Header.fromstring(header_bytes)
+    return repair_header(Header.fromstring(header_bytes))
 
 
 def build_wcs_from_header(file: File, header: Header) -> 'FileWCS | None':
