@@ -14,13 +14,20 @@ class CoordinatesDialog(QDialog, Ui_CoordinatesDialog):
         super(CoordinatesDialog, self).__init__(parent)
         self.setupUi(self)
         self.context = context
+        self._query_label = None  # object name/catalog ID the coordinates were looked up from, if any
         self.lookup_button.clicked.connect(self._on_lookup_clicked)
+        self.ra_edit.textEdited.connect(self._clear_query_label)
+        self.dec_edit.textEdited.connect(self._clear_query_label)
 
     def get_coordinates(self) -> tuple:
         """Get the coordinates entered by the user."""
         return (self.ra_edit.text(), self.dec_edit.text(), self.radius_spin.value())
 
-    def set_coordinates(self, ra: str, dec: str, radius: float):
+    def get_query_label(self) -> str | None:
+        """Get the object name/catalog ID that produced the current coordinates, if any."""
+        return self._query_label
+
+    def set_coordinates(self, ra: str, dec: str, radius: float, query_label: str | None = None):
         """Set the initial coordinate values."""
         if ra:
             self.ra_edit.setText(ra)
@@ -31,6 +38,10 @@ class CoordinatesDialog(QDialog, Ui_CoordinatesDialog):
                 self.radius_spin.setValue(float(radius))
             except (ValueError, TypeError):
                 pass
+        self._query_label = query_label
+
+    def _clear_query_label(self):
+        self._query_label = None
 
     def _on_lookup_clicked(self):
         from photonfinder.ui.ObjectLookupDialog import ObjectLookupDialog
@@ -44,3 +55,4 @@ class CoordinatesDialog(QDialog, Ui_CoordinatesDialog):
         coord = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg)
         self.ra_edit.setText(coord.ra.to_string(unit=u.hour, sep=':', precision=2))
         self.dec_edit.setText(coord.dec.to_string(unit=u.deg, sep=':', precision=2))
+        self._query_label = dialog.result_query_label

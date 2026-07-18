@@ -243,3 +243,39 @@ class TestModels:
         # file2 and file4 have no stats; they must be absent
         assert "file2.fits" not in names
         assert "file4.fits" not in names
+
+
+class TestSearchCriteriaStr:
+    """SearchCriteria.__str__ drives generated tab titles and filter-button labels."""
+
+    def test_empty_criteria(self):
+        assert str(SearchCriteria()) == ""
+
+    def test_simple_text_fields_joined(self):
+        criteria = SearchCriteria(type="Light", filter="Red", object_name="M31")
+        assert str(criteria) == "Light, Red, M31"
+
+    def test_single_path(self):
+        criteria = SearchCriteria(paths=[RootAndPath(1, "Root", "sub/path")])
+        assert str(criteria) == "Root/sub/path"
+
+    def test_multiple_paths_shows_first_plus_count(self):
+        criteria = SearchCriteria(paths=[
+            RootAndPath(1, "Root", "sub/path"),
+            RootAndPath(1, "Root", "other/path"),
+        ])
+        assert str(criteria) == "Root/sub/path+1"
+
+    def test_coordinates_without_query_are_shortened(self):
+        criteria = SearchCriteria(coord_ra="12:34:56.78", coord_dec="+45:12:33.10", coord_radius=0.5)
+        assert str(criteria) == "(12:34:56+45:12:33) ±0.5°"
+
+    def test_coordinates_with_query_prefer_the_query_label(self):
+        criteria = SearchCriteria(coord_ra="12:34:56.78", coord_dec="+45:12:33.10",
+                                   coord_radius=0.5, coord_query="M31")
+        assert str(criteria) == "M31 ±0.5°"
+
+    def test_plate_solved_true_and_false(self):
+        assert "Solved" in str(SearchCriteria(plate_solved=True))
+        assert "Unsolved" in str(SearchCriteria(plate_solved=False))
+        assert str(SearchCriteria(plate_solved=None)) == ""

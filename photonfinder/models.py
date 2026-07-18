@@ -45,6 +45,7 @@ class SearchCriteria:
     coord_ra: str = ""  # Right Ascension in hours (can be in various formats)
     coord_dec: str = ""  # Declination in degrees (can be in various formats)
     coord_radius: float = 0.5  # Search radius in decimal degrees
+    coord_query: str = ""  # Object name/catalog ID the coordinates were looked up from, if any
     start_datetime: datetime | None = None
     end_datetime: datetime | None = None
     reference_file: Optional['File'] = None
@@ -97,7 +98,12 @@ class SearchCriteria:
         if self.project:
             result.append(self.project.name)
         if self.coord_ra and self.coord_dec:
-            result.append(f"({self.coord_ra}{self.coord_dec})+-{self.coord_radius}d")
+            if self.coord_query:
+                result.append(f"{self.coord_query} ±{self.coord_radius:.1f}°")
+            else:
+                short_ra = self.coord_ra.split('.')[0]
+                short_dec = self.coord_dec.split('.')[0]
+                result.append(f"({short_ra}{short_dec}) ±{self.coord_radius:.1f}°")
         if self.start_datetime and self.end_datetime:
             result.append(f"{self.start_datetime.isoformat()} to {self.end_datetime.isoformat()}")
         if self.width_min is not None or self.width_max is not None or self.height_min is not None or self.height_max is not None:

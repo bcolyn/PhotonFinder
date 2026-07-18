@@ -1318,24 +1318,31 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             dialog.set_coordinates(
                 self.search_criteria.coord_ra,
                 self.search_criteria.coord_dec,
-                self.search_criteria.coord_radius
+                self.search_criteria.coord_radius,
+                self.search_criteria.coord_query
             )
 
         if dialog.exec():
             ra, dec, radius = dialog.get_coordinates()
-            text = f"Coordinates: RA={ra}, DEC={dec}, r={radius:.2f}°"
+            query_label = dialog.get_query_label()
+            if query_label:
+                text = f"Coordinates: {query_label}, r={radius:.2f}°"
+            else:
+                text = f"Coordinates: RA={ra}, DEC={dec}, r={radius:.2f}°"
             filter_button = FilterButton(self, text, AdvancedFilter.COORDINATES)
             filter_button.on_remove_filter.connect(self.reset_coordinates_criteria)
             self.add_filter_button_control(filter_button)
             self.search_criteria.coord_ra = ra
             self.search_criteria.coord_dec = dec
             self.search_criteria.coord_radius = radius
+            self.search_criteria.coord_query = query_label or ""
             self.update_search_criteria()
 
     def reset_coordinates_criteria(self):
         self.search_criteria.coord_ra = ""
         self.search_criteria.coord_dec = ""
         self.search_criteria.coord_radius = 0.5
+        self.search_criteria.coord_query = ""
 
     def get_selected_file(self) -> File | None:
         """Get the image data of the first selected file, if any."""
@@ -1522,7 +1529,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.add_filter_button_control(filter_button)
 
         if criteria.coord_ra and criteria.coord_dec:
-            text = f"Coordinates: RA={criteria.coord_ra}, DEC={criteria.coord_dec}, r={criteria.coord_radius:.2f}°"
+            if criteria.coord_query:
+                text = f"Coordinates: {criteria.coord_query}, r={criteria.coord_radius:.2f}°"
+            else:
+                text = f"Coordinates: RA={criteria.coord_ra}, DEC={criteria.coord_dec}, r={criteria.coord_radius:.2f}°"
             filter_button = FilterButton(self, text, AdvancedFilter.COORDINATES)
             filter_button.on_remove_filter.connect(self.reset_coordinates_criteria)
             self.add_filter_button_control(filter_button)

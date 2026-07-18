@@ -28,6 +28,7 @@ class ObjectLookupDialog(QDialog, Ui_ObjectLookupDialog):
         self.setupUi(self)
         self.context = context
         self._result = None  # (ra_deg, dec_deg)
+        self._result_query_label = None  # short label for the query that produced the result
 
         self._loader = _OnlineLookupLoader(context)
         self._loader.lookup_complete.connect(self._on_online_complete)
@@ -44,6 +45,11 @@ class ObjectLookupDialog(QDialog, Ui_ObjectLookupDialog):
     def result_ra_dec(self):
         """Returns (ra_deg, dec_deg) or None if no result yet."""
         return self._result
+
+    @property
+    def result_query_label(self):
+        """Returns the short label (object name/catalog ID) for the current result, or None."""
+        return self._result_query_label
 
     def _populate_catalogs(self):
         try:
@@ -71,6 +77,7 @@ class ObjectLookupDialog(QDialog, Ui_ObjectLookupDialog):
 
     def _set_result(self, ra_deg, dec_deg, label):
         self._result = (ra_deg, dec_deg)
+        self._result_query_label = label
         self.result_label.setText(f"{label}  —  RA {ra_deg:.4f}°  Dec {dec_deg:+.4f}°")
         self._update_ok_button()
 
