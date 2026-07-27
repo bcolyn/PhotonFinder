@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QWidget, QDialogButtonBox, QTableWidgetItem, QFile
 from astropy.coordinates import SkyCoord
 
 from photonfinder.core import ApplicationContext, Change
-from photonfinder.models import Project, File, LibraryRoot, ProjectFile, Image, hp, RootAndPath
+from photonfinder.models import Project, File, LibraryRoot, ProjectFile, Image, hp, RootAndPath, FileWCS
 from photonfinder.ui.common import _format_timestamp
 from photonfinder.ui.generated.ProjectEditDialog_ui import Ui_ProjectEditDialog
 
@@ -46,7 +46,13 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         else:
             self.setWindowTitle(f"Edit Project {project.name}")
 
-        library_menu = QMenu(parent=self)
+        self.scan_more_button.setMenu(self._build_scan_more_menu(self))
+        self.scan_more_button.setMinimumWidth(self.scan_more_button.width() + 20)
+        self.tableWidget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.connect_signals()
+
+    def _build_scan_more_menu(self, parent) -> QMenu:
+        library_menu = QMenu(parent=parent)
         action = library_menu.addAction("Any Library")
         action.triggered.connect(self.do_scan_more)
         library_menu.addSeparator()
@@ -54,16 +60,16 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
             action = library_menu.addAction(root.name)
             action.setData(root)
             action.triggered.connect(self.do_scan_more)
-
-        self.scan_more_button.setMenu(library_menu)
-        self.scan_more_button.setMinimumWidth(self.scan_more_button.width() + 20)
-        self.connect_signals()
+        return library_menu
 
     def refresh_table(self):
         self.tableWidget.clearContents()
         updated_files = self.get_current_files()
         updated_files.sort(key=lambda pf: (pf.file.root.rowid, pf.file.path, pf.file.name))
         self.tableWidget.setRowCount(len(updated_files))
+
+        solved_file_ids = set(x[0] for x in FileWCS.select(FileWCS.file).where(
+            FileWCS.file.in_([pf.file.rowid for pf in updated_files])).tuples())
 
         for row, project_file in enumerate(updated_files):
             first_item = QTableWidgetItem(project_file.file.root.name)
@@ -72,6 +78,8 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
             self.tableWidget.setItem(row, 1, QTableWidgetItem(project_file.file.path))
             self.tableWidget.setItem(row, 2, QTableWidgetItem(project_file.file.name))
             self.tableWidget.setItem(row, 3, QTableWidgetItem(_format_timestamp(project_file.file.mtime_millis)))
+            solved_text = "Yes" if project_file.file.rowid in solved_file_ids else "No"
+            self.tableWidget.setItem(row, 4, QTableWidgetItem(solved_text))
 
         self.tableWidget.resizeColumnsToContents()
         self.enable_disable_actions()
@@ -114,6 +122,19 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         self.remove_button.clicked.connect(self.delete_selected)
         self.add_button.clicked.connect(self.add_files)
         self.scan_more_button.clicked.connect(self.do_scan_more)
+        self.tableWidget.customContextMenuRequested.connect(self.show_table_context_menu)
+
+    def show_table_context_menu(self, pos):
+        if len(self.get_selected_files()) != 1:
+            return
+
+        menu = QMenu(parent=self)
+        remove_action = menu.addAction("Remove")
+        remove_action.triggered.connect(self.delete_selected)
+        scan_more_menu = self._build_scan_more_menu(menu)
+        scan_more_menu.setTitle("Auto Add More")
+        menu.addMenu(scan_more_menu)
+        menu.exec(self.tableWidget.viewport().mapToGlobal(pos))
 
     def do_scan_more(self):
         # TODO: give user option to exclude files already in a project
@@ -122,8 +143,9 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         action = self.sender()
         root = action.data() if action and isinstance(action, QAction) else None
 
-        project_files = self.get_current_files()
-        used_file_ids = set([pf.file.rowid for pf in project_files])
+        used_file_ids = set([pf.file.rowid for pf in self.get_current_files()])
+        selected_files = self.get_selected_files()
+        project_files = selected_files if selected_files else self.get_current_files()
         if not project_files:
             return  # can't add more if we have nothing to go on
 
@@ -160,12 +182,16 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
             q = q.where(File.root == root)
         q = q.order_by(File.root, File.path, File.name)
 
+        added_count = 0
         for f in q.execute():
             # TODO: should we filter again on actual distance?
             pf = ProjectFile(file=f, project=self.project)
             self.add_file(pf)
+            added_count += 1
 
         self.refresh_table()
+        QMessageBox.information(self, "Auto Add More",
+                                 f"{added_count} file(s) added to the project.")
 
     def enable_disable_actions(self):
         selected = self.get_selected_files()

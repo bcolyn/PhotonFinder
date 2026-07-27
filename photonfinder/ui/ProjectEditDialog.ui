@@ -107,6 +107,11 @@
        <string>Modified</string>
       </property>
      </column>
+     <column>
+      <property name="text">
+       <string>Solved</string>
+      </property>
+     </column>
     </widget>
    </item>
    <item>
