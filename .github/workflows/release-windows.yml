@@ -51,11 +51,11 @@ jobs:
           path: tests/data
           key: hfdata-${{ steps.hf-hash.outputs.revision }}-${{ runner.os }}
 
-      - name: Run tests
-        run: uv run pytest tests/
-
       - name: Build catalog database
         run: uv run python scripts/build_catalog.py
+
+      - name: Run tests
+        run: uv run pytest tests/
 
       - name: Build with PyInstaller
         run: uv run --extra build pyinstaller --noconfirm photonfinder.spec
