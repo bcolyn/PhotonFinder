@@ -28,6 +28,7 @@ PhotonFinder (also known as AstroFileManager) is designed to help astronomers an
 - **Data Export** - Export LIGHT files with calibration data for easy import into stacking programs
 - **File Management** - Find files used in processing and identify unprocessed data
 - **Telescopius Integration** - Check Telescopius lists for objects that have already been imaged
+- **AI Agent Access (MCP)** - Let Claude and other MCP clients search your library and read file metadata
 
 ### Database & Library Management
 - **SQLite Database** - Efficient metadata storage and retrieval
@@ -59,6 +60,7 @@ PhotonFinder (also known as AstroFileManager) is designed to help astronomers an
 
 - [Installation Guide](installation.md) - How to install and set up PhotonFinder
 - [Menu Items Reference](menu-items.md) - Complete guide to all menu options and features
+- [AI Agent Access (MCP)](mcp.md) - Connect Claude Code or another MCP client to your library
 
 ## Support
 

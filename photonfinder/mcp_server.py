@@ -1,33 +1,47 @@
-"""Embedded MCP (Model Context Protocol) server for PhotonFinder.
+"""MCP (Model Context Protocol) server for PhotonFinder.
 
-Exposes read-only access to the file library over a local HTTP transport so that AI
-agents can query the database using the same ``SearchCriteria`` JSON the GUI uses.
+Exposes read-only access to the file library so that AI agents can query the database
+using the same ``SearchCriteria`` JSON the GUI uses.
 
-The server runs *inside* the GUI process (one process owns the SQLite database), served
-over loopback HTTP via FastMCP/uvicorn on a dedicated daemon thread. Blocking database
-work is offloaded to worker threads with ``anyio.to_thread.run_sync`` and wrapped in
-``context.database.bind_ctx(CORE_MODELS)`` -- the same pattern the Qt ``BackgroundLoader``
-workers use, so every worker thread gets its own peewee connection and the event loop
-stays responsive.
+The server is hosted *inside* the application by ``McpServerController`` (bottom of this
+module) on a loopback port. Agents reach it through ``photonfinder/mcp_stub.py``, a thin
+stdio program their client spawns; a closed application therefore never surfaces as a
+connection error, and the stub can offer to start it. See ``docs/mcp.md`` for why the work
+has to happen in the application's own process rather than in the stub.
 
-The tool/serialization layer (``build_mcp``) is transport-agnostic; only
-``McpServerController`` is tied to the embedded HTTP transport.
+The tool set here is generated into ``mcp_manifest.py`` so the stub can list it without
+the application running -- regenerate with ``scripts/build_mcp_manifest.py`` after adding
+or re-describing a tool. It must therefore not vary with settings, which is why
+``plate_solve_files`` is always registered and checks its setting when called.
+
+Plate solving is guarded by ``ApplicationContext.solve_lock``, so a solve triggered by an
+agent cannot overlap one started from the GUI.
+
+Blocking database work is offloaded to worker threads with ``anyio.to_thread.run_sync``
+and wrapped in ``context.database.bind_ctx(CORE_MODELS)`` -- the same pattern the Qt
+``BackgroundLoader`` workers use, so every worker thread gets its own peewee connection
+and the event loop stays responsive.
+
+``build_mcp`` is transport-agnostic; the transport is chosen by the caller.
 """
 import dataclasses
 import json
 import logging
 import threading
+import time
+import typing
 from datetime import datetime
 from typing import Optional
 
 import anyio
 from peewee import JOIN
+from pydantic import BaseModel, Field
 
 from photonfinder import solve_service
-from photonfinder.core import ApplicationContext
+from photonfinder.core import ApplicationContext, mcp_port_file
 from photonfinder.models import (
-    CORE_MODELS, CATALOG_MODELS, SearchCriteria, File, Image, LibraryRoot, Project,
-    ProjectFile, FitsHeader, FileWCS, CatalogEntry,
+    CORE_MODELS, CATALOG_MODELS, SearchCriteria, SORTABLE_FIELDS, File, Image, LibraryRoot,
+    Project, ProjectFile, FitsHeader, FileWCS, CatalogEntry,
     search_files as run_search_files, serialize_search_row, _SERIALIZED_IMAGE_FIELDS,
 )
 from photonfinder.platesolver import (
@@ -270,6 +284,13 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
                        backup_solver: Optional[str] = None, hint_ra: Optional[float] = None,
                        hint_dec: Optional[float] = None, hint_scale: Optional[float] = None,
                        hint_mode: Optional[str] = None) -> dict:
+    # Checked here rather than by leaving the tool unregistered, so that the advertised
+    # tool set is the same for every run and can be generated ahead of time. The gate is
+    # unchanged: without the setting, no solver runs.
+    if not context.settings.get_mcp_allow_plate_solve():
+        return {"error": "Plate solving from an AI agent is disabled. The user can enable "
+                         "it in Settings -> MCP Server -> 'Allow AI agents to trigger "
+                         "plate solving'."}
     if not rowids:
         return {"error": "No rowids given."}
     if len(rowids) > MAX_SOLVE_BATCH:
@@ -332,11 +353,100 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
         context.solve_lock.release()
 
 
-def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 8765):
+class _RootAndPathInput(BaseModel):
+    root_id: int = Field(description="A library root's rowid, from `list_library_roots`.")
+    path: Optional[str] = Field(
+        default=None,
+        description="Subdirectory prefix within the root to narrow the search. "
+                     "Omit to match the whole root.")
+    root_label: Optional[str] = Field(
+        default=None,
+        description="Display-only; accepted for symmetry with `list_library_roots` output "
+                     "but not used for filtering. May be omitted.")
+
+
+class SearchCriteriaInput(BaseModel):
+    """Search filters. Omit any field to leave it unconstrained."""
+
+    type: Optional[str] = Field(default=None, description="LIGHT/DARK/FLAT/BIAS/MASTER ...")
+    filter: Optional[str] = None
+    camera: Optional[str] = None
+    telescope: Optional[str] = None
+    object_name: Optional[str] = None
+    file_name: Optional[str] = None
+    exposure: Optional[str] = Field(default=None, description="Exposure time in seconds.")
+    exposure_tolerance: Optional[float] = Field(
+        default=None, description="± seconds tolerance for `exposure`; omit for an exact match.")
+    binning: Optional[str] = None
+    gain: Optional[str] = None
+    offset: Optional[int] = None
+    temperature: Optional[str] = None
+    temperature_tolerance: Optional[float] = Field(
+        default=None, description="± °C tolerance for `temperature`; omit for an exact match.")
+    coord_ra: Optional[str] = Field(default=None, description="Right Ascension in hours.")
+    coord_dec: Optional[str] = Field(default=None, description="Declination in degrees.")
+    coord_radius: Optional[float] = Field(
+        default=None, description="Cone search radius in decimal degrees (used with "
+                                   "`coord_ra`/`coord_dec`).")
+    start_datetime: Optional[datetime] = None
+    end_datetime: Optional[datetime] = None
+    header_text: Optional[str] = Field(
+        default=None, description='Free text or a "KEYWORD=value"/"KEYWORD<value" style '
+                                   'FITS header match, e.g. "GAIN=100", "FOCTEMP<0".')
+    plate_solved: Optional[bool] = Field(
+        default=None, description="True = solved only, False = unsolved only, "
+                                   "omit = either.")
+    project: Optional[int] = Field(
+        default=None, description="A project rowid from `list_projects`, or -1 to match "
+                                   "files not assigned to any project.")
+    paths: Optional[list[_RootAndPathInput]] = Field(
+        default=None, description="Restrict the search to one or more library roots.")
+    width_min: Optional[int] = None
+    width_max: Optional[int] = None
+    height_min: Optional[int] = None
+    height_max: Optional[int] = None
+    scale_min: Optional[float] = Field(default=None, description="Plate scale, arcsec/pixel.")
+    scale_max: Optional[float] = None
+    star_count_min: Optional[int] = None
+    star_count_max: Optional[int] = None
+    fwhm_min: Optional[float] = None
+    fwhm_max: Optional[float] = None
+    background_min: Optional[float] = None
+    background_max: Optional[float] = None
+    background_rms_min: Optional[float] = None
+    background_rms_max: Optional[float] = None
+    elongation_min: Optional[float] = None
+    elongation_max: Optional[float] = None
+    sorting_field: Optional[typing.Literal[tuple(SORTABLE_FIELDS)]] = Field(
+        default=None, description="Field to sort results by. Omit for the default "
+                                   "root/path/name order.")
+    sorting_desc: Optional[bool] = Field(
+        default=None, description="Sort direction for `sorting_field`; defaults to True "
+                                   "(descending) if omitted.")
+
+
+def read_only(title: str):
+    """Annotations for a tool that only reads the local library.
+
+    Clients decide whether to prompt from these rather than from the description, so
+    marking the harmless majority lets a user approve searching once and still be asked
+    about `plate_solve_files`. `openWorldHint=False` because every one of these is
+    answered from the local database -- no online service is contacted.
+    """
+    from mcp.types import ToolAnnotations
+    return ToolAnnotations(title=title, readOnlyHint=True, openWorldHint=False)
+
+
+def build_mcp(context: ApplicationContext):
     """Construct the FastMCP server with PhotonFinder's read-only tools."""
     from mcp.server.fastmcp import FastMCP
+    from mcp.types import ToolAnnotations
 
-    allow_plate_solve = context is not None and context.settings.get_mcp_allow_plate_solve()
+    # The tool set is deliberately identical for every run, so it can be generated ahead
+    # of time into `mcp_manifest.py` and served by the stub without the application being
+    # started. `plate_solve_files` is therefore always registered and checks its setting
+    # when called -- a tool that disappeared with a setting could not be baked, and an
+    # agent that can see it can tell the user which setting to turn on.
     instructions = (
         "PhotonFinder manages an astrophotography file library (FITS/XISF images and "
         "calibration frames). Use `search_files` with a SearchCriteria JSON object to find "
@@ -345,69 +455,39 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
         "`get_file_details` to inspect one file's full metadata and FITS header, and "
         "`lookup_object`/`list_catalogs` to resolve an object's RA/Dec from PhotonFinder's "
         "local catalog database (no online lookups such as Simbad or Telescopius are "
-        "performed)."
+        "performed). Every one of these is read-only. `plate_solve_files` is the sole "
+        "exception and the user must opt into it in Settings; it plate-solves up to "
+        f"{MAX_SOLVE_BATCH} files at once and writes the resulting WCS/coordinates to the "
+        "library."
     )
-    if allow_plate_solve:
-        instructions += (
-            " `plate_solve_files` can plate-solve up to "
-            f"{MAX_SOLVE_BATCH} files at once (by rowid) using the solvers configured in "
-            "Settings, and writes the resulting WCS/coordinates to the library."
-        )
-    else:
-        instructions += " All tools are read-only."
-    mcp = FastMCP(
-        "PhotonFinder",
-        instructions=instructions,
-        host=host,
-        port=port,
-        stateless_http=True,
-    )
+    # stateless_http: the stub answers `initialize` itself so that opening an agent
+    # session does not start the application. Each request it forwards therefore arrives
+    # without a prior handshake, which only a stateless server will accept.
+    mcp = FastMCP("PhotonFinder", instructions=instructions, stateless_http=True)
 
-    # The mcp library logs routine per-request/session chatter at INFO (e.g. "Terminating
-    # session: None", "Processing request of type ListToolsRequest"), which drowns out our
-    # own search logging. Quiet it down; our tools still log through `logger` above.
-    logging.getLogger("mcp.server.streamable_http").setLevel(logging.WARNING)
+    # The mcp library logs routine per-request chatter at INFO (e.g. "Processing request
+    # of type ListToolsRequest"), which drowns out our own search logging. Quiet it down;
+    # our tools still log through `logger` above.
     logging.getLogger("mcp.server.lowlevel.server").setLevel(logging.WARNING)
 
-    @mcp.tool()
-    async def search_files(criteria: Optional[dict] = None, page: int = 0,
+    @mcp.tool(annotations=read_only("Search files"))
+    async def search_files(criteria: Optional[SearchCriteriaInput] = None, page: int = 0,
                            page_size: int = 100) -> dict:
         """Search the file library.
-
-        `criteria` is a SearchCriteria-shaped object. Useful fields include: `type`
-        (LIGHT/DARK/FLAT/BIAS/MASTER ...), `filter`, `camera`, `telescope`, `object_name`,
-        `file_name`, `exposure` (seconds, with optional `exposure_tolerance`), `binning`,
-        `gain`, `offset`, `temperature` (with optional `temperature_tolerance`),
-        `coord_ra`/`coord_dec` (RA in hours, Dec in degrees) plus `coord_radius` (degrees)
-        for a cone search, `start_datetime`/`end_datetime` (ISO 8601), `plate_solved`
-        (true/false), pixel-dimension and image-quality ranges (`width_min`, `fwhm_max`, ...),
-        `project` (a project rowid from `list_projects`, or `-1` to match files that are
-        NOT assigned to any project), `header_text` (e.g. "GAIN=100", "FOCTEMP<0", or free
-        text), and `paths` to restrict the search to one or more library roots -- a list of
-        `{"root_id": ...}` objects, where `root_id` comes from `list_library_roots`.
-        Optionally add `path`, a subdirectory prefix within that root to narrow further
-        (omit or use `null` to match the whole root); `root_label` is accepted for
-        symmetry with `list_library_roots` output but is display-only and may be omitted.
-        Omit a field to leave it unconstrained.
-
-        To sort results, set `sorting_field` to one of: name, path, size, mtime, type,
-        filter, exposure, gain, offset, binning, temperature, camera, telescope,
-        object_name, date_obs, coord_ra, coord_dec, star_count, fwhm, elongation,
-        background, background_rms. `sorting_desc` (default true) controls direction.
-        Defaults to root/path/name order if `sorting_field` is omitted.
 
         Returns `{results, page, page_size, total, has_more}`. `page` is zero-based.
         Discover valid values for `filter`/`type`/`camera`/etc. via `list_distinct_values`,
         and valid `paths` roots via `list_library_roots`.
         """
-        return await anyio.to_thread.run_sync(query_search, context, criteria, page, page_size)
+        clean = criteria.model_dump(exclude_none=True, mode="json") if criteria else None
+        return await anyio.to_thread.run_sync(query_search, context, clean, page, page_size)
 
-    @mcp.tool()
+    @mcp.tool(annotations=read_only("List library roots"))
     async def list_library_roots() -> list[dict]:
         """List the configured library roots (top-level scanned directories)."""
         return await anyio.to_thread.run_sync(query_library_roots, context)
 
-    @mcp.tool()
+    @mcp.tool(annotations=read_only("List projects"))
     async def list_projects() -> list[dict]:
         """List projects defined in the library, with summary info per project:
         `file_count`, `last_date_obs` (most recent image's observation time), and the
@@ -416,13 +496,13 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
         `get_project_details` for the same summary for a single project."""
         return await anyio.to_thread.run_sync(query_projects, context)
 
-    @mcp.tool()
+    @mcp.tool(annotations=read_only("Project details"))
     async def get_project_details(rowid: int) -> dict:
         """Get summary details for a single project by its rowid: `file_count`,
         `last_date_obs`, and `coord_ra`/`coord_dec` of its most recent image."""
         return await anyio.to_thread.run_sync(query_project_details, context, rowid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=read_only("List distinct values"))
     async def list_distinct_values(field: str) -> list:
         """List the distinct values present for a field, to help build search criteria.
 
@@ -430,21 +510,21 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
         """
         return await anyio.to_thread.run_sync(query_distinct_values, context, field)
 
-    @mcp.tool()
+    @mcp.tool(annotations=read_only("File details"))
     async def get_file_details(rowid: int) -> dict:
         """Get full metadata for a single file by its rowid, including the decompressed
         FITS header keywords and plate-solve status. Use the `rowid` from `search_files`
         results."""
         return await anyio.to_thread.run_sync(query_file_details, context, rowid)
 
-    @mcp.tool()
+    @mcp.tool(annotations=read_only("List catalogs"))
     async def list_catalogs() -> list[str]:
         """List the local catalog names available for `lookup_object` (e.g. "NGC", "IC",
         "M"). Backed entirely by PhotonFinder's local catalog database; performs no
         online lookups."""
         return await anyio.to_thread.run_sync(query_list_catalogs, context)
 
-    @mcp.tool()
+    @mcp.tool(annotations=read_only("Look up object"))
     async def lookup_object(catalog: str, catalog_id: str) -> dict:
         """Resolve an object's RA/Dec (degrees) from PhotonFinder's local catalog
         database only -- no online services (Simbad, Telescopius, etc.) are contacted.
@@ -458,8 +538,7 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
         """
         return await anyio.to_thread.run_sync(query_lookup_object, context, catalog, catalog_id)
 
-    if allow_plate_solve:
-        @mcp.tool(description=(
+    @mcp.tool(description=(
             f"Plate-solve up to {MAX_SOLVE_BATCH} files at once by rowid (from "
             "`search_files`/`get_file_details`), writing the resulting WCS solution and "
             "coordinates to the library. "
@@ -472,33 +551,52 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
             "Returns {results, solved, failed}. `results` is a list of per-file dicts "
             "with `rowid`, `path`, `success`, and on success `ra`/`dec`/`scale_arcsec`/`solver`, "
             "or on failure `error`. One file's failure does not abort the rest of the batch. "
-            'Returns {"error": ...} if the batch is empty, too large, or a plate-solve is '
-            "already running (from this application or another request)."
+            'Returns {"error": ...} if the batch is empty, too large, if a plate-solve is '
+            "already running (from this application or another request), or if the user "
+            "has not enabled agent-triggered plate solving in Settings."
+        ),
+        # The one tool that writes, runs an external program, and can upload frames to
+        # astrometry.net -- so it gets the opposite hints to the read-only eight and a
+        # client has grounds to ask before every call. Not destructive: it adds a
+        # solution rather than removing anything, and re-solving the same files lands on
+        # the same answer.
+        annotations=ToolAnnotations(
+            title="Plate-solve files",
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=True,
         ))
-        async def plate_solve_files(rowids: list[int], solver: Optional[str] = None,
-                                     backup_solver: Optional[str] = None,
-                                     hint_ra: Optional[float] = None, hint_dec: Optional[float] = None,
-                                     hint_scale: Optional[float] = None,
-                                     hint_mode: Optional[str] = None) -> dict:
-            return await anyio.to_thread.run_sync(
-                query_plate_solve, context, rowids, solver, backup_solver,
-                hint_ra, hint_dec, hint_scale, hint_mode)
+    async def plate_solve_files(rowids: list[int], solver: Optional[str] = None,
+                                backup_solver: Optional[str] = None,
+                                hint_ra: Optional[float] = None, hint_dec: Optional[float] = None,
+                                hint_scale: Optional[float] = None,
+                                hint_mode: Optional[str] = None) -> dict:
+        return await anyio.to_thread.run_sync(
+            query_plate_solve, context, rowids, solver, backup_solver,
+            hint_ra, hint_dec, hint_scale, hint_mode)
 
     return mcp
 
 
 class McpServerController:
-    """Runs the embedded MCP HTTP server on a dedicated daemon thread.
+    """Hosts the MCP server inside the application, on a loopback port.
 
-    The server is bound to loopback only. Start it from the GUI thread once the
-    ApplicationContext's database is open; stop it on application shutdown.
+    Agents reach it through ``photonfinder-mcp``, a stdio stub their client spawns. The
+    work has to happen *here*, in the application's own process, because a sandboxed
+    client (an MSIX-packaged Claude Desktop, say) gives everything it launches a
+    virtualized registry and redirected app data -- so a server running inside that
+    sandbox would read default settings instead of the user's, and would hand the same
+    broken environment to ASTAP and solve-field. The application runs outside it.
+
+    The port is chosen by the OS and published to ``core.mcp_port_file()`` for the stub
+    to find; a fixed port would need configuring in two places and could be taken.
     """
 
-    def __init__(self, context: ApplicationContext, host: str = "127.0.0.1",
-                 port: int = 8765):
+    def __init__(self, context: ApplicationContext, host: str = "127.0.0.1"):
         self.context = context
         self.host = host
-        self.port = port
+        self.port: Optional[int] = None
         self._thread: Optional[threading.Thread] = None
         self._server = None
 
@@ -509,24 +607,71 @@ class McpServerController:
     def start(self) -> None:
         if self.running:
             return
+        import socket
         import uvicorn
 
-        mcp = build_mcp(self.context, self.host, self.port)
-        app = mcp.streamable_http_app()
-        config = uvicorn.Config(app, host=self.host, port=self.port, log_level="warning")
-        self._server = uvicorn.Server(config)
+        # Bind first so the port is known before uvicorn starts; handing the ready socket
+        # over avoids the race of picking a free port and hoping it is still free.
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind((self.host, 0))
+        except OSError:
+            sock.close()
+            raise
+        self.port = sock.getsockname()[1]
+
+        app = build_mcp(self.context).streamable_http_app()
+        # log_config=None: uvicorn's default config builds a formatter that probes
+        # sys.stdout.isatty(), and the windowed build has no stdout at all -- configuring
+        # it there fails outright. Our own logging is already set up by main.py.
+        self._server = uvicorn.Server(
+            uvicorn.Config(app, log_config=None, log_level="warning"))
 
         def serve():
             try:
-                self._server.run()
+                self._server.run(sockets=[sock])
             except Exception:
                 logger.exception("MCP server crashed")
 
         self._thread = threading.Thread(target=serve, name="mcp-server", daemon=True)
         self._thread.start()
-        logger.info("MCP server started on http://%s:%d/mcp", self.host, self.port)
+
+        # Only advertise the port once uvicorn is actually accepting, or a stub that
+        # launched us could connect to a socket nothing is serving yet.
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            if getattr(self._server, "started", False):
+                break
+            if not self._thread.is_alive():
+                logger.error("MCP server thread died during startup")
+                return
+            time.sleep(0.05)
+        else:
+            logger.error("MCP server did not start within 15s; not publishing its port")
+            return
+
+        self._write_port_file()
+        logger.info("MCP server listening on http://%s:%d/mcp", self.host, self.port)
+
+    def _write_port_file(self) -> None:
+        try:
+            path = mcp_port_file()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(str(self.port), encoding="utf-8")
+        except OSError:
+            logger.warning("Could not publish the MCP port to %s", mcp_port_file(),
+                           exc_info=True)
+
+    def _remove_port_file(self) -> None:
+        # A stale file is not fatal -- the stub falls back to starting the application
+        # when nothing answers -- but removing it keeps the common case honest.
+        try:
+            mcp_port_file().unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not remove %s", mcp_port_file(), exc_info=True)
 
     def stop(self) -> None:
+        self._remove_port_file()
         if self._server is not None:
             self._server.should_exit = True
         if self._thread is not None:
@@ -535,4 +680,5 @@ class McpServerController:
                 logger.warning("MCP server thread did not stop within timeout")
         self._thread = None
         self._server = None
+        self.port = None
         logger.info("MCP server stopped")

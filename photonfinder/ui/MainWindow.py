@@ -88,13 +88,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.start_mcp_server()
 
     def start_mcp_server(self):
-        """Start the embedded MCP server if enabled in settings."""
-        if not self.context.settings.get_mcp_enabled():
-            return
+        """Host the MCP server so agents can reach this library.
+
+        Loopback-only and always on: the `photonfinder-mcp` stub an agent's client spawns
+        has nothing to talk to otherwise, and starting it is what lets that stub avoid
+        launching a second copy of the application.
+        """
         try:
             from photonfinder.mcp_server import McpServerController
-            self.mcp_controller = McpServerController(
-                self.context, port=self.context.settings.get_mcp_port())
+            self.mcp_controller = McpServerController(self.context)
             self.mcp_controller.start()
         except Exception as e:
             logging.error(f"Failed to start MCP server: {e}", exc_info=True)

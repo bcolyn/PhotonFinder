@@ -20,6 +20,31 @@ HEALPIX_NSIDE = 256
 hp = HEALPix(nside=HEALPIX_NSIDE, order='nested', frame='icrs')
 
 
+MCP_PORT_FILENAME = "mcp_port.txt"
+
+
+def user_app_data_dir() -> Path:
+    """PhotonFinder's app-data folder, resolved without consulting environment variables.
+
+    A process spawned by a sandboxed client -- an MSIX-packaged MCP client, say -- sees a
+    redirected ``%LOCALAPPDATA%`` and a virtualized ``HKCU``, so neither the env var nor
+    QSettings reliably points at what the application wrote. The user profile is not
+    redirected, so deriving the path from it gives every process the same answer.
+    """
+    if sys.platform == 'win32':
+        return Path.home() / "AppData" / "Local" / "photonfinder"
+    return Path.home() / ".local" / "share" / "photonfinder"
+
+
+def mcp_port_file() -> Path:
+    """Where the running application advertises the port its MCP server listens on.
+
+    The one piece of state that has to cross the sandbox boundary, which is why it is a
+    file under the user profile rather than a setting.
+    """
+    return user_app_data_dir() / MCP_PORT_FILENAME
+
+
 def get_default_astap_path():
     if Path("C:/Program Files/astap/astap.exe").exists():
         return "C:/Program Files/astap/astap.exe"
@@ -30,15 +55,23 @@ def fatal_error(title: str, message: str, details: str = "") -> None:
     """
     Display a fatal error dialog and exit the application.
 
+    Without a running QApplication -- the MCP server process, tests -- there is nothing to
+    parent a dialog to and no event loop to run it, so the error only goes to the log and
+    stderr. Showing it anyway would hang a headless process on an invisible modal.
+
     Args:
         title: The window title for the error dialog
         message: The main error message
         details: Optional additional details or information
     """
-    from PySide6.QtWidgets import QMessageBox
+    from PySide6.QtWidgets import QApplication, QMessageBox
     import sys
 
     logging.error(f"{title}: {message} {details}")
+
+    if QApplication.instance() is None:
+        print(f"{title}: {message}\n{details}", file=sys.stderr)
+        sys.exit(1)
 
     msg_box = QMessageBox()
     msg_box.setIcon(QMessageBox.Critical)
@@ -85,6 +118,98 @@ def register_udfs(db: SqliteDatabase):
         return retval
 
 
+class SolveLock:
+    """Non-reentrant mutex guarding plate-solve batches, held across processes.
+
+    Within one process the GUI dialog and the MCP server share a thread lock. The file
+    lock covers what that cannot: a second copy of PhotonFinder opened on the same
+    library, whether started by the user or by the MCP stub when it could not tell the
+    first one was alive. Two solvers writing one file is worth preventing either way.
+    This combines:
+
+    * ``threading.Lock`` -- serialises threads *within* one process. Needed on its own
+      because repeated OS lock calls on the same file descriptor from a single process do
+      not behave as a mutex.
+    * OS advisory file lock on ``<database_path>.solve.lock`` -- serialises *between*
+      processes. The kernel drops it when the holding process exits, so a crash cannot
+      leave a stale lock behind.
+
+    Scoping the file to the database means contention is per-library, which is what
+    matters: two processes on different libraries never touch the same files.
+
+    Exposes the same ``acquire(blocking=False)``/``release()`` surface as
+    ``threading.Lock`` so callers do not care which mechanism is in play. For an
+    in-memory database there is no file to lock and the thread lock alone is used.
+    """
+
+    def __init__(self, database_path: str | Path) -> None:
+        self._thread_lock = threading.Lock()
+        self._path: str | None = None
+        self._fd: int | None = None
+        self.set_database_path(database_path)
+
+    def set_database_path(self, database_path: str | Path) -> None:
+        """Re-point the lock file after the context switches databases."""
+        path = str(database_path)
+        self._path = None if path == ':memory:' else path + '.solve.lock'
+
+    def acquire(self, blocking: bool = False) -> bool:
+        if blocking:
+            raise ValueError("SolveLock only supports non-blocking acquisition")
+        if not self._thread_lock.acquire(blocking=False):
+            return False
+        if self._path is None:
+            return True
+        try:
+            if not self._acquire_file_lock():
+                self._thread_lock.release()
+                return False
+        except Exception:
+            # A lock file we cannot create or lock (read-only media, exotic filesystem)
+            # must not make plate solving unavailable; fall back to in-process guarding.
+            logging.warning("Could not take the cross-process solve lock at %s; "
+                            "falling back to in-process locking only", self._path,
+                            exc_info=True)
+        return True
+
+    def release(self) -> None:
+        self._release_file_lock()
+        self._thread_lock.release()
+
+    def _acquire_file_lock(self) -> bool:
+        fd = os.open(self._path, os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            if sys.platform == 'win32':
+                import msvcrt
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            return False  # held by another process
+        self._fd = fd
+        return True
+
+    def _release_file_lock(self) -> None:
+        if self._fd is None:
+            return
+        fd, self._fd = self._fd, None
+        try:
+            if sys.platform == 'win32':
+                import msvcrt
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        except OSError:
+            logging.warning("Failed to release the solve lock file", exc_info=True)
+        finally:
+            os.close(fd)
+
+
 class ApplicationContext:
 
     CURRENT_DB_VERSION = 1
@@ -106,8 +231,9 @@ class ApplicationContext:
         self.status_reporter: StatusReporter | None = None
         self.session_file = session_file
         self.signal_bus = SignalBus()
-        # Prevents overlapping plate-solve batches from the GUI and the MCP server.
-        self.solve_lock = threading.Lock()
+        # Prevents overlapping plate-solve batches: between the GUI dialog and the MCP
+        # server in this process, and between two copies of the application on one library.
+        self.solve_lock = SolveLock(database_path)
 
     def __enter__(self):
         self.open_database()
@@ -191,6 +317,7 @@ class ApplicationContext:
     def switch_database(self, database_path: str | Path) -> None:
         self.close_database()
         self.database_path = database_path
+        self.solve_lock.set_database_path(database_path)
         self.open_database()
 
     def get_known_fits_keywords(self) -> list[str]:
@@ -262,8 +389,6 @@ class Settings:
         ("plate_solve_hint_dec", "plate_solve_hint_dec", "", str),
         ("plate_solve_hint_scale", "plate_solve_hint_scale", 0.0, float),
         ("plate_solve_hint_mode", "plate_solve_hint_mode", "fallback", str),
-        ("mcp_enabled", "mcp_enabled", False, bool),
-        ("mcp_port", "mcp_port", 8765, int),
         ("mcp_allow_plate_solve", "mcp_allow_plate_solve", False, bool),
         ("last_export_xisf_as_fits", "last_export_xisf_as_fits", False, bool),
         ("last_export_override_platesolve", "last_export_override_platesolve", False, bool),

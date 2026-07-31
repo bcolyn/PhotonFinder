@@ -290,53 +290,12 @@
      </property>
      <layout class="QVBoxLayout" name="mcp_layout">
       <item>
-       <widget class="QCheckBox" name="mcp_enabled_check">
-        <property name="text">
-         <string>Enable local MCP server for AI agents (read-only)</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="mcp_port_layout">
-        <item>
-         <widget class="QLabel" name="mcp_port_label">
-          <property name="text">
-           <string>Port:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="mcp_port_spin">
-          <property name="toolTip">
-           <string>TCP port the MCP server listens on (loopback only)</string>
-          </property>
-          <property name="minimum">
-           <number>1024</number>
-          </property>
-          <property name="maximum">
-           <number>65535</number>
-          </property>
-          <property name="value">
-           <number>8765</number>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
        <widget class="QLabel" name="mcp_hint_label">
         <property name="text">
-         <string>Exposes read-only library search on http://127.0.0.1:&lt;port&gt;/mcp. Changes apply after restarting the application.</string>
+         <string>AI agents reach the library through photonfinder-mcp, which your MCP client starts on demand -- PhotonFinder itself does not need to be running. See docs/mcp.md for how to configure your client.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="line_mcp">
-        <property name="orientation">
-         <enum>Qt::Orientation::Horizontal</enum>
         </property>
        </widget>
       </item>
@@ -350,7 +309,7 @@
       <item>
        <widget class="QLabel" name="mcp_plate_solve_hint_label">
         <property name="text">
-         <string>Lets a connected AI agent run the plate-solving executables configured above and write the resulting WCS/coordinates to the library. Off by default even when the MCP server is enabled.</string>
+         <string>Lets a connected AI agent run the plate-solving executables configured above and write the resulting WCS/coordinates to the library. Off by default; every other MCP tool is read-only.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>

@@ -22,16 +22,16 @@ def init_logging(path: str = None):
     # can be dropped to DEBUG for targeted diagnostics without changing the global LEVEL.
     file_handler = TimedRotatingFileHandler(f"{path}/photonfinder.log", backupCount=9, when='D')
 
-    # Create console handler
-    console_handler = logging.StreamHandler()
-
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-
-    # Add handlers to logger
     logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+
+    # A windowed build, or a start via pythonw.exe, has no stderr to write to: a handler
+    # on it would fail on every record. The file handler above is the real log either way.
+    if sys.stderr is not None:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
 
 
 def main():

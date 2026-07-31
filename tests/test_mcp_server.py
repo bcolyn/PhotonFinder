@@ -2,7 +2,7 @@
 
 These exercise the synchronous query helpers directly against an in-memory database,
 which validates criteria handling, result serialization, pagination and file details
-without needing the HTTP transport or a running event loop.
+without needing the stdio transport or a running event loop.
 """
 from datetime import datetime
 
@@ -317,26 +317,44 @@ def test_build_mcp_registers_expected_tools():
     assert names == {
         "search_files", "list_library_roots", "list_projects",
         "list_distinct_values", "get_file_details", "list_catalogs", "lookup_object",
-        "get_project_details",
+        "get_project_details", "plate_solve_files",
     }
 
 
-def test_build_mcp_omits_plate_solve_tool_when_disabled(sample):
+def test_tool_set_does_not_depend_on_settings(sample):
+    """The advertised tools must be identical for every run, so they can be generated.
+
+    `plate_solve_files` used to appear and disappear with its setting; it is now always
+    registered and refuses when disabled, which is what lets the stub serve the tool list
+    without the application running.
+    """
     import asyncio
     ctx, _ = sample
+
     ctx.settings._store["mcp_allow_plate_solve"] = False
-    mcp = mcp_server.build_mcp(ctx)
-    names = {t.name for t in asyncio.run(mcp.list_tools())}
-    assert "plate_solve_files" not in names
-
-
-def test_build_mcp_includes_plate_solve_tool_when_enabled(sample):
-    import asyncio
-    ctx, _ = sample
+    disabled = {t.name for t in asyncio.run(mcp_server.build_mcp(ctx).list_tools())}
     ctx.settings._store["mcp_allow_plate_solve"] = True
-    mcp = mcp_server.build_mcp(ctx)
-    names = {t.name for t in asyncio.run(mcp.list_tools())}
-    assert "plate_solve_files" in names
+    enabled = {t.name for t in asyncio.run(mcp_server.build_mcp(ctx).list_tools())}
+
+    assert disabled == enabled
+    assert "plate_solve_files" in disabled
+
+
+def test_plate_solve_refuses_when_the_setting_is_off(sample, monkeypatch):
+    """Advertising the tool must not weaken the gate: no solver runs without the setting."""
+    ctx, data = sample
+    ctx.settings._store["mcp_allow_plate_solve"] = False
+
+    def fail(*args, **kwargs):
+        raise AssertionError("no solver may be built while the setting is off")
+
+    monkeypatch.setattr(mcp_server, "_build_solver", fail)
+
+    result = mcp_server.query_plate_solve(ctx, [data["dark"].rowid])
+
+    assert "error" in result
+    assert "Settings" in result["error"]
+    assert not FileWCS.select().where(FileWCS.file == data["dark"]).exists()
 
 
 def test_plate_solve_rejects_empty_batch(sample):
