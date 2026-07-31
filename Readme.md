@@ -161,6 +161,30 @@ Development:
 Claude Desktop does not inherit your shell's `PATH`, so give `uv` as an absolute path
 (`where uv` will tell you where it lives). Backslashes must be escaped in JSON.
 
+### Testing it by hand
+
+`scripts/mcp_client.py` drives the server the way a real client does, using the MCP SDK,
+which is easier than debugging the windowless executable:
+
+```bash
+uv run python scripts/mcp_client.py list                     # tools, with their annotations
+uv run python scripts/mcp_client.py call list_library_roots
+uv run python scripts/mcp_client.py call search_files '{"criteria": {"type": "LIGHT"}}'
+uv run python scripts/mcp_client.py                          # interactive
+```
+
+It spawns the stub, so you exercise the whole chain. Add `--direct` to skip the stub and
+talk to the running application's own port instead — that is how you tell a stub problem
+from a server problem.
+
+The standard alternative is the [MCP
+Inspector](https://github.com/modelcontextprotocol/inspector), a browser UI
+(`npx @modelcontextprotocol/inspector`), if you have Node installed:
+
+```bash
+npx @modelcontextprotocol/inspector uv run --directory C:\path\to\PhotonFinder python -m photonfinder.mcp_stub
+```
+
 ### Dev vs. production at a glance
 
 | | Command | Starts |

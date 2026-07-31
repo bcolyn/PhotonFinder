@@ -427,6 +427,61 @@ def test_logging_survives_an_unwritable_file(tmp_path, monkeypatch):
         mcp_stub._log_file = None
 
 
+def test_dev_launch_goes_through_wmi(monkeypatch):
+    """A child of ours joins the client's job object and dies when the session ends.
+
+    Clients run their servers in a job object with kill-on-close, so PhotonFinder started
+    as our child would be terminated when the user closes the chat -- losing the session
+    state it saves on a clean exit. WMI creates it from its own service, outside the job.
+    """
+    calls = {}
+
+    class _Result:
+        returncode = 0
+
+    def fake_run(command, **kwargs):
+        calls["command"] = command
+        return _Result()
+
+    monkeypatch.setattr(mcp_stub.subprocess, "run", fake_run)
+    assert mcp_stub.start_outside_job([r"C:\py\pythonw.exe", "-m", "photonfinder.main"])
+
+    script = calls["command"][-1]
+    assert "Win32_Process" in script and "Create" in script
+    assert "photonfinder.main" in script
+
+
+def test_dev_launch_reports_a_wmi_failure(monkeypatch):
+    class _Result:
+        returncode = 8  # Win32_Process.Create failure code
+
+    monkeypatch.setattr(mcp_stub.subprocess, "run", lambda command, **kw: _Result())
+    assert mcp_stub.start_outside_job(["pythonw.exe"]) is False
+
+
+def test_dev_launch_survives_powershell_being_unavailable(monkeypatch):
+    def boom(command, **kwargs):
+        raise OSError("no powershell here")
+
+    monkeypatch.setattr(mcp_stub.subprocess, "run", boom)
+    assert mcp_stub.start_outside_job(["pythonw.exe"]) is False
+
+
+def test_launch_falls_back_when_it_cannot_escape_the_job(monkeypatch):
+    """Better an application that closes with the session than none at all."""
+    monkeypatch.delattr(mcp_stub.sys, "frozen", raising=False)
+    monkeypatch.setattr(mcp_stub, "in_package_sandbox", lambda: False)
+    monkeypatch.setattr(mcp_stub, "start_outside_job", lambda command: False)
+    spawned = {}
+    monkeypatch.setattr(mcp_stub.subprocess, "Popen",
+                        lambda command, **kw: spawned.setdefault("command", command))
+
+    started, problem = mcp_stub.launch()
+
+    assert started and problem is None
+    assert spawned["command"][1:] == ["-m", "photonfinder.main"]
+
+
 def test_package_detection_says_no_outside_a_package():
     """This test process is not packaged, so the real detection must agree."""
     assert mcp_stub.in_package_sandbox() is False

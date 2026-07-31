@@ -226,18 +226,52 @@ def launch() -> tuple[bool, str | None]:
         return False, problem
     log(f"starting PhotonFinder: {' '.join(command)}")
     try:
-        kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
-                  "stderr": subprocess.DEVNULL}
-        if not getattr(sys, 'frozen', False):
-            kwargs["cwd"] = str(Path(__file__).resolve().parent.parent)
-            if sys.platform == 'win32':
-                kwargs["creationflags"] = subprocess.DETACHED_PROCESS
+        if sys.platform == 'win32' and not getattr(sys, 'frozen', False):
+            if start_outside_job(command):
+                return True, None
+            log("falling back to a direct start; PhotonFinder will close with this session")
         # explorer.exe returns immediately (and often non-zero); it is fire-and-forget.
-        subprocess.Popen(command, **kwargs)
+        subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
         return True, None
     except OSError as e:
         log(f"could not start PhotonFinder: {e}")
         return False, f"Could not start PhotonFinder: {e}"
+
+
+def start_outside_job(command: list[str]) -> bool:
+    """Start `command` via WMI, so it does not belong to our process's job object.
+
+    Clients run their servers inside a job object that kills everything in it when the
+    session ends. A process we create joins that job, so ending a chat would take the
+    user's PhotonFinder down with it -- abruptly, losing the session state it would
+    normally save on close. WMI creates the process from its own service instead, leaving
+    it outside the job entirely.
+
+    The packaged build does not need this: `explorer.exe` hands the request to the running
+    shell, which starts the application outside the job for the same reason. Direct
+    execution is not equivalent -- `os.startfile` on an .exe calls CreateProcess in this
+    process, and the child joins the job like any other.
+    """
+    def quote(value: str) -> str:
+        return "'" + value.replace("'", "''") + "'"
+
+    script = ("$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create "
+              f"-Arguments @{{CommandLine={quote(subprocess.list2cmdline(command))}; "
+              f"CurrentDirectory={quote(str(Path(__file__).resolve().parent.parent))}}}; "
+              "exit $r.ReturnValue")
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True, timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
+    except (OSError, subprocess.SubprocessError) as e:
+        log(f"could not start PhotonFinder outside the client's job object: {e}")
+        return False
+    if result.returncode != 0:
+        log("could not start PhotonFinder outside the client's job object "
+            f"(Win32_Process.Create returned {result.returncode})")
+        return False
+    return True
 
 
 def start_application() -> tuple[bool, str]:

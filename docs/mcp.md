@@ -28,6 +28,9 @@ the agent to call `start_photonfinder` first — never a silent launch.
 
 If PhotonFinder is already running, none of this applies: tools are simply forwarded.
 
+Once started, PhotonFinder is yours to close. It keeps running when the agent's session
+ends, so a chat you finish does not take your library window with it.
+
 One combination cannot start it for you: a **source checkout driven by a packaged client**
 (Claude Desktop). The packaged stub starts `photonfinder.exe` via `explorer.exe`, which
 runs outside the sandbox; a source checkout has no such executable to hand over, and
