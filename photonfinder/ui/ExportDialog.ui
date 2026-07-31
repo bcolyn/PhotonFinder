@@ -86,11 +86,25 @@
       </widget>
      </item>
      <item row="6" column="1">
-      <widget class="QCheckBox" name="createGroupCheckBox">
-       <property name="text">
-        <string>Create group/project for exported light frames</string>
-       </property>
-      </widget>
+      <layout class="QHBoxLayout" name="groupLayout">
+       <item>
+        <widget class="QCheckBox" name="createGroupCheckBox">
+         <property name="text">
+          <string>Create group/project for exported light frames</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="projectNameEdit">
+         <property name="visible">
+          <bool>false</bool>
+         </property>
+         <property name="placeholderText">
+          <string>Project name</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
      </item>
      <item row="7" column="0">
       <widget class="QLabel" name="label_7">

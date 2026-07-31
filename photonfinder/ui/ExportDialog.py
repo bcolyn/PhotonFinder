@@ -20,7 +20,7 @@ from astropy.io import fits
 from peewee import JOIN
 
 from photonfinder.calibration import CalibrationMatcher, CalibrationCandidate, SessionKey, session_date_for
-from photonfinder.core import ApplicationContext, Settings, decompress
+from photonfinder.core import ApplicationContext, Settings, decompress, Change
 from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict, repair_header
 from photonfinder.models import Image, File, SearchCriteria, FileWCS, Project, ProjectFile
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
@@ -486,6 +486,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint)
         self.context = context
         self.search_criteria = copy.deepcopy(search_criteria)
+        self.created_project = None
 
         # Materialize all files and split into lights vs. calibration preselect
         all_files = self._materialize_files(files)
@@ -539,6 +540,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.useMasterCheckBox.stateChanged.connect(self._on_use_master_changed)
         self.sharedSessionCheckBox.stateChanged.connect(self._refresh_all_calib_labels)
         self.variablesButton.clicked.connect(self._open_variables_docs)
+        self.createGroupCheckBox.stateChanged.connect(self._on_create_group_changed)
 
         if self.first_file:
             self.update_preview(self.patternComboBox.currentText())
@@ -844,6 +846,18 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             self._session_keys, self.sessions, self._calib_selections, self._calib_headers
         )
 
+    def _on_create_group_changed(self):
+        checked = self.createGroupCheckBox.isChecked()
+        self.projectNameEdit.setVisible(checked)
+        if checked and not self.projectNameEdit.text():
+            self.projectNameEdit.setText(self._default_project_name())
+
+    def _default_project_name(self) -> str:
+        image = self.first_file.image if self.first_file and hasattr(self.first_file, 'image') else None
+        object_name = image.object_name if image and image.object_name else "Export"
+        today = datetime.date.today().isoformat()
+        return f"{object_name}/{today}"
+
     def _open_variables_docs(self):
         QDesktopServices.openUrl(QUrl("https://github.com/bcolyn/PhotonFinder/blob/master/docs/export-templates.md"))
 
@@ -892,10 +906,10 @@ class ExportDialog(QDialog, Ui_ExportDialog):
 
         project = None
         if self.createGroupCheckBox.isChecked():
-            path = Path(self.outputPathEdit.text())
-            project = Project(name=f"Export {path.name} {datetime.datetime.now().isoformat()}",
-                              last_change=datetime.datetime.now())
+            name = self.projectNameEdit.text().strip() or self._default_project_name()
+            project = Project(name=name, last_change=datetime.datetime.now())
             project.save()
+        self.created_project = project
 
         shared_file_ids = self._build_shared_file_ids()
         all_entries = self._build_all_entries(shared_file_ids)
@@ -961,6 +975,8 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.reject()
 
     def on_export_finished(self):
+        if self.created_project:
+            self.context.signal_bus.projects_changed.emit([self.created_project], Change.CREATE_OR_UPDATE)
         self.accept()
 
     def on_export_error(self, error_message):
