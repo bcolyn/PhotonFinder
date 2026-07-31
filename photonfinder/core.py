@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import threading
 from abc import abstractmethod
 from enum import Enum
 from pathlib import Path
@@ -105,6 +106,8 @@ class ApplicationContext:
         self.status_reporter: StatusReporter | None = None
         self.session_file = session_file
         self.signal_bus = SignalBus()
+        # Prevents overlapping plate-solve batches from the GUI and the MCP server.
+        self.solve_lock = threading.Lock()
 
     def __enter__(self):
         self.open_database()
@@ -261,6 +264,7 @@ class Settings:
         ("plate_solve_hint_mode", "plate_solve_hint_mode", "fallback", str),
         ("mcp_enabled", "mcp_enabled", False, bool),
         ("mcp_port", "mcp_port", 8765, int),
+        ("mcp_allow_plate_solve", "mcp_allow_plate_solve", False, bool),
         ("last_export_xisf_as_fits", "last_export_xisf_as_fits", False, bool),
         ("last_export_override_platesolve", "last_export_override_platesolve", False, bool),
         ("last_export_custom_headers", "last_export_custom_headers", "", str),

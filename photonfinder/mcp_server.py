@@ -23,11 +23,15 @@ from typing import Optional
 import anyio
 from peewee import JOIN
 
+from photonfinder import solve_service
 from photonfinder.core import ApplicationContext
 from photonfinder.models import (
     CORE_MODELS, CATALOG_MODELS, SearchCriteria, File, Image, LibraryRoot, Project,
     ProjectFile, FitsHeader, FileWCS, CatalogEntry,
     search_files as run_search_files, serialize_search_row, _SERIALIZED_IMAGE_FIELDS,
+)
+from photonfinder.platesolver import (
+    ASTAPSolver, AstrometryNetSolver, SolveFieldSolver, SolverHint,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,6 +40,10 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 MAX_PAGE_SIZE = 500
+MAX_SOLVE_BATCH = 10
+
+# Solver name -> settings index, matching PlateSolveDialog's combo box order.
+SOLVER_NAMES = {"astap": 0, "astrometry_net": 1, "solve_field": 2}
 
 # Fields the agent may request distinct values for, mapped to their Image column.
 DISTINCT_FIELDS = {
@@ -231,10 +239,104 @@ def query_lookup_object(context: ApplicationContext, catalog: str, catalog_id: s
         }
 
 
+def _build_solver(context: ApplicationContext, solver_index: int):
+    s = context.settings
+    if solver_index == 0:
+        return ASTAPSolver(exe=s.get_astap_path())
+    elif solver_index == 1:
+        return AstrometryNetSolver(
+            api_key=s.get_astrometry_net_api_key(),
+            force_image_upload=s.get_astrometry_net_force_image_upload(),
+        )
+    elif solver_index == 2:
+        return SolveFieldSolver(
+            exe_path=s.get_solve_field_path(),
+            timeout=s.get_solve_field_timeout(),
+            wsl_distro=s.get_solve_field_wsl_distro(),
+        )
+    return None
+
+
+def _resolve_solver_index(name: Optional[str], default_index: int) -> int:
+    if name is None:
+        return default_index
+    key = name.strip().lower()
+    if key not in SOLVER_NAMES:
+        raise ValueError(f"Unknown solver '{name}'. Valid solvers: {', '.join(sorted(SOLVER_NAMES))}.")
+    return SOLVER_NAMES[key]
+
+
+def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Optional[str] = None,
+                       backup_solver: Optional[str] = None, hint_ra: Optional[float] = None,
+                       hint_dec: Optional[float] = None, hint_scale: Optional[float] = None,
+                       hint_mode: Optional[str] = None) -> dict:
+    if not rowids:
+        return {"error": "No rowids given."}
+    if len(rowids) > MAX_SOLVE_BATCH:
+        return {"error": f"Too many files: {len(rowids)} (max {MAX_SOLVE_BATCH} per call)."}
+
+    s = context.settings
+    try:
+        primary_index = _resolve_solver_index(solver, s.get_plate_solve_primary_solver())
+        backup_index = _resolve_solver_index(backup_solver, s.get_plate_solve_backup_solver())
+    except ValueError as e:
+        return {"error": str(e)}
+
+    if not context.solve_lock.acquire(blocking=False):
+        return {"error": "A plate-solve is already running (from this application or "
+                          "another MCP request); try again shortly."}
+    try:
+        try:
+            primary = _build_solver(context, primary_index)
+            backup = _build_solver(context, backup_index) if backup_index >= 0 else None
+        except Exception as e:
+            return {"error": f"Could not build solver: {e}"}
+        if primary is None:
+            return {"error": f"No primary solver configured (index {primary_index})."}
+
+        hint = SolverHint(
+            ra=hint_ra if hint_ra is not None else (float(s.get_plate_solve_hint_ra()) if s.get_plate_solve_hint_ra() else None),
+            dec=hint_dec if hint_dec is not None else (float(s.get_plate_solve_hint_dec()) if s.get_plate_solve_hint_dec() else None),
+            scale=hint_scale if hint_scale is not None else (s.get_plate_solve_hint_scale() or None),
+            mode=hint_mode or s.get_plate_solve_hint_mode(),
+        )
+
+        results = []
+        solved = failed = 0
+        with context.database.bind_ctx(CORE_MODELS):
+            for rowid in rowids:
+                file = (File.select(File, Image)
+                        .join_from(File, Image, JOIN.LEFT_OUTER)
+                        .where(File.rowid == rowid)).get_or_none()
+                if file is None:
+                    results.append({"rowid": rowid, "success": False, "error": f"No file with rowid {rowid}"})
+                    failed += 1
+                    continue
+                file_wcs = FileWCS.get_or_none(FileWCS.file == file)
+                outcome = solve_service.solve_file(file, primary, backup, hint=hint, file_wcs=file_wcs)
+                if outcome.success:
+                    solved += 1
+                    results.append({
+                        "rowid": rowid, "path": file.full_filename(), "success": True,
+                        "ra": outcome.ra, "dec": outcome.dec, "scale_arcsec": outcome.scale_arcsec,
+                        "solver": outcome.used_solver,
+                    })
+                else:
+                    failed += 1
+                    results.append({
+                        "rowid": rowid, "path": file.full_filename(), "success": False,
+                        "error": outcome.error,
+                    })
+        return {"results": results, "solved": solved, "failed": failed}
+    finally:
+        context.solve_lock.release()
+
+
 def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 8765):
     """Construct the FastMCP server with PhotonFinder's read-only tools."""
     from mcp.server.fastmcp import FastMCP
 
+    allow_plate_solve = context is not None and context.settings.get_mcp_allow_plate_solve()
     instructions = (
         "PhotonFinder manages an astrophotography file library (FITS/XISF images and "
         "calibration frames). Use `search_files` with a SearchCriteria JSON object to find "
@@ -243,8 +345,16 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
         "`get_file_details` to inspect one file's full metadata and FITS header, and "
         "`lookup_object`/`list_catalogs` to resolve an object's RA/Dec from PhotonFinder's "
         "local catalog database (no online lookups such as Simbad or Telescopius are "
-        "performed). All tools are read-only."
+        "performed)."
     )
+    if allow_plate_solve:
+        instructions += (
+            " `plate_solve_files` can plate-solve up to "
+            f"{MAX_SOLVE_BATCH} files at once (by rowid) using the solvers configured in "
+            "Settings, and writes the resulting WCS/coordinates to the library."
+        )
+    else:
+        instructions += " All tools are read-only."
     mcp = FastMCP(
         "PhotonFinder",
         instructions=instructions,
@@ -279,6 +389,12 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
         (omit or use `null` to match the whole root); `root_label` is accepted for
         symmetry with `list_library_roots` output but is display-only and may be omitted.
         Omit a field to leave it unconstrained.
+
+        To sort results, set `sorting_field` to one of: name, path, size, mtime, type,
+        filter, exposure, gain, offset, binning, temperature, camera, telescope,
+        object_name, date_obs, coord_ra, coord_dec, star_count, fwhm, elongation,
+        background, background_rms. `sorting_desc` (default true) controls direction.
+        Defaults to root/path/name order if `sorting_field` is omitted.
 
         Returns `{results, page, page_size, total, has_more}`. `page` is zero-based.
         Discover valid values for `filter`/`type`/`camera`/etc. via `list_distinct_values`,
@@ -341,6 +457,32 @@ def build_mcp(context: ApplicationContext, host: str = "127.0.0.1", port: int = 
         `{"error": ...}` if no match is found.
         """
         return await anyio.to_thread.run_sync(query_lookup_object, context, catalog, catalog_id)
+
+    if allow_plate_solve:
+        @mcp.tool(description=(
+            f"Plate-solve up to {MAX_SOLVE_BATCH} files at once by rowid (from "
+            "`search_files`/`get_file_details`), writing the resulting WCS solution and "
+            "coordinates to the library. "
+            '`solver`/`backup_solver` are one of "astap", "astrometry_net", "solve_field"; '
+            "omit to use the primary/backup solver configured in Settings (no backup if "
+            "unset). `hint_ra`/`hint_dec` (degrees) and `hint_scale` (arcsec/pixel) seed the "
+            'solver; `hint_mode` is "fallback" (only used if the file has no usable '
+            'coordinates/scale) or "override" (always used). Omitted hint fields fall back '
+            "to the values configured in Settings. "
+            "Returns {results, solved, failed}. `results` is a list of per-file dicts "
+            "with `rowid`, `path`, `success`, and on success `ra`/`dec`/`scale_arcsec`/`solver`, "
+            "or on failure `error`. One file's failure does not abort the rest of the batch. "
+            'Returns {"error": ...} if the batch is empty, too large, or a plate-solve is '
+            "already running (from this application or another request)."
+        ))
+        async def plate_solve_files(rowids: list[int], solver: Optional[str] = None,
+                                     backup_solver: Optional[str] = None,
+                                     hint_ra: Optional[float] = None, hint_dec: Optional[float] = None,
+                                     hint_scale: Optional[float] = None,
+                                     hint_mode: Optional[str] = None) -> dict:
+            return await anyio.to_thread.run_sync(
+                query_plate_solve, context, rowids, solver, backup_solver,
+                hint_ra, hint_dec, hint_scale, hint_mode)
 
     return mcp
 

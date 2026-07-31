@@ -107,6 +107,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.search_criteria = search_criteria
         self._task: PlateSolveTask | None = None
         self._pending_retry_files = None
+        self._solve_lock_held = False
 
         self._populate_combos()
         self._load_settings()
@@ -360,6 +361,14 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self._run_task(files)
 
     def _run_task(self, files):
+        if not self.context.solve_lock.acquire(blocking=False):
+            QMessageBox.warning(
+                self, "Plate solving busy",
+                "A plate-solve is already running (from this application or an MCP "
+                "request); try again shortly.")
+            return
+        self._solve_lock_held = True
+
         primary_index = self.primary_solver_combo.currentIndex()
         backup_index = self.backup_solver_combo.currentIndex() - 1  # -1 = None
 
@@ -367,6 +376,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
             primary_solver = self._build_solver(primary_index)
             backup_solver = self._build_solver(backup_index) if backup_index >= 0 else None
         except Exception as e:
+            self._release_solve_lock()
             QMessageBox.critical(self, "Configuration error", str(e))
             return
 
@@ -398,6 +408,11 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
 
         self._task.start()
 
+    def _release_solve_lock(self):
+        if self._solve_lock_held:
+            self.context.solve_lock.release()
+            self._solve_lock_held = False
+
     def _cleanup_results(self):
         self.layout().removeWidget(self._results_scroll)
         self._results_scroll.deleteLater()
@@ -411,6 +426,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         task = self._task
         assert task is not None
         self._task = None
+        self._release_solve_lock()
         self.solving_complete.emit(task)
         self._show_results(task)
         if task.first_solution is not None:
@@ -483,6 +499,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         dlg.exec()
 
     def _on_error(self, error_message: str):
+        self._release_solve_lock()
         self._append_log(f"Error: {error_message}")
         QMessageBox.critical(self, "Plate solving error", error_message)
         self.start_button.setEnabled(True)
@@ -494,6 +511,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         if self._task is not None:
             self._task.cancel()
             self._task = None
+            self._release_solve_lock()
         super().closeEvent(event)
 
     def _on_close_clicked(self):

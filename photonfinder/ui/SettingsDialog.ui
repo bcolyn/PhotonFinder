@@ -333,6 +333,30 @@
         </property>
        </widget>
       </item>
+      <item>
+       <widget class="Line" name="line_mcp">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="mcp_allow_plate_solve_check">
+        <property name="text">
+         <string>Allow AI agents to trigger plate solving</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="mcp_plate_solve_hint_label">
+        <property name="text">
+         <string>Lets a connected AI agent run the plate-solving executables configured above and write the resulting WCS/coordinates to the library. Off by default even when the MCP server is enabled.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

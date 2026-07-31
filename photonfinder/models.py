@@ -53,6 +53,10 @@ class SearchCriteria:
     project: 'Project' = None
     sorting_index: int | None = None
     sorting_desc: bool = True
+    # Named alternative to sorting_index for API/MCP callers, who can't know the
+    # GUI's result-table column order. See SORTABLE_FIELDS for valid names. Takes
+    # precedence over sorting_index when set; both use sorting_desc for direction.
+    sorting_field: str | None = None
     exposure_tolerance: float | None = None   # ±seconds; None = exact match
     temperature_tolerance: float | None = None  # ±°C; None = exact match
     plate_solved: bool | None = None  # True = solved only, False = unsolved only, None = any
@@ -837,6 +841,35 @@ class CatalogEntry(Model):
 CATALOG_MODELS = [CatalogEntry]
 
 
+# Named sort targets for SearchCriteria.sorting_field -- independent of the GUI's
+# result-table column order (see SearchCriteria.sorting_index), so external callers
+# (e.g. the MCP server) can request a sort without knowing that layout.
+SORTABLE_FIELDS = {
+    "name": File.name,
+    "path": File.path,
+    "size": File.size,
+    "mtime": File.mtime_millis,
+    "type": Image.image_type,
+    "filter": Image.filter,
+    "exposure": Image.exposure,
+    "gain": Image.gain,
+    "offset": Image.offset,
+    "binning": Image.binning,
+    "temperature": Image.set_temp,
+    "camera": Image.camera,
+    "telescope": Image.telescope,
+    "object_name": Image.object_name,
+    "date_obs": Image.date_obs,
+    "coord_ra": Image.coord_ra,
+    "coord_dec": Image.coord_dec,
+    "star_count": ImageStats.star_count,
+    "fwhm": ImageStats.fwhm_median,
+    "elongation": ImageStats.elongation_median,
+    "background": ImageStats.background_median,
+    "background_rms": ImageStats.background_rms,
+}
+
+
 # Ordered list of selected columns. The position in this list is what
 # SearchCriteria.sorting_index refers to (it maps to result-table columns), so the
 # order must stay in sync with the SearchPanel result columns.
@@ -889,7 +922,16 @@ def search_files(search_criteria: SearchCriteria, page: int = 0, page_size: int 
     """
     query, fields = _build_search_query(search_criteria)
 
-    if search_criteria.sorting_index is None:
+    if search_criteria.sorting_field is not None:
+        sort_field = SORTABLE_FIELDS.get(search_criteria.sorting_field)
+        if sort_field is None:
+            raise ValueError(
+                f"Unknown sorting_field '{search_criteria.sorting_field}'. "
+                f"Valid fields: {', '.join(sorted(SORTABLE_FIELDS))}.")
+        if sort_field == File.name or sort_field == File.path:
+            sort_field = sort_field.collate("NOCASE")
+        query = query.order_by(sort_field.desc() if search_criteria.sorting_desc else sort_field.asc())
+    elif search_criteria.sorting_index is None:
         query = query.order_by(File.root, File.path, File.name)
     else:
         field = fields[search_criteria.sorting_index]

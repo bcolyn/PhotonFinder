@@ -14,6 +14,7 @@ from photonfinder.models import (
     LibraryRoot, File, Image, FitsHeader, FileWCS, Project, ProjectFile,
 )
 from photonfinder import mcp_server
+from photonfinder.platesolver import SolverBase, SolverType
 
 
 class _Settings:
@@ -32,6 +33,62 @@ class _Settings:
 
     def sync(self):
         pass
+
+    def get_mcp_allow_plate_solve(self):
+        return self._store.get("mcp_allow_plate_solve", True)
+
+    def get_plate_solve_primary_solver(self):
+        return 0
+
+    def get_plate_solve_backup_solver(self):
+        return -1
+
+    def get_plate_solve_hint_ra(self):
+        return ""
+
+    def get_plate_solve_hint_dec(self):
+        return ""
+
+    def get_plate_solve_hint_scale(self):
+        return 0.0
+
+    def get_plate_solve_hint_mode(self):
+        return "fallback"
+
+
+class _FakeSolver(SolverBase):
+    """Stand-in solver that returns a fixed WCS solution without running any executable."""
+
+    def __init__(self, header: Header = None, error: Exception = None):
+        super().__init__()
+        self._header = header
+        self._error = error
+
+    @property
+    def solver_type(self):
+        return SolverType.ASTAP
+
+    def solve(self, image_path, image=None, hint=None, output_callback=None, file_wcs=None):
+        if self._error:
+            raise self._error
+        return self._header.copy()
+
+
+def _fixed_solution_header() -> Header:
+    hdr = Header()
+    hdr["CTYPE1"] = "RA---TAN"
+    hdr["CTYPE2"] = "DEC--TAN"
+    hdr["CRVAL1"] = 10.68
+    hdr["CRVAL2"] = 41.27
+    hdr["CRPIX1"] = 100.0
+    hdr["CRPIX2"] = 100.0
+    hdr["CDELT1"] = -0.001
+    hdr["CDELT2"] = 0.001
+    hdr["CUNIT1"] = "deg"
+    hdr["CUNIT2"] = "deg"
+    hdr["NAXIS1"] = 200
+    hdr["NAXIS2"] = 200
+    return hdr
 
 
 @pytest.fixture
@@ -132,6 +189,24 @@ def test_search_ignores_unknown_criteria_keys(sample):
     result = mcp_server.query_search(ctx, {"not_a_real_field": "x", "type": "DARK"})
     assert result["total"] == 1
     assert result["results"][0]["name"] == "dark.fits"
+
+
+def test_search_sorting_field_ascending(sample):
+    ctx, _ = sample
+    result = mcp_server.query_search(ctx, {"sorting_field": "size", "sorting_desc": False})
+    assert [r["name"] for r in result["results"]] == ["m31.fits", "dark.fits"]
+
+
+def test_search_sorting_field_descending(sample):
+    ctx, _ = sample
+    result = mcp_server.query_search(ctx, {"sorting_field": "size", "sorting_desc": True})
+    assert [r["name"] for r in result["results"]] == ["dark.fits", "m31.fits"]
+
+
+def test_search_sorting_field_unknown_raises(sample):
+    ctx, _ = sample
+    with pytest.raises(ValueError):
+        mcp_server.query_search(ctx, {"sorting_field": "not_a_real_field"})
 
 
 def test_search_page_size_is_clamped(sample):
@@ -244,3 +319,107 @@ def test_build_mcp_registers_expected_tools():
         "list_distinct_values", "get_file_details", "list_catalogs", "lookup_object",
         "get_project_details",
     }
+
+
+def test_build_mcp_omits_plate_solve_tool_when_disabled(sample):
+    import asyncio
+    ctx, _ = sample
+    ctx.settings._store["mcp_allow_plate_solve"] = False
+    mcp = mcp_server.build_mcp(ctx)
+    names = {t.name for t in asyncio.run(mcp.list_tools())}
+    assert "plate_solve_files" not in names
+
+
+def test_build_mcp_includes_plate_solve_tool_when_enabled(sample):
+    import asyncio
+    ctx, _ = sample
+    ctx.settings._store["mcp_allow_plate_solve"] = True
+    mcp = mcp_server.build_mcp(ctx)
+    names = {t.name for t in asyncio.run(mcp.list_tools())}
+    assert "plate_solve_files" in names
+
+
+def test_plate_solve_rejects_empty_batch(sample):
+    ctx, _ = sample
+    result = mcp_server.query_plate_solve(ctx, [])
+    assert "error" in result
+
+
+def test_plate_solve_rejects_oversized_batch(sample):
+    ctx, _ = sample
+    result = mcp_server.query_plate_solve(ctx, list(range(mcp_server.MAX_SOLVE_BATCH + 1)))
+    assert "error" in result
+
+
+def test_plate_solve_success_persists_wcs(sample, monkeypatch):
+    ctx, data = sample
+    fake = _FakeSolver(header=_fixed_solution_header())
+    monkeypatch.setattr(mcp_server, "_build_solver", lambda context, index: fake)
+
+    dark = data["dark"]
+    result = mcp_server.query_plate_solve(ctx, [dark.rowid])
+
+    assert result["solved"] == 1
+    assert result["failed"] == 0
+    row = result["results"][0]
+    assert row["success"] is True
+    assert row["ra"] == pytest.approx(10.68, abs=0.01)
+    assert row["dec"] == pytest.approx(41.27, abs=0.01)
+
+    assert FileWCS.select().where(FileWCS.file == dark).exists()
+    updated = Image.get(Image.file == dark)
+    assert updated.coord_ra == pytest.approx(10.68, abs=0.01)
+    assert updated.coord_dec == pytest.approx(41.27, abs=0.01)
+
+
+def test_plate_solve_unknown_rowid_does_not_abort_batch(sample, monkeypatch):
+    ctx, data = sample
+    fake = _FakeSolver(header=_fixed_solution_header())
+    monkeypatch.setattr(mcp_server, "_build_solver", lambda context, index: fake)
+
+    dark = data["dark"]
+    result = mcp_server.query_plate_solve(ctx, [999999, dark.rowid])
+
+    assert result["solved"] == 1
+    assert result["failed"] == 1
+    by_rowid = {r["rowid"]: r for r in result["results"]}
+    assert by_rowid[999999]["success"] is False
+    assert "error" in by_rowid[999999]
+    assert by_rowid[dark.rowid]["success"] is True
+
+
+def test_plate_solve_reports_solver_failure_per_file(sample, monkeypatch):
+    from photonfinder.platesolver import SolverError
+    ctx, data = sample
+    fake = _FakeSolver(error=SolverError("no stars detected"))
+    monkeypatch.setattr(mcp_server, "_build_solver", lambda context, index: fake)
+
+    dark = data["dark"]
+    result = mcp_server.query_plate_solve(ctx, [dark.rowid])
+
+    assert result["solved"] == 0
+    assert result["failed"] == 1
+    assert "no stars detected" in result["results"][0]["error"]
+    assert not FileWCS.select().where(FileWCS.file == dark).exists()
+
+
+def test_plate_solve_rejects_unknown_solver_name(sample):
+    ctx, _ = sample
+    result = mcp_server.query_plate_solve(ctx, [1], solver="not-a-real-solver")
+    assert "error" in result
+
+
+def test_plate_solve_lock_contention(sample, monkeypatch):
+    ctx, data = sample
+    fake = _FakeSolver(header=_fixed_solution_header())
+    monkeypatch.setattr(mcp_server, "_build_solver", lambda context, index: fake)
+
+    dark = data["dark"]
+    assert ctx.solve_lock.acquire(blocking=False)
+    try:
+        result = mcp_server.query_plate_solve(ctx, [dark.rowid])
+    finally:
+        ctx.solve_lock.release()
+
+    assert "error" in result
+    assert not FileWCS.select().where(FileWCS.file == dark).exists()
