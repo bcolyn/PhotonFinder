@@ -107,7 +107,7 @@ tool's MCP annotations (`readOnlyHint: false`), that it should ask you before ca
 prompt for approval on their own account. You can always just start PhotonFinder yourself
 instead.
 
-The eight tools below are annotated `readOnlyHint: true`, so a client can let an agent
+The eleven tools below are annotated `readOnlyHint: true`, so a client can let an agent
 search and read metadata freely while still asking you about the two that are not —
 `start_photonfinder` and `plate_solve_files`. They are also marked as contacting no online
 service.
@@ -118,6 +118,9 @@ Read-only, always available once it is running:
 | --- | --- |
 | `search_files` | Search the library with the same criteria as the Advanced Search panel |
 | `get_file_details` | Full metadata and decompressed FITS header for one file |
+| `get_header_values` | A few named fields across many files at once |
+| `report_targets` | Total integration per target, by filter / telescope / camera |
+| `report_catalog_coverage` | Which catalog objects your library covers (only considers plate-solved images) |
 | `list_library_roots` | The configured library roots |
 | `list_projects` / `get_project_details` | Projects and their summaries |
 | `list_distinct_values` | Valid values for filter, type, camera, telescope, object name |
@@ -125,6 +128,39 @@ Read-only, always available once it is running:
 
 `lookup_object` uses PhotonFinder's bundled catalog database only — no online service
 (Simbad, Telescopius) is ever contacted.
+
+### Reports
+
+`report_targets` and `report_catalog_coverage` are the Report menu's aggregates, computed
+by the same code the report windows use, so the application and an agent give the same
+answer to "how much Ha do I have on M31" or "which NGC objects have I covered".
+`report_targets` groups purely by the object name recorded in each file's header, so it
+works on an unsolved library; `report_catalog_coverage` needs plate-solved footprints (see
+below).
+
+Two things behave differently from the windows, both because a context window is not a
+scrolling table:
+
+- Results are paginated, and the lists nested inside a row — the paths on a target, the
+  files on a catalog object — are capped, with a `paths_truncated` / `files_truncated` flag
+  saying when the cap was hit. Narrowing the search criteria beats paging.
+- `report_catalog_coverage` defaults to listing only the objects you *have* imaged. The
+  window defaults the other way, because greying out the rest is useful when you are
+  scrolling; for a catalog like NGC it means 785k rows, nearly all of them noise.
+
+`report_catalog_coverage` only sees **plate-solved** images. Its `images_considered` field
+says how many the criteria matched, which distinguishes "you have not imaged this" from
+"none of these are solved yet".
+
+`get_header_values` is the Metadata Report without the CSV file: name the fields you want
+and it returns them for every matching file, instead of one whole header per
+`get_file_details` call. Fields are prefixed by source — `File.size` / `Image.exposure` for
+model fields, `WCS:CRVAL1` for the plate-solve solution, anything else (`FOCTEMP`) for a
+FITS keyword.
+
+**PhotonFinder never writes files on an agent's behalf.** Reports come back as content;
+saving it — as CSV, in a note, anywhere — is the agent's job under your client's own
+permissions. That is why there is no export tool and why every report tool is read-only.
 
 ### Plate solving (opt-in)
 

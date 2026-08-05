@@ -9,51 +9,10 @@ from datetime import datetime
 import pytest
 from astropy.io.fits import Header
 
-from photonfinder.core import ApplicationContext, StatusReporter, compress
-from photonfinder.models import (
-    LibraryRoot, File, Image, FitsHeader, FileWCS, Project, ProjectFile,
-)
+from photonfinder.models import File, Image, FileWCS
 from photonfinder import mcp_server
 from photonfinder.platesolver import SolverBase, SolverType
-
-
-class _Settings:
-    """Minimal Settings stand-in for ApplicationContext."""
-    def __init__(self):
-        self._store = {}
-
-    def get_last_database_path(self):
-        return self._store.get("last_database_path", "")
-
-    def set_last_database_path(self, value):
-        self._store["last_database_path"] = value
-
-    def get_known_fits_keywords(self):
-        return []
-
-    def sync(self):
-        pass
-
-    def get_mcp_allow_plate_solve(self):
-        return self._store.get("mcp_allow_plate_solve", True)
-
-    def get_plate_solve_primary_solver(self):
-        return 0
-
-    def get_plate_solve_backup_solver(self):
-        return -1
-
-    def get_plate_solve_hint_ra(self):
-        return ""
-
-    def get_plate_solve_hint_dec(self):
-        return ""
-
-    def get_plate_solve_hint_scale(self):
-        return 0.0
-
-    def get_plate_solve_hint_mode(self):
-        return "fallback"
+from tests.conftest import fixed_solution_header as _fixed_solution_header
 
 
 class _FakeSolver(SolverBase):
@@ -74,55 +33,6 @@ class _FakeSolver(SolverBase):
         return self._header.copy()
 
 
-def _fixed_solution_header() -> Header:
-    hdr = Header()
-    hdr["CTYPE1"] = "RA---TAN"
-    hdr["CTYPE2"] = "DEC--TAN"
-    hdr["CRVAL1"] = 10.68
-    hdr["CRVAL2"] = 41.27
-    hdr["CRPIX1"] = 100.0
-    hdr["CRPIX2"] = 100.0
-    hdr["CDELT1"] = -0.001
-    hdr["CDELT2"] = 0.001
-    hdr["CUNIT1"] = "deg"
-    hdr["CUNIT2"] = "deg"
-    hdr["NAXIS1"] = 200
-    hdr["NAXIS2"] = 200
-    return hdr
-
-
-@pytest.fixture
-def context():
-    ctx = ApplicationContext(":memory:", _Settings())
-    ctx.set_status_reporter(StatusReporter())
-    with ctx:
-        yield ctx
-
-
-@pytest.fixture
-def sample(context):
-    """Populate the database with two files (a LIGHT and a DARK) and a project."""
-    root = LibraryRoot.create(name="Main", path="/data/")
-
-    light = File.create(root=root, path="lights/", name="m31.fits", size=1000, mtime_millis=111)
-    Image.create(file=light, image_type="LIGHT", filter="Ha", camera="ASI2600",
-                 telescope="RC8", object_name="M31", exposure=300.0, gain=100, offset=10,
-                 binning=1, set_temp=-10.0, date_obs=datetime(2024, 1, 1, 22, 0, 0),
-                 coord_ra=10.68, coord_dec=41.27, coord_radius=0.5, width=6248, height=4176)
-    hdr = Header()
-    hdr["GAIN"] = 100
-    hdr["OBJECT"] = "M31"
-    FitsHeader.create(file=light, header=compress(hdr.tostring().encode("ascii")))
-    FileWCS.create(file=light, wcs=compress(b"dummy-wcs"))
-
-    dark = File.create(root=root, path="darks/", name="dark.fits", size=2000, mtime_millis=222)
-    Image.create(file=dark, image_type="DARK", camera="ASI2600", exposure=300.0, gain=100,
-                 binning=1, set_temp=-10.0, date_obs=datetime(2024, 1, 2, 3, 0, 0))
-
-    project = Project.create(name="Andromeda")
-    ProjectFile.create(project=project, file=light)
-
-    return context, {"root": root, "light": light, "dark": dark, "project": project}
 
 
 def test_search_returns_all_files(sample):
@@ -213,6 +123,167 @@ def test_search_page_size_is_clamped(sample):
     ctx, _ = sample
     result = mcp_server.query_search(ctx, {}, page_size=10_000)
     assert result["page_size"] == mcp_server.MAX_PAGE_SIZE
+
+
+# --- Report tools -------------------------------------------------------------------
+
+def _extra_light(root, path, name):
+    file = File.create(root=root, path=path, name=name, size=1000, mtime_millis=111)
+    Image.create(file=file, image_type="LIGHT", filter="Ha", camera="ASI2600",
+                 telescope="RC8", object_name="M31", exposure=300.0, gain=100, binning=1,
+                 date_obs=datetime(2024, 1, 1, 22, 0, 0))
+    return file
+
+
+def test_target_report_shape(sample):
+    ctx, _ = sample
+    result = mcp_server.query_target_report(ctx, {})
+    assert result["total"] == 1
+    assert result["has_more"] is False
+    assert result["total_exposure_seconds_all"] == 300.0
+
+    row = result["results"][0]
+    assert row["object_name"] == "M31"
+    assert row["total_exposure_seconds"] == 300.0
+    assert row["file_count"] == 1
+    assert row["paths"] == ["lights/"]
+    assert row["paths_truncated"] is False
+    # Serialized as ISO-8601 even though the aggregate comes back as raw SQLite text.
+    assert datetime.fromisoformat(row["last_date_obs"]) == datetime(2024, 1, 1, 22, 0, 0)
+
+
+def test_target_report_page_size_is_clamped(sample):
+    ctx, _ = sample
+    result = mcp_server.query_target_report(ctx, {}, page_size=10_000)
+    assert result["page_size"] == mcp_server.MAX_PAGE_SIZE
+
+
+def test_target_report_total_exposure_covers_every_page(sample):
+    ctx, data = sample
+    _extra_light(data["root"], "lights/b/", "b.fits")
+    Image.update(filter="OIII").where(Image.file == data["light"].rowid).execute()
+
+    result = mcp_server.query_target_report(ctx, {}, page_size=1)
+    assert result["total"] == 2
+    assert len(result["results"]) == 1
+    assert result["has_more"] is True
+    # Both groups counted, even though only one is on this page.
+    assert result["total_exposure_seconds_all"] == 600.0
+
+
+def test_target_report_paths_are_capped(sample):
+    ctx, data = sample
+    for i in range(5):
+        _extra_light(data["root"], f"lights/{i}/", f"m31_{i}.fits")
+
+    result = mcp_server.query_target_report(ctx, {}, max_paths=2)
+    row = result["results"][0]
+    assert len(row["paths"]) == 2
+    assert row["paths_truncated"] is True
+
+
+def test_target_report_include_paths_false_omits_them(sample):
+    ctx, _ = sample
+    row = mcp_server.query_target_report(ctx, {}, include_paths=False)["results"][0]
+    assert "paths" not in row
+    assert "paths_truncated" not in row
+
+
+def test_target_report_ignores_unknown_criteria_keys(sample):
+    ctx, _ = sample
+    result = mcp_server.query_target_report(ctx, {"type": "LIGHT", "bogus": "x"})
+    assert result["total"] == 1
+
+
+def test_catalog_report_finds_coverage(solved_sample):
+    ctx, _ = solved_sample
+    result = mcp_server.query_catalog_report(ctx, "NGC")
+    assert result["catalog"] == "NGC"
+    assert result["images_considered"] == 1
+    assert result["objects_matched"] >= 1
+
+    row = next(r for r in result["results"] if r["catalog_id"] == "224")
+    assert row["file_count"] == 1
+    assert row["files"][0]["rowid"] is not None
+    assert row["files"][0]["full_path"].endswith("m31.fits")
+    assert row["files_truncated"] is False
+
+
+def test_catalog_report_defaults_to_only_matching(solved_sample):
+    ctx, _ = solved_sample
+    # Pinned deliberately: the GUI defaults this off, but a full NGC scan is ~785k rows
+    # of which an agent wants the handful it has actually imaged.
+    assert mcp_server.query_catalog_report(ctx, "NGC")["only_matching"] is True
+
+
+def test_catalog_report_include_files_false_omits_them(solved_sample):
+    ctx, _ = solved_sample
+    row = mcp_server.query_catalog_report(ctx, "NGC", include_files=False)["results"][0]
+    assert "files" not in row
+    assert row["file_count"] == 1
+
+
+def test_catalog_report_files_are_capped(solved_sample):
+    ctx, data = solved_sample
+    result = mcp_server.query_catalog_report(ctx, "NGC", max_files=0)
+    row = next(r for r in result["results"] if r["catalog_id"] == "224")
+    assert row["files"] == []
+    assert row["files_truncated"] is True
+
+
+def test_catalog_report_unknown_catalog_returns_error(sample):
+    ctx, _ = sample
+    result = mcp_server.query_catalog_report(ctx, "NOT_A_CATALOG")
+    assert "error" in result
+    assert "NOT_A_CATALOG" in result["error"]
+
+
+def test_header_values_returns_requested_fields(solved_sample):
+    ctx, data = solved_sample
+    result = mcp_server.query_header_values(
+        ctx, ["GAIN", "OBJECT", "Image.exposure", "WCS:CRVAL1"], {"type": "LIGHT"})
+
+    assert result["total"] == 1
+    entry = result["results"][0]
+    assert entry["rowid"] == data["light"].rowid
+    assert entry["values"] == {
+        "GAIN": 100, "OBJECT": "M31", "Image.exposure": 300.0, "WCS:CRVAL1": 10.68,
+    }
+
+
+def test_header_values_missing_field_is_null(sample):
+    ctx, _ = sample
+    result = mcp_server.query_header_values(ctx, ["NOSUCHKW"], {"type": "LIGHT"})
+    assert result["results"][0]["values"] == {"NOSUCHKW": None}
+
+
+def test_header_values_keeps_files_without_a_header(sample):
+    ctx, _ = sample
+    result = mcp_server.query_header_values(ctx, ["GAIN"], {"type": "DARK"})
+    assert result["total"] == 1
+    assert result["results"][0]["values"] == {"GAIN": None}
+
+
+def test_header_values_rejects_empty_field_list(sample):
+    ctx, _ = sample
+    assert "error" in mcp_server.query_header_values(ctx, [])
+    assert "error" in mcp_server.query_header_values(ctx, None)
+
+
+def test_header_values_rejects_too_many_fields(sample):
+    ctx, _ = sample
+    fields = [f"KW{i}" for i in range(mcp_server.MAX_HEADER_KEYWORDS + 1)]
+    result = mcp_server.query_header_values(ctx, fields)
+    assert "error" in result
+
+
+def test_header_values_paginates(sample):
+    ctx, data = sample
+    _extra_light(data["root"], "lights/b/", "b.fits")
+    result = mcp_server.query_header_values(ctx, ["GAIN"], {"type": "LIGHT"}, page_size=1)
+    assert result["total"] == 2
+    assert result["has_more"] is True
+    assert len(result["results"]) == 1
 
 
 def test_list_library_roots(sample):
@@ -318,6 +389,7 @@ def test_build_mcp_registers_expected_tools():
         "search_files", "list_library_roots", "list_projects",
         "list_distinct_values", "get_file_details", "list_catalogs", "lookup_object",
         "get_project_details", "plate_solve_files",
+        "report_targets", "report_catalog_coverage", "get_header_values",
     }
 
 

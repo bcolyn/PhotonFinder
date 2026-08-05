@@ -1,15 +1,13 @@
 import csv
 import sys
-from pathlib import Path
 from typing import List, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QListWidgetItem, QMessageBox, QDialogButtonBox, QFileDialog
-from astropy.io.fits import Header
 from peewee import JOIN
 
-from photonfinder.core import ApplicationContext, decompress
-from photonfinder.filesystem import decode_header_blob
+from photonfinder import reports
+from photonfinder.core import ApplicationContext
 from photonfinder.models import SearchCriteria, File, Image, FitsHeader, FileWCS
 from photonfinder.platesolver import SolverBase
 from photonfinder.ui.BackgroundLoader import FileProcessingTask
@@ -69,86 +67,10 @@ class MetadataReportTask(FileProcessingTask):
         result = []
 
         for field_name, source_type in field_list:
-            value = self._extract_field_value(file, field_name, source_type)
+            value = reports.extract_field_value(file, field_name, source_type)
             result.append(str(value) if value is not None else "")
 
         return result
-
-    def _extract_field_value(self, file: File, field_name: str, source_type: str):
-        """Extract a single field value from the file based on source type."""
-        try:
-            if source_type == "photonfinder":
-                return self._extract_photonfinder_field(file, field_name)
-            elif source_type == "fits":
-                return self._extract_fits_field(file, field_name)
-            elif source_type == "platesolving":
-                return self._extract_platesolving_field(file, field_name)
-            else:
-                return None
-        except Exception as e:
-            # Log error but don't fail the entire process
-            import logging
-            logging.warning(f"Error extracting field {field_name} from {source_type}: {e}")
-            return None
-
-    def _extract_photonfinder_field(self, file: File, field_name: str):
-        """Extract field from File or Image model."""
-        if field_name.startswith("File."):
-            attr_name = field_name[5:]  # Remove "File." prefix
-            if attr_name == "full_filename":
-                return str(Path(file.full_filename()))
-            else:
-                return getattr(file, attr_name, None)
-        elif field_name.startswith("Image."):
-            attr_name = field_name[6:]  # Remove "Image." prefix
-            if hasattr(file, 'image') and file.image:
-                return getattr(file.image, attr_name, None)
-            else:
-                return None
-        else:
-            # Handle legacy format without prefix
-            if hasattr(file, field_name):
-                return getattr(file, field_name, None)
-            elif hasattr(file, 'image') and file.image and hasattr(file.image, field_name):
-                return getattr(file.image, field_name, None)
-            else:
-                return None
-
-    def _extract_fits_field(self, file: File, field_name: str):
-        """Extract field from FITS header."""
-        try:
-            if hasattr(file, 'header_obj') and file.header_obj:
-                header = file.header_obj
-            else:
-                if hasattr(file, 'fitsheader') and file.fitsheader:
-                    header = decode_header_blob(file.fitsheader.header)
-                    file.header_obj = header
-                else:
-                    header = None
-            return header.get(field_name, None) if header else None
-        except Exception as e:
-            import logging
-            logging.warning(f"Error parsing FITS header for field {field_name}: {e}", exc_info=True)
-            return None
-
-    def _extract_platesolving_field(self, file: File, field_name: str):
-        """Extract field from WCS data."""
-        try:
-            if hasattr(file, 'filewcs_obj') and file.filewcs_obj:
-                header = file.filewcs_obj
-            else:
-                if hasattr(file, 'filewcs') and file.filewcs:
-                    # Decompress the WCS data and parse it as FITS header
-                    wcs_data = decompress(file.filewcs.wcs)
-                    header = Header.fromstring(wcs_data.decode('utf-8'))
-                    file.filewcs_obj = header
-                else:
-                    header = None
-            return header.get(field_name, None) if header else None
-        except Exception as e:
-            import logging
-            logging.warning(f"Error parsing WCS data for field {field_name}: {e}")
-            return None
 
 
 class MetadataReportDialog(QDialog, Ui_MetadataReportDialog):

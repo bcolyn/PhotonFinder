@@ -67,10 +67,16 @@ The Report menu provides various reporting and analysis tools.
 ### File Reports
 - **List Files** - Generates a simple list of files matching current search criteria
 - **Metadata Report** - Creates a detailed report of file metadata
-- **Data Usage Reports** - Generates reports on data usage and storage statistics
+
+### Aggregate Reports
+- **Target Report** - Total integration time per target, grouped by filter, telescope and camera
+- **Catalog Report** - Which catalog objects your plate-solved images cover
 
 ### External Integration
 - **Telescopius Target List** - Generates a target list compatible with Telescopius
+
+The Target Report, the Catalog Report and the Metadata Report's field extraction are also
+available to AI agents over MCP — see [mcp.md](mcp.md).
 
 ## Help Menu
 

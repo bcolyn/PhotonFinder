@@ -9,8 +9,9 @@ class _NumericItem(QTableWidgetItem):
         except ValueError:
             return super().__lt__(other)
 
+from photonfinder import reports
 from photonfinder.core import ApplicationContext
-from photonfinder.models import File, Image, SearchCriteria
+from photonfinder.models import SearchCriteria
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
 from photonfinder.ui.TelescopiusCompareDialog import TableWidgetMixin
 from photonfinder.ui.generated.TargetObjectReportWindow_ui import Ui_TargetObjectReportWindow
@@ -70,43 +71,15 @@ class TargetReportLoader(BackgroundLoaderBase):
         self.run_in_thread(self._query_data)
 
     def _query_data(self):
-        from peewee import fn
-        query = (File.select(Image.object_name,
-                             Image.filter,
-                             Image.telescope,
-                             Image.camera,
-                             fn.SUM(Image.exposure),
-                             fn.MAX(Image.date_obs),
-                             fn.RTRIM(fn.REPLACE(fn.GROUP_CONCAT(fn.DISTINCT(File.path + ":")), ":,", "\n"), ":"))
-                 .join_from(File, Image))
-        query = Image.apply_search_criteria(query, self.criteria)
-        query = (query
-                 .where(Image.object_name.is_null(False))
-                 .where(Image.object_name != "")
-                 .group_by(Image.object_name,
-                           Image.filter,
-                           Image.telescope,
-                           Image.camera)
-                 .order_by(fn.LOWER(Image.object_name).asc(), Image.filter.asc()))
-        result = list(query.tuples())
-        self.on_result.emit(result)
+        self.on_result.emit(rows_to_table_data(reports.target_report(self.criteria)))
 
-# SELECT
-#   image.object_name,
-#   image.filter,
-#   image.telescope,
-#   image.camera,
-#   SUM(image.exposure) as total_exposure,
-#   max(image.date_obs) as last_date,
-#   rtrim(replace(group_concat(DISTINCT file.path||':'), ':,', char(10)), ':') AS paths
-# FROM file
-# JOIN image ON file.rowid = image.file_id
-# WHERE image.object_name IS NOT NULL
-#   AND image.object_name <> ""
-# GROUP BY
-#   image.object_name,
-#   image.filter,
-#   image.telescope,
-#   image.camera
-# ORDER BY
-#   LOWER(image.object_name), image.filter;
+
+def rows_to_table_data(rows) -> list:
+    """Flatten TargetReportRows into the 7 columns the table widget expects.
+
+    `file_count` is deliberately dropped: the table has seven headers, so an eighth
+    value would be discarded by `setColumnCount` anyway.
+    """
+    return [(r.object_name, r.filter, r.telescope, r.camera,
+             r.total_exposure, r.last_date_obs, "\n".join(r.paths))
+            for r in rows]

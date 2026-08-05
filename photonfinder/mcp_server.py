@@ -22,6 +22,10 @@ and wrapped in ``context.database.bind_ctx(CORE_MODELS)`` -- the same pattern th
 ``BackgroundLoader`` workers use, so every worker thread gets its own peewee connection
 and the event loop stays responsive.
 
+The report tools (``report_targets``, ``report_catalog_coverage``, ``get_header_values``)
+are thin wrappers over ``photonfinder/reports.py``, which the Qt report windows also call --
+so an agent and the application answer "what have I imaged" from one implementation.
+
 ``build_mcp`` is transport-agnostic; the transport is chosen by the caller.
 """
 import dataclasses
@@ -37,7 +41,7 @@ import anyio
 from peewee import JOIN
 from pydantic import BaseModel, Field
 
-from photonfinder import solve_service
+from photonfinder import reports, solve_service
 from photonfinder.core import ApplicationContext, mcp_port_file
 from photonfinder.models import (
     CORE_MODELS, CATALOG_MODELS, SearchCriteria, SORTABLE_FIELDS, File, Image, LibraryRoot,
@@ -55,6 +59,12 @@ logger.setLevel(logging.DEBUG)
 
 MAX_PAGE_SIZE = 500
 MAX_SOLVE_BATCH = 10
+
+# Caps on the lists nested inside a report row. The GUI reports are unbounded because a
+# table widget and a CSV file do not care how many rows they hold; a context window does.
+MAX_REPORT_PATHS = 20
+MAX_FILES_PER_OBJECT = 10
+MAX_HEADER_KEYWORDS = 20
 
 # Solver name -> settings index, matching PlateSolveDialog's combo box order.
 SOLVER_NAMES = {"astap": 0, "astrometry_net": 1, "solve_field": 2}
@@ -98,19 +108,31 @@ def _header_to_dict(blob: bytes) -> dict:
 # The async MCP tools wrap these via anyio.to_thread.run_sync so the event loop is not
 # blocked; tests call them directly on the connection's own thread.
 
-def query_search(context: ApplicationContext, criteria: Optional[dict] = None,
-                 page: int = 0, page_size: int = 100) -> dict:
+def _clamp_page(page: int, page_size: int) -> tuple:
+    return max(0, page), max(1, min(page_size, MAX_PAGE_SIZE))
+
+
+def _criteria_from_dict(criteria: Optional[dict], tool: str = "search") -> SearchCriteria:
+    """Turn an agent-supplied criteria dict into a SearchCriteria.
+
+    Unknown keys are dropped rather than raising, so an over-eager agent inventing a
+    filter name gets a broader search instead of a TypeError.
+    """
     criteria = criteria or {}
-    page = max(0, page)
-    page_size = max(1, min(page_size, MAX_PAGE_SIZE))
-    # Drop unknown keys so an over-eager agent can't trigger a TypeError.
     clean = {k: v for k, v in criteria.items() if k in _SEARCH_CRITERIA_FIELDS}
     dropped = criteria.keys() - clean.keys()
     if dropped:
-        logger.debug("search_files: dropping unknown criteria fields: %s", sorted(dropped))
-    logger.debug("search_files: criteria=%s page=%d page_size=%d", clean, page, page_size)
+        logger.debug("%s: dropping unknown criteria fields: %s", tool, sorted(dropped))
+    logger.debug("%s: criteria=%s", tool, clean)
+    return SearchCriteria.from_json(json.dumps(clean))
+
+
+def query_search(context: ApplicationContext, criteria: Optional[dict] = None,
+                 page: int = 0, page_size: int = 100) -> dict:
+    page, page_size = _clamp_page(page, page_size)
+    logger.debug("search_files: page=%d page_size=%d", page, page_size)
     with context.database.bind_ctx(CORE_MODELS):
-        sc = SearchCriteria.from_json(json.dumps(clean))
+        sc = _criteria_from_dict(criteria, "search_files")
         rows, total, has_more = run_search_files(sc, page, page_size)
         logger.debug("search_files: returned %d rows (total=%d, has_more=%s)",
                       len(rows), total, has_more)
@@ -251,6 +273,131 @@ def query_lookup_object(context: ApplicationContext, catalog: str, catalog_id: s
             "angle": entry.angle,
             "magnitude": entry.magnitude,
         }
+
+
+def query_target_report(context: ApplicationContext, criteria: Optional[dict] = None,
+                        page: int = 0, page_size: int = 100, include_paths: bool = True,
+                        max_paths: int = MAX_REPORT_PATHS) -> dict:
+    page, page_size = _clamp_page(page, page_size)
+    max_paths = max(0, max_paths)
+    with context.database.bind_ctx(CORE_MODELS):
+        sc = _criteria_from_dict(criteria, "report_targets")
+        rows = reports.target_report(sc)
+
+    total = len(rows)
+    # The total across every group, not just this page -- "how much integration do I have
+    # on X" is the question these reports exist for, and paging to sum it is absurd.
+    total_exposure_all = sum(r.total_exposure or 0 for r in rows)
+    window = rows[page * page_size:(page + 1) * page_size]
+
+    results = []
+    for r in window:
+        row = {
+            "object_name": r.object_name,
+            "filter": r.filter,
+            "telescope": r.telescope,
+            "camera": r.camera,
+            "total_exposure_seconds": r.total_exposure,
+            "file_count": r.file_count,
+            "last_date_obs": reports.iso_datetime(r.last_date_obs),
+        }
+        if include_paths:
+            row["paths"] = r.paths[:max_paths]
+            row["paths_truncated"] = len(r.paths) > max_paths
+        results.append(row)
+
+    logger.debug("report_targets: %d groups (page %d of %d)", total, page, page_size)
+    return {
+        "results": results,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "has_more": (page + 1) * page_size < total,
+        "total_exposure_seconds_all": total_exposure_all,
+    }
+
+
+def query_catalog_report(context: ApplicationContext, catalog: str,
+                         criteria: Optional[dict] = None, only_matching: bool = True,
+                         page: int = 0, page_size: int = 100, include_files: bool = True,
+                         max_files: int = MAX_FILES_PER_OBJECT) -> dict:
+    page, page_size = _clamp_page(page, page_size)
+    max_files = max(0, max_files)
+
+    known = query_list_catalogs(context)
+    if catalog not in known:
+        return {"error": f"Unknown catalog '{catalog}'. Valid catalogs: {', '.join(known)}."}
+
+    with context.database.bind_ctx(CORE_MODELS):
+        sc = _criteria_from_dict(criteria, "report_catalog_coverage")
+        result = reports.catalog_report(context, catalog, sc, only_matching,
+                                        limit=page_size, offset=page * page_size)
+
+    results = []
+    for entry in result.entries:
+        matches = result.matches.get(entry.rowid, [])
+        row = {
+            "catalog_id": entry.catalog_id,
+            "magnitude": entry.magnitude,
+            "size": entry.size,
+            "file_count": len(matches),
+        }
+        if include_files:
+            row["files"] = [{"rowid": m.file_id, "full_path": m.full_path}
+                            for m in matches[:max_files]]
+            row["files_truncated"] = len(matches) > max_files
+        results.append(row)
+
+    return {
+        "catalog": catalog,
+        "only_matching": only_matching,
+        "results": results,
+        "page": page,
+        "page_size": page_size,
+        "total": result.total_entries,
+        "has_more": (page + 1) * page_size < result.total_entries,
+        "images_considered": result.images_considered,
+        "objects_matched": len(result.matches),
+    }
+
+
+def query_header_values(context: ApplicationContext, fields: Optional[list] = None,
+                        criteria: Optional[dict] = None, page: int = 0,
+                        page_size: int = 100) -> dict:
+    if not fields:
+        return {"error": "`fields` must name at least one field. Call `get_file_details` on "
+                          "one file to see which FITS keywords its header carries."}
+    if len(fields) > MAX_HEADER_KEYWORDS:
+        return {"error": f"Too many fields ({len(fields)}); at most {MAX_HEADER_KEYWORDS} "
+                          "may be requested at once."}
+
+    page, page_size = _clamp_page(page, page_size)
+    specs = [(spec, *reports.parse_field_spec(spec)) for spec in fields]
+    sources = {source for _, _, source in specs}
+
+    with context.database.bind_ctx(CORE_MODELS):
+        sc = _criteria_from_dict(criteria, "get_header_values")
+        query = reports.header_values_query(sc, sources)
+        total = query.count()
+        results = []
+        for file in query.paginate(page + 1, page_size):
+            values = {}
+            for spec, field_name, source in specs:
+                value = reports.extract_field_value(file, field_name, source)
+                values[spec] = _coerce_header_value(value)
+            results.append({
+                "rowid": file.rowid,
+                "full_filename": file.full_filename(),
+                "values": values,
+            })
+
+    return {
+        "results": results,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "has_more": (page + 1) * page_size < total,
+    }
 
 
 def _build_solver(context: ApplicationContext, solver_index: int):
@@ -455,7 +602,14 @@ def build_mcp(context: ApplicationContext):
         "`get_file_details` to inspect one file's full metadata and FITS header, and "
         "`lookup_object`/`list_catalogs` to resolve an object's RA/Dec from PhotonFinder's "
         "local catalog database (no online lookups such as Simbad or Telescopius are "
-        "performed). Every one of these is read-only. `plate_solve_files` is the sole "
+        "performed). `report_targets` and `report_catalog_coverage` give the same aggregates "
+        "as the application's Report menu -- total integration per target (matched by object "
+        "name; no plate solving required), and which catalog objects the library covers "
+        "(only considering plate-solved images) -- and `get_header_values` reads a few named "
+        "FITS/model/WCS fields across many files at once instead of one whole header at a "
+        "time. Every one of these is read-only, and PhotonFinder never writes files on your "
+        "behalf: report content is returned to you to save as you see fit. "
+        "`plate_solve_files` is the sole "
         "exception and the user must opt into it in Settings; it plate-solves up to "
         f"{MAX_SOLVE_BATCH} files at once and writes the resulting WCS/coordinates to the "
         "library."
@@ -481,6 +635,86 @@ def build_mcp(context: ApplicationContext):
         """
         clean = criteria.model_dump(exclude_none=True, mode="json") if criteria else None
         return await anyio.to_thread.run_sync(query_search, context, clean, page, page_size)
+
+    @mcp.tool(annotations=read_only("Target report"))
+    async def report_targets(criteria: Optional[SearchCriteriaInput] = None, page: int = 0,
+                             page_size: int = 100, include_paths: bool = True,
+                             max_paths: int = MAX_REPORT_PATHS) -> dict:
+        """Total integration time per target, grouped by object / filter / telescope / camera.
+
+        The same aggregate as the application's Target Report, over the same `criteria` as
+        `search_files`. Each row carries the summed exposure in seconds, the file count, the
+        most recent observation, and the library directories the files sit in. Files with no
+        object name are excluded. Grouping is purely by the `object_name` recorded in each
+        file's header (plus filter/telescope/camera) -- plate solving is not required.
+
+        Returns `{results, page, page_size, total, has_more, total_exposure_seconds_all}`,
+        where `total_exposure_seconds_all` sums every group, not just this page. Set
+        `include_paths=false` when you only need integration totals; `paths` is capped at
+        `max_paths` per row and `paths_truncated` says when it hit the cap. Narrow `criteria`
+        rather than paging through thousands of groups.
+        """
+        clean = criteria.model_dump(exclude_none=True, mode="json") if criteria else None
+        return await anyio.to_thread.run_sync(query_target_report, context, clean, page,
+                                              page_size, include_paths, max_paths)
+
+    @mcp.tool(annotations=read_only("Catalog coverage report"))
+    async def report_catalog_coverage(catalog: str,
+                                      criteria: Optional[SearchCriteriaInput] = None,
+                                      only_matching: bool = True, page: int = 0,
+                                      page_size: int = 100, include_files: bool = True,
+                                      max_files: int = MAX_FILES_PER_OBJECT) -> dict:
+        """Which objects of a catalog the library's images actually cover.
+
+        The same coverage report as the application's Catalog Report: each catalog entry is
+        tested against the precise footprint of every matching image, not just its centre.
+        `catalog` is one of the names from `list_catalogs`.
+
+        Only **plate-solved** images are considered -- an unsolved library yields an empty
+        report, so check `images_considered` before concluding you have not imaged something.
+        This can take tens of seconds on a large library.
+
+        `only_matching` defaults to true and returns just the covered objects. Setting it
+        false also lists objects you have *not* imaged, which for a catalog like NGC means
+        paging through ~785k rows; you almost never want it.
+
+        Returns `{catalog, only_matching, results, page, page_size, total, has_more,
+        images_considered, objects_matched}`. Each result's `files` entries carry a `rowid`
+        usable with `get_file_details`, capped at `max_files` with a `files_truncated` flag;
+        set `include_files=false` for a pure coverage list.
+        """
+        clean = criteria.model_dump(exclude_none=True, mode="json") if criteria else None
+        return await anyio.to_thread.run_sync(query_catalog_report, context, catalog, clean,
+                                              only_matching, page, page_size, include_files,
+                                              max_files)
+
+    @mcp.tool(
+        # Description passed explicitly rather than as a docstring because it has to name
+        # MAX_HEADER_KEYWORDS -- same reason as plate_solve_files below.
+        description=(
+            "Read the same few fields from many files at once.\n\n"
+            "The bulk form of `get_file_details`: instead of one file's entire header, this "
+            "returns only the `fields` you name, across every file matching `criteria`. Use "
+            'it for questions like "what was FOCTEMP across last night\'s subs".\n\n'
+            "Each entry of `fields` names its source by prefix:\n"
+            '- `"File.size"`, `"Image.exposure"` -- a PhotonFinder model field\n'
+            '- `"WCS:CRVAL1"` -- a keyword from the plate-solve solution\n'
+            '- anything else, e.g. `"FOCTEMP"` -- a FITS header keyword\n\n'
+            "The `WCS:` prefix matters because keywords like `NAXIS1` and `CRVAL1` exist in "
+            "both the original header and the solved one. To discover what a file carries, "
+            "call `get_file_details` on one representative file and read its `header`.\n\n"
+            f"At most {MAX_HEADER_KEYWORDS} fields per call. A field a file does not have "
+            "comes back as null rather than an error. Returns "
+            "{results, page, page_size, total, has_more} with one "
+            "{rowid, full_filename, values} entry per file."
+        ),
+        annotations=read_only("Header values"))
+    async def get_header_values(fields: list[str],
+                                criteria: Optional[SearchCriteriaInput] = None,
+                                page: int = 0, page_size: int = 100) -> dict:
+        clean = criteria.model_dump(exclude_none=True, mode="json") if criteria else None
+        return await anyio.to_thread.run_sync(query_header_values, context, fields, clean,
+                                              page, page_size)
 
     @mcp.tool(annotations=read_only("List library roots"))
     async def list_library_roots() -> list[dict]:
