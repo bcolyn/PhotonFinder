@@ -7,6 +7,7 @@ from typing import List, Set
 
 from PySide6.QtGui import QAction
 from astropy import units as u
+from peewee import IntegrityError
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QDialogButtonBox, QTableWidgetItem, QFileDialog, QMessageBox, QMenu
@@ -89,22 +90,30 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
 
     def save_data_and_close(self):
         if self.dirty():
-            self.setVisible(False)
-            self.project.name = self.name_edit.text()
+            new_name = self.name_edit.text()
+            old_name = self.project.name
+            self.project.name = new_name
             self.project.last_change = datetime.now()
-            with self.context.database.atomic():
-                self.project.save()
-                self.context.signal_bus.projects_changed.emit([self.project], Change.CREATE_OR_UPDATE)
+            try:
+                with self.context.database.atomic():
+                    self.project.save()
+                    self.context.signal_bus.projects_changed.emit([self.project], Change.CREATE_OR_UPDATE)
 
-                for link in self.links_to_delete:
-                    link.delete_instance()
-                if self.links_to_delete:
-                    self.context.signal_bus.project_links_changed.emit(self.links_to_delete, Change.DELETE)
+                    for link in self.links_to_delete:
+                        link.delete_instance()
+                    if self.links_to_delete:
+                        self.context.signal_bus.project_links_changed.emit(self.links_to_delete, Change.DELETE)
 
-                for link in self.links_to_add:
-                    link.save(force_insert=True)
-                if self.links_to_add:
-                    self.context.signal_bus.project_links_changed.emit(self.links_to_add, Change.CREATE_OR_UPDATE)
+                    for link in self.links_to_add:
+                        link.save(force_insert=True)
+                    if self.links_to_add:
+                        self.context.signal_bus.project_links_changed.emit(self.links_to_add, Change.CREATE_OR_UPDATE)
+            except IntegrityError:
+                self.project.name = old_name
+                QMessageBox.warning(self, "Could Not Save Project",
+                                    f"A project named \"{new_name}\" already exists. "
+                                    "Please choose a different name.")
+                return
         self.close()
 
     def reload_data(self):
