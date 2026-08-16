@@ -289,7 +289,8 @@ def test_header_values_paginates(sample):
 def test_list_library_roots(sample):
     ctx, data = sample
     roots = mcp_server.query_library_roots(ctx)
-    assert roots == [{"rowid": data["root"].rowid, "name": "Main", "path": "/data/"}]
+    assert roots == [{"rowid": data["root"].rowid, "name": "Main", "path": "/data/",
+                      "description": "Main imaging archive"}]
 
 
 def test_list_projects(sample):
@@ -346,6 +347,7 @@ def test_get_file_details_with_header(sample):
     assert details["image"]["filter"] == "Ha"
     assert details["header"]["GAIN"] == 100
     assert details["header"]["OBJECT"] == "M31"
+    assert details["root"]["description"] == "Main imaging archive"
 
 
 def test_get_file_details_missing(sample):

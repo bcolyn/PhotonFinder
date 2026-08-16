@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>400</width>
-    <height>200</height>
+    <height>280</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -46,6 +46,26 @@
      </item>
      <item row="1" column="1">
       <widget class="QLineEdit" name="nameLineEdit"/>
+     </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="descriptionLabel">
+       <property name="text">
+        <string>Description:</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="1">
+      <widget class="QPlainTextEdit" name="descriptionTextEdit">
+       <property name="toolTip">
+        <string>Optional note about what this library contains. Shown in the library manager and to MCP clients.</string>
+       </property>
+       <property name="placeholderText">
+        <string>e.g. Light frames from the backyard rig, 2019-present</string>
+       </property>
+      </widget>
      </item>
     </layout>
    </item>

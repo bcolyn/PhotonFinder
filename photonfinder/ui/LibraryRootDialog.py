@@ -23,8 +23,9 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         self.context = context
         self.has_changes = False
         # Set up the table
-        self.libraryTable.setColumnWidth(0, 200)  # Name column
-        self.libraryTable.setColumnWidth(1, 350)  # Path column
+        self.libraryTable.setColumnWidth(0, 150)  # Name column
+        self.libraryTable.setColumnWidth(1, 250)  # Path column
+        self.libraryTable.setColumnWidth(2, 200)  # Description column
 
         # Initialize reindex worker
         self.reindex_worker = None
@@ -34,6 +35,9 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
 
         # Enable/disable edit and delete buttons based on selection
         self.libraryTable.itemSelectionChanged.connect(self.update_button_states)
+        # The table is not editable in place (the cells are a view of the database, and
+        # inline edits were silently discarded), so double-click opens the edit dialog.
+        self.libraryTable.itemDoubleClicked.connect(lambda _item: self.edit_library())
         self.update_button_states()
 
     def load_library_roots(self):
@@ -56,6 +60,13 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
                 # Create and set the path item
                 path_item = QTableWidgetItem(library_root.path)
                 self.libraryTable.setItem(i, 1, path_item)
+
+                # Create and set the description item; the full text goes in the tooltip
+                # since a long description will not fit the column.
+                description = library_root.description or ""
+                description_item = QTableWidgetItem(description)
+                description_item.setToolTip(description)
+                self.libraryTable.setItem(i, 2, description_item)
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred while loading library roots: {str(e)}")

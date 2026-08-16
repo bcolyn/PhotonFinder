@@ -335,6 +335,9 @@ class LibraryRoot(Model):
     rowid = RowIDField()
     name = CharField(unique=True)
     path = CharField(unique=True)
+    # Free-form note describing what lives in this root. Surfaced in the GUI and to MCP
+    # clients, which use it to pick the right root without scanning it.
+    description = TextField(null=True)
 
     class Meta:
         # This will be set dynamically when the database connection is provided

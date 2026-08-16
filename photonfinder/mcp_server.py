@@ -147,7 +147,8 @@ def query_search(context: ApplicationContext, criteria: Optional[dict] = None,
 
 def query_library_roots(context: ApplicationContext) -> list[dict]:
     with context.database.bind_ctx(CORE_MODELS):
-        return [{"rowid": r.rowid, "name": r.name, "path": r.path}
+        return [{"rowid": r.rowid, "name": r.name, "path": r.path,
+                 "description": r.description}
                 for r in LibraryRoot.select().order_by(LibraryRoot.name)]
 
 
@@ -213,7 +214,8 @@ def query_file_details(context: ApplicationContext, rowid: int) -> dict:
             "size": file.size,
             "mtime_millis": file.mtime_millis,
             "full_filename": file.full_filename(),
-            "root": {"rowid": file.root.rowid, "name": file.root.name, "path": file.root.path},
+            "root": {"rowid": file.root.rowid, "name": file.root.name, "path": file.root.path,
+                     "description": file.root.description},
             "has_wcs": has_wcs,
         }
 
@@ -598,7 +600,9 @@ def build_mcp(context: ApplicationContext):
         "PhotonFinder manages an astrophotography file library (FITS/XISF images and "
         "calibration frames). Use `search_files` with a SearchCriteria JSON object to find "
         "files; use `list_library_roots`, `list_projects` and `list_distinct_values` to "
-        "discover valid filter values, `get_project_details` to inspect a single project, "
+        "discover valid filter values. Start with `list_library_roots`: each root carries a "
+        "user-written description of what it contains, which is the quickest way to orient "
+        "yourself in an unfamiliar library. Use `get_project_details` to inspect a single project, "
         "`get_file_details` to inspect one file's full metadata and FITS header, and "
         "`lookup_object`/`list_catalogs` to resolve an object's RA/Dec from PhotonFinder's "
         "local catalog database (no online lookups such as Simbad or Telescopius are "
@@ -718,7 +722,12 @@ def build_mcp(context: ApplicationContext):
 
     @mcp.tool(annotations=read_only("List library roots"))
     async def list_library_roots() -> list[dict]:
-        """List the configured library roots (top-level scanned directories)."""
+        """List the configured library roots (top-level scanned directories).
+
+        Each root has a `rowid` (use it in `search_files` via `paths`), a `name`, its
+        `path` on disk, and a user-written `description` of what it holds (may be null).
+        Read the descriptions before searching -- they could describe the contents, so you
+        can scope a search instead of scanning the whole library."""
         return await anyio.to_thread.run_sync(query_library_roots, context)
 
     @mcp.tool(annotations=read_only("List projects"))

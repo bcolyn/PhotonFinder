@@ -10,20 +10,22 @@ and no PyInstaller `datas` entry, working identically frozen and from source.
 MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file library (FITS/XISF images and '
                  'calibration frames). Use `search_files` with a SearchCriteria JSON object to '
                  'find files; use `list_library_roots`, `list_projects` and `list_distinct_values` '
-                 'to discover valid filter values, `get_project_details` to inspect a single '
-                 "project, `get_file_details` to inspect one file's full metadata and FITS header, "
-                 "and `lookup_object`/`list_catalogs` to resolve an object's RA/Dec from "
-                 "PhotonFinder's local catalog database (no online lookups such as Simbad or "
-                 'Telescopius are performed). `report_targets` and `report_catalog_coverage` give '
-                 "the same aggregates as the application's Report menu -- total integration per "
-                 'target (matched by object name; no plate solving required), and which catalog '
-                 'objects the library covers (only considering plate-solved images) -- and '
-                 '`get_header_values` reads a few named FITS/model/WCS fields across many files at '
-                 'once instead of one whole header at a time. Every one of these is read-only, and '
-                 'PhotonFinder never writes files on your behalf: report content is returned to '
-                 'you to save as you see fit. `plate_solve_files` is the sole exception and the '
-                 'user must opt into it in Settings; it plate-solves up to 10 files at once and '
-                 'writes the resulting WCS/coordinates to the library.',
+                 'to discover valid filter values. Start with `list_library_roots`: each root '
+                 'carries a user-written description of what it contains, which is the quickest '
+                 'way to orient yourself in an unfamiliar library. Use `get_project_details` to '
+                 "inspect a single project, `get_file_details` to inspect one file's full metadata "
+                 "and FITS header, and `lookup_object`/`list_catalogs` to resolve an object's "
+                 "RA/Dec from PhotonFinder's local catalog database (no online lookups such as "
+                 'Simbad or Telescopius are performed). `report_targets` and '
+                 "`report_catalog_coverage` give the same aggregates as the application's Report "
+                 'menu -- total integration per target (matched by object name; no plate solving '
+                 'required), and which catalog objects the library covers (only considering '
+                 'plate-solved images) -- and `get_header_values` reads a few named FITS/model/WCS '
+                 'fields across many files at once instead of one whole header at a time. Every '
+                 'one of these is read-only, and PhotonFinder never writes files on your behalf: '
+                 'report content is returned to you to save as you see fit. `plate_solve_files` is '
+                 'the sole exception and the user must opt into it in Settings; it plate-solves up '
+                 'to 10 files at once and writes the resulting WCS/coordinates to the library.',
  'tools': [{'name': 'search_files',
             'description': 'Search the file library.\n'
                            '\n'
@@ -1729,7 +1731,15 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                             'readOnlyHint': True,
                             'openWorldHint': False}},
            {'name': 'list_library_roots',
-            'description': 'List the configured library roots (top-level scanned directories).',
+            'description': 'List the configured library roots (top-level scanned directories).\n'
+                           '\n'
+                           'Each root has a `rowid` (use it in `search_files` via `paths`), a '
+                           '`name`, its\n'
+                           '`path` on disk, and a user-written `description` of what it holds (may '
+                           'be null).\n'
+                           'Read the descriptions before searching -- they could describe the '
+                           'contents, so you\n'
+                           'can scope a search instead of scanning the whole library.',
             'inputSchema': {'properties': {},
                             'title': 'list_library_rootsArguments',
                             'type': 'object'},

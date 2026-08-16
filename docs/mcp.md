@@ -121,13 +121,20 @@ Read-only, always available once it is running:
 | `get_header_values` | A few named fields across many files at once |
 | `report_targets` | Total integration per target, by filter / telescope / camera |
 | `report_catalog_coverage` | Which catalog objects your library covers (only considers plate-solved images) |
-| `list_library_roots` | The configured library roots |
+| `list_library_roots` | The configured library roots, with the description you gave each one |
 | `list_projects` / `get_project_details` | Projects and their summaries |
 | `list_distinct_values` | Valid values for filter, type, camera, telescope, object name |
 | `list_catalogs` / `lookup_object` | Resolve an object's RA/Dec from the local catalog |
 
 `lookup_object` uses PhotonFinder's bundled catalog database only — no online service
 (Simbad, Telescopius) is ever contacted.
+
+### Describing your libraries
+
+Give each library root a description in **File → Manage Libraries** (Edit → Description).
+An agent sees it in `list_library_roots` and in `get_file_details`, so a line like
+"Calibration masters, one folder per camera" is often enough for it to scope a search to
+the right root instead of trawling the whole library. Descriptions are optional.
 
 ### Reports
 

@@ -28,6 +28,7 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
             self.setWindowTitle("Edit Library Root")
             self.nameLineEdit.setText(library_root.name)
             self.pathLineEdit.setText(library_root.path)
+            self.descriptionTextEdit.setPlainText(library_root.description or "")
 
     @Slot()
     def browse_directory(self):
@@ -55,6 +56,7 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
         """
         name = self.nameLineEdit.text().strip()
         path = norm_db_path(self.pathLineEdit.text().strip())
+        description = self.descriptionTextEdit.toPlainText().strip() or None
 
         # Validate input
         if not name:
@@ -86,7 +88,7 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
                     return
 
                 # Create new library root
-                LibraryRoot.create(name=name, path=path)
+                LibraryRoot.create(name=name, path=path, description=description)
                 logging.info(f"Created library root: {name} at {path}")
             else:
                 # For existing library roots, check if the duplicate is a different record
@@ -102,6 +104,7 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
                 # Update existing library root
                 self.library_root.name = name
                 self.library_root.path = path
+                self.library_root.description = description
                 self.library_root.save()
                 logging.info(f"Updated library root: {name} at {path}")
 

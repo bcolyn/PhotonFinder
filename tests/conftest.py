@@ -135,7 +135,7 @@ def sample(context):
         LibraryRoot, File, Image, FitsHeader, FileWCS, Project, ProjectFile,
     )
 
-    root = LibraryRoot.create(name="Main", path="/data/")
+    root = LibraryRoot.create(name="Main", path="/data/", description="Main imaging archive")
 
     light = File.create(root=root, path="lights/", name="m31.fits", size=1000, mtime_millis=111)
     Image.create(file=light, image_type="LIGHT", filter="Ha", camera="ASI2600",

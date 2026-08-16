@@ -42,3 +42,30 @@ def test_model_eq():
     root = LibraryRoot(name="dummy", path=r'C:\TEMP')
     root2 = LibraryRoot(name="dummy", path=r'C:\TEMP')
     assert root == root2
+
+
+def test_library_root_description_added_to_existing_database(tmp_path):
+    """A database created before `description` existed gains the column on open."""
+    from peewee import SqliteDatabase
+
+    from photonfinder.core import ApplicationContext
+    from photonfinder.models import CORE_MODELS
+    from tests.conftest import McpSettings
+
+    db_path = tmp_path / "old.db"
+    old = SqliteDatabase(str(db_path))
+    old.connect()
+    # The pre-migration schema: no `description` column.
+    old.execute_sql('CREATE TABLE libraryroot ('
+                    'id INTEGER NOT NULL PRIMARY KEY, '
+                    'name VARCHAR(255) NOT NULL, path VARCHAR(255) NOT NULL)')
+    old.execute_sql("INSERT INTO libraryroot (name, path) VALUES ('Main', '/data/')")
+    old.close()
+
+    with ApplicationContext(str(db_path), McpSettings()) as ctx:
+        with ctx.database.bind_ctx(CORE_MODELS):
+            root = LibraryRoot.get(LibraryRoot.name == 'Main')
+            assert root.description is None
+            root.description = "Main imaging archive"
+            root.save()
+            assert LibraryRoot.get_by_id(root.rowid).description == "Main imaging archive"

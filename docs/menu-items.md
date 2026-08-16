@@ -18,7 +18,7 @@ The File menu contains options for managing tabs, databases, libraries, and appl
 
 ### Library Management
 - **Scan Libraries** - Scans all configured library roots to update the database with new or changed files
-- **Manage Libraries** - Opens the library management dialog to add, edit, or remove library root directories
+- **Manage Libraries** - Opens the library management dialog to add, edit, or remove library root directories. Each root can carry an optional description of what it holds; it shows as a tooltip in the library tree and is exposed to MCP agents
 
 ### Application Settings
 - **Settings** - Opens the application settings dialog

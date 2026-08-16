@@ -39,6 +39,10 @@ class TreeNode:
         """Return the data for the given column."""
         return ""
 
+    def tooltip(self) -> typing.Optional[str]:
+        """Return the tooltip for this node, or None for no tooltip."""
+        return None
+
     def get_icon(self, style):
         if not TreeNode.dir_icon:
             TreeNode.dir_icon = QIcon(style.standardIcon(QStyle.SP_DirIcon))
@@ -84,6 +88,12 @@ class LibraryRootNode(TreeNode):
 
     def data(self) -> str:
         return self.library_root.name
+
+    def tooltip(self) -> typing.Optional[str]:
+        description = self.library_root.description
+        if description:
+            return f"{self.library_root.path}\n\n{description}"
+        return self.library_root.path
 
     def get_icon(self, style):
         if not LibraryRootNode.icon:
@@ -314,6 +324,8 @@ class LibraryTreeModel(QAbstractItemModel):
         elif role == Qt.DecorationRole:
             style = QApplication.style()
             return node.get_icon(style)
+        elif role == Qt.ToolTipRole:
+            return node.tooltip()
         return None
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):

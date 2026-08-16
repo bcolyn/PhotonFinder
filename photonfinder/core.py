@@ -266,6 +266,7 @@ class ApplicationContext:
             for model in CORE_MODELS:
                 model.create_table()
             self._migrate_image_dimensions()
+            self._migrate_library_root_description()
             self.database.attach(self._catalog_path(), 'catalog')
             self.database.bind(CATALOG_MODELS, bind_refs=False, bind_backrefs=False)
 
@@ -293,6 +294,12 @@ class ApplicationContext:
             )
         except Exception:
             pass
+
+    def _migrate_library_root_description(self) -> None:
+        try:
+            self.database.execute_sql('ALTER TABLE libraryroot ADD COLUMN description TEXT')
+        except Exception:
+            pass  # column already exists
 
     def set_status_reporter(self, status_reporter: StatusReporter) -> None:
         self.status_reporter = status_reporter
