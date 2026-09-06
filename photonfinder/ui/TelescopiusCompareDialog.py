@@ -1,4 +1,5 @@
 import csv
+import html
 import logging
 from copy import deepcopy
 from dataclasses import dataclass
@@ -217,6 +218,16 @@ class TelescopiusCompareDialog(QDialog, Ui_TelescopiusCompareDialog, TableWidget
     def _initialize_dialog(self):
         self.buttonBox.button(QDialogButtonBox.StandardButton.Save).setEnabled(False)
         self.tolerance_edit.setValidator(QIntValidator(0, 180, self))
+        self._show_applied_filters()
+
+    def _show_applied_filters(self):
+        """Show the same filter summary as the originating tab's title."""
+        if self.search_criteria is None or self.search_criteria.is_empty():
+            text = "all files (no filters)"
+        else:
+            text = str(self.search_criteria)
+        self.filters_label.setText(f"Searched for matches in: <b>{html.escape(text)}</b>")
+        self.filters_label.setToolTip(text)
 
     def on_error(self, error_message):
         QMessageBox.critical(self, "Error", error_message)

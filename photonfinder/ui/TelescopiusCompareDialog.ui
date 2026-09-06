@@ -136,6 +136,25 @@ Note that only images with coordinate information (either from the aquisition so
      <item>
       <layout class="QHBoxLayout" name="horizontalLayout_2">
        <item>
+        <widget class="QLabel" name="filters_label">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+           <horstretch>1</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="text">
+          <string>Filtered by: All</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+         <property name="textInteractionFlags">
+          <set>Qt::TextInteractionFlag::TextSelectableByMouse</set>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QProgressBar" name="progressBar">
          <property name="value">
           <number>0</number>
