@@ -370,9 +370,16 @@ class ExportWorker(BackgroundLoaderBase):
         if self.override_platesolve and hasattr(file, 'filewcs'):
             wcs_str = decompress(file.filewcs.wcs)
             wcs_header = fits.Header.fromstring(wcs_str)
-            for key in wcs_header:
-                if not key.startswith('NAXIS'):
-                    header[key] = wcs_header[key]
+            for card in wcs_header.cards:
+                key = card.keyword
+                if key.startswith('NAXIS'):
+                    continue
+                if key in ('COMMENT', 'HISTORY', ''):
+                    # commentary cards repeat; header[key] returns a collection,
+                    # so they must be appended one card at a time
+                    header.append(card)
+                else:
+                    header[key] = (card.value, card.comment)
 
     def copy_xisf_as_fits(self, source_path: str, output_file_path: str, file: File, custom_headers: dict = None):
         custom_headers = custom_headers or {}
