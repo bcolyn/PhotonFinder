@@ -28,7 +28,10 @@ so an agent and the application answer "what have I imaged" from one implementat
 
 ``build_mcp`` is transport-agnostic; the transport is chosen by the caller.
 """
+import csv
 import dataclasses
+import functools
+import io
 import json
 import logging
 import threading
@@ -110,6 +113,63 @@ def _header_to_dict(blob: bytes) -> dict:
 
 def _clamp_page(page: int, page_size: int) -> tuple:
     return max(0, page), max(1, min(page_size, MAX_PAGE_SIZE))
+
+
+def _to_text(result) -> str:
+    """Serialize a tool result as compact JSON.
+
+    Left to itself FastMCP pretty-prints results with `indent=2`, which costs the agent
+    about a quarter of every response in whitespace. `default=str` mirrors its own
+    fallback for values JSON cannot represent.
+    """
+    return json.dumps(result, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+MAX_LOGGED_ARGS = 500
+
+
+def _log_args(kwargs: dict) -> str:
+    """A tool call's arguments as one short log-friendly string.
+
+    Pydantic inputs (`criteria`) are logged with unset fields dropped, which is what the
+    agent actually sent; very long argument lists are clipped to keep the log readable.
+    """
+    def default(o):
+        if isinstance(o, BaseModel):
+            return o.model_dump(exclude_none=True, mode="json")
+        return str(o)
+    text = json.dumps(kwargs, separators=(",", ":"), ensure_ascii=False, default=default)
+    text = text[1:-1]  # drop the enclosing braces; the call's parentheses frame it
+    if len(text) > MAX_LOGGED_ARGS:
+        text = text[:MAX_LOGGED_ARGS] + "..."
+    return text
+
+
+def _rows_to_csv(rows: list[dict], columns: list[str]) -> str:
+    """Render flat result rows as CSV text; keys outside `columns` are ignored.
+
+    CSV names each column once instead of repeating every key on every row, so a large
+    report costs a fraction of the tokens of its JSON form. Nulls become empty cells.
+    """
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=columns, extrasaction="ignore",
+                            lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
+OUTPUT_FORMATS = ("json", "csv")
+_TARGET_CSV_COLUMNS = ["object_name", "filter", "telescope", "camera",
+                       "total_exposure_seconds", "file_count", "last_date_obs"]
+_CATALOG_CSV_COLUMNS = ["catalog_id", "magnitude", "size", "file_count"]
+
+
+def _format_error(output_format: str) -> Optional[dict]:
+    if output_format not in OUTPUT_FORMATS:
+        return {"error": f"Unknown format '{output_format}'. Valid formats: "
+                          f"{', '.join(OUTPUT_FORMATS)}."}
+    return None
 
 
 def _criteria_from_dict(criteria: Optional[dict], tool: str = "search") -> SearchCriteria:
@@ -279,9 +339,13 @@ def query_lookup_object(context: ApplicationContext, catalog: str, catalog_id: s
 
 def query_target_report(context: ApplicationContext, criteria: Optional[dict] = None,
                         page: int = 0, page_size: int = 100, include_paths: bool = True,
-                        max_paths: int = MAX_REPORT_PATHS) -> dict:
+                        max_paths: int = MAX_REPORT_PATHS, output_format: str = "json") -> dict:
+    if error := _format_error(output_format):
+        return error
     page, page_size = _clamp_page(page, page_size)
     max_paths = max(0, max_paths)
+    # A list of paths has no place in a CSV cell; CSV is for compact summaries.
+    include_paths = include_paths and output_format == "json"
     with context.database.bind_ctx(CORE_MODELS):
         sc = _criteria_from_dict(criteria, "report_targets")
         rows = reports.target_report(sc)
@@ -310,7 +374,9 @@ def query_target_report(context: ApplicationContext, criteria: Optional[dict] = 
 
     logger.debug("report_targets: %d groups (page %d of %d)", total, page, page_size)
     return {
-        "results": results,
+        "format": output_format,
+        "results": (_rows_to_csv(results, _TARGET_CSV_COLUMNS) if output_format == "csv"
+                    else results),
         "page": page,
         "page_size": page_size,
         "total": total,
@@ -322,9 +388,13 @@ def query_target_report(context: ApplicationContext, criteria: Optional[dict] = 
 def query_catalog_report(context: ApplicationContext, catalog: str,
                          criteria: Optional[dict] = None, only_matching: bool = True,
                          page: int = 0, page_size: int = 100, include_files: bool = True,
-                         max_files: int = MAX_FILES_PER_OBJECT) -> dict:
+                         max_files: int = MAX_FILES_PER_OBJECT,
+                         output_format: str = "json") -> dict:
+    if error := _format_error(output_format):
+        return error
     page, page_size = _clamp_page(page, page_size)
     max_files = max(0, max_files)
+    include_files = include_files and output_format == "json"
 
     known = query_list_catalogs(context)
     if catalog not in known:
@@ -353,7 +423,9 @@ def query_catalog_report(context: ApplicationContext, catalog: str,
     return {
         "catalog": catalog,
         "only_matching": only_matching,
-        "results": results,
+        "format": output_format,
+        "results": (_rows_to_csv(results, _CATALOG_CSV_COLUMNS) if output_format == "csv"
+                    else results),
         "page": page,
         "page_size": page_size,
         "total": result.total_entries,
@@ -365,7 +437,9 @@ def query_catalog_report(context: ApplicationContext, catalog: str,
 
 def query_header_values(context: ApplicationContext, fields: Optional[list] = None,
                         criteria: Optional[dict] = None, page: int = 0,
-                        page_size: int = 100) -> dict:
+                        page_size: int = 100, output_format: str = "json") -> dict:
+    if error := _format_error(output_format):
+        return error
     if not fields:
         return {"error": "`fields` must name at least one field. Call `get_file_details` on "
                           "one file to see which FITS keywords its header carries."}
@@ -393,7 +467,13 @@ def query_header_values(context: ApplicationContext, fields: Optional[list] = No
                 "values": values,
             })
 
+    if output_format == "csv":
+        # One column per requested field, named exactly as the caller spelled it.
+        columns = ["rowid", "full_filename", *(spec for spec, _, _ in specs)]
+        results = _rows_to_csv([{"rowid": r["rowid"], "full_filename": r["full_filename"],
+                                 **r["values"]} for r in results], columns)
     return {
+        "format": output_format,
         "results": results,
         "page": page,
         "page_size": page_size,
@@ -515,33 +595,61 @@ class _RootAndPathInput(BaseModel):
 
 
 class SearchCriteriaInput(BaseModel):
-    """Search filters. Omit any field to leave it unconstrained."""
+    """Search filters, shared by `search_files` and the report tools. Every field is
+    optional; omit any field to leave it unconstrained. All given fields are combined
+    with AND."""
 
-    type: Optional[str] = Field(default=None, description="LIGHT/DARK/FLAT/BIAS/MASTER ...")
-    filter: Optional[str] = None
-    camera: Optional[str] = None
-    telescope: Optional[str] = None
-    object_name: Optional[str] = None
-    file_name: Optional[str] = None
-    exposure: Optional[str] = Field(default=None, description="Exposure time in seconds.")
+    type: Optional[str] = Field(
+        default=None, description="Exact image type, e.g. LIGHT, DARK, FLAT, BIAS, "
+                                   "MASTER DARK. See `list_distinct_values('type')`.")
+    filter: Optional[str] = Field(
+        default=None, description="Exact filter name as recorded in the header, e.g. Ha. "
+                                   "See `list_distinct_values('filter')`.")
+    camera: Optional[str] = Field(
+        default=None, description="Exact camera name. See `list_distinct_values('camera')`.")
+    telescope: Optional[str] = Field(
+        default=None, description="Substring match on the telescope name. See "
+                                   "`list_distinct_values('telescope')`.")
+    object_name: Optional[str] = Field(
+        default=None, description="Substring match on the OBJECT name recorded in the "
+                                   "header, e.g. \"M 31\". Spelling varies per capture "
+                                   "program; check `list_distinct_values('object_name')`, or "
+                                   "use a coordinate search to catch every spelling.")
+    file_name: Optional[str] = Field(
+        default=None, description="Substring match on the file name (not the directory).")
+    exposure: Optional[str] = Field(default=None, description="Exposure time in seconds, "
+                                                                 'e.g. "300".')
     exposure_tolerance: Optional[float] = Field(
         default=None, description="± seconds tolerance for `exposure`; omit for an exact match.")
-    binning: Optional[str] = None
-    gain: Optional[str] = None
-    offset: Optional[int] = None
-    temperature: Optional[str] = None
+    binning: Optional[str] = Field(default=None, description='Binning factor, e.g. "2" for 2x2.')
+    gain: Optional[str] = Field(default=None, description='Camera gain, e.g. "100".')
+    offset: Optional[int] = Field(default=None, description="Camera offset.")
+    temperature: Optional[str] = Field(
+        default=None, description='Sensor cooling set-point in °C, e.g. "-10".')
     temperature_tolerance: Optional[float] = Field(
         default=None, description="± °C tolerance for `temperature`; omit for an exact match.")
-    coord_ra: Optional[str] = Field(default=None, description="Right Ascension in hours.")
-    coord_dec: Optional[str] = Field(default=None, description="Declination in degrees.")
+    coord_ra: Optional[str] = Field(
+        default=None, description='Right Ascension in hours, decimal ("0.712") or sexagesimal '
+                                   '("00:42:44"). Requires `coord_dec`. Use `lookup_object` to '
+                                   "get an object's coordinates (note it returns RA in "
+                                   "degrees: divide by 15).")
+    coord_dec: Optional[str] = Field(
+        default=None, description='Declination in degrees, decimal ("41.27") or sexagesimal '
+                                   '("+41:16:09"). Requires `coord_ra`.')
     coord_radius: Optional[float] = Field(
         default=None, description="Cone search radius in decimal degrees (used with "
-                                   "`coord_ra`/`coord_dec`).")
-    start_datetime: Optional[datetime] = None
-    end_datetime: Optional[datetime] = None
+                                   "`coord_ra`/`coord_dec`); defaults to 0.5.")
+    start_datetime: Optional[datetime] = Field(
+        default=None, description="Only images observed at or after this time (ISO 8601, "
+                                   "compared with the header's DATE-OBS, normally UTC).")
+    end_datetime: Optional[datetime] = Field(
+        default=None, description="Only images observed at or before this time (ISO 8601, "
+                                   "compared with the header's DATE-OBS, normally UTC).")
     header_text: Optional[str] = Field(
-        default=None, description='Free text or a "KEYWORD=value"/"KEYWORD<value" style '
-                                   'FITS header match, e.g. "GAIN=100", "FOCTEMP<0".')
+        default=None, description='FITS header match: "KEYWORD=value", "KEYWORD<value" or '
+                                   '"KEYWORD>value" compares one keyword numerically, e.g. '
+                                   '"FOCTEMP<0"; anything else (including a non-numeric '
+                                   'value) is a substring search over the whole header text.')
     plate_solved: Optional[bool] = Field(
         default=None, description="True = solved only, False = unsolved only, "
                                    "omit = either.")
@@ -549,22 +657,38 @@ class SearchCriteriaInput(BaseModel):
         default=None, description="A project rowid from `list_projects`, or -1 to match "
                                    "files not assigned to any project.")
     paths: Optional[list[_RootAndPathInput]] = Field(
-        default=None, description="Restrict the search to one or more library roots.")
-    width_min: Optional[int] = None
+        default=None, description="Restrict to one or more library roots (optionally a "
+                                   "subdirectory of each), e.g. [{\"root_id\": 2}]. Get "
+                                   "`root_id`s from `list_library_roots`.")
+    width_min: Optional[int] = Field(default=None, description="Image width in pixels, inclusive.")
     width_max: Optional[int] = None
-    height_min: Optional[int] = None
+    height_min: Optional[int] = Field(default=None, description="Image height in pixels, inclusive.")
     height_max: Optional[int] = None
-    scale_min: Optional[float] = Field(default=None, description="Plate scale, arcsec/pixel.")
+    scale_min: Optional[float] = Field(
+        default=None, description="Plate scale in arcsec/pixel, inclusive. Only "
+                                   "plate-solved images have a scale.")
     scale_max: Optional[float] = None
-    star_count_min: Optional[int] = None
+    star_count_min: Optional[int] = Field(
+        default=None, description="Detected star count, inclusive. Like all the image-quality "
+                                   "filters (star_count, fwhm, background, background_rms, "
+                                   "elongation), this only matches images that have been "
+                                   "analysed in PhotonFinder -- unanalysed images are excluded.")
     star_count_max: Optional[int] = None
-    fwhm_min: Optional[float] = None
+    fwhm_min: Optional[float] = Field(
+        default=None, description="Median star FWHM in pixels, inclusive. Lower is sharper.")
     fwhm_max: Optional[float] = None
-    background_min: Optional[float] = None
+    background_min: Optional[float] = Field(
+        default=None, description="Median sky background level, inclusive, in the image's "
+                                   "own pixel units (ADU for integer data, 0-1 for normalised "
+                                   "float data) -- so only comparable across similar files.")
     background_max: Optional[float] = None
-    background_rms_min: Optional[float] = None
+    background_rms_min: Optional[float] = Field(
+        default=None, description="Sky background noise (RMS), inclusive, in the same pixel "
+                                   "units as `background_min`.")
     background_rms_max: Optional[float] = None
-    elongation_min: Optional[float] = None
+    elongation_min: Optional[float] = Field(
+        default=None, description="Median star elongation (major/minor axis ratio), inclusive; "
+                                   "1.0 is perfectly round, higher suggests trailing.")
     elongation_max: Optional[float] = None
     sorting_field: Optional[typing.Literal[tuple(SORTABLE_FIELDS)]] = Field(
         default=None, description="Field to sort results by. Omit for the default "
@@ -572,6 +696,33 @@ class SearchCriteriaInput(BaseModel):
     sorting_desc: Optional[bool] = Field(
         default=None, description="Sort direction for `sorting_field`; defaults to True "
                                    "(descending) if omitted.")
+
+
+def _criteria_param(what: str, same_as_search: bool = True):
+    """The `criteria` parameter type, described for the tool that takes it.
+
+    Without a description of its own the parameter is advertised as a bare `$ref` to
+    `SearchCriteriaInput`, and weaker agents do not realise that the report tools accept
+    the same filters as `search_files` -- they call them unfiltered and page through the
+    whole library instead.
+    """
+    shared = (" The same SearchCriteria object `search_files` takes -- every field works "
+              "here too." if same_as_search else "")
+    return typing.Annotated[Optional[SearchCriteriaInput], Field(
+        description=(
+            f"Optional filters restricting which files {what}.{shared} Omit a field to "
+            "leave it unconstrained; omit `criteria` for the whole library. Example: "
+            '{"object_name": "M 31", "filter": "Ha", "type": "LIGHT", '
+            '"start_datetime": "2025-01-01T00:00:00"}.'
+        ))]
+
+
+FormatParam = typing.Annotated[typing.Literal[OUTPUT_FORMATS], Field(
+    description='"json" (default) returns `results` as a list of objects. "csv" returns '
+                "`results` as one CSV string with a header row -- the same rows at a "
+                "fraction of the size, so prefer it for large summaries. Nested lists "
+                "(`paths`, `files`) are omitted in CSV; empty cells are nulls. Totals and "
+                "paging fields stay in the JSON wrapper either way.")]
 
 
 def read_only(title: str):
@@ -611,7 +762,16 @@ def build_mcp(context: ApplicationContext):
         "name; no plate solving required), and which catalog objects the library covers "
         "(only considering plate-solved images) -- and `get_header_values` reads a few named "
         "FITS/model/WCS fields across many files at once instead of one whole header at a "
-        "time. Every one of these is read-only, and PhotonFinder never writes files on your "
+        "time. `report_targets`, `report_catalog_coverage` and `get_header_values` all take "
+        "the same optional `criteria` object as `search_files`, so scope them to the files "
+        "you care about (an object, a filter, a date range, a library root...) instead of "
+        "running them over the whole library. Those three also accept `format=\"csv\"`, "
+        "which returns the same rows far more compactly. Everything is answered from a "
+        "local, indexed database, so you can assume most calls are fast: prefer several "
+        "narrow, targeted calls (discover values first, then filter) over one broad call "
+        "you have to page through. The exceptions are `report_catalog_coverage`, which "
+        "can take tens of seconds on a large library, and `plate_solve_files`, which runs "
+        "an external solver per file. Every one of these is read-only, and PhotonFinder never writes files on your "
         "behalf: report content is returned to you to save as you see fit. "
         "`plate_solve_files` is the sole "
         "exception and the user must opt into it in Settings; it plate-solves up to "
@@ -627,9 +787,38 @@ def build_mcp(context: ApplicationContext):
     # of type ListToolsRequest"), which drowns out our own search logging. Quiet it down;
     # our tools still log through `logger` above.
     logging.getLogger("mcp.server.lowlevel.server").setLevel(logging.WARNING)
+    # Stateless mode tears down a throwaway session after every request and logs
+    # "Terminating session: None" for each at INFO -- pure noise; `tool` logs the calls.
+    logging.getLogger("mcp.server.streamable_http").setLevel(logging.WARNING)
 
-    @mcp.tool(annotations=read_only("Search files"))
-    async def search_files(criteria: Optional[SearchCriteriaInput] = None, page: int = 0,
+    def tool(**kwargs):
+        """`mcp.tool`, but the result goes back as compact JSON text (see `_to_text`), and
+        every call is logged with its arguments, duration and response size.
+
+        `structured_output=False` because a structured result would be sent a second time
+        as `structuredContent`, and clients that show the model both pay for it twice.
+        """
+        register = mcp.tool(structured_output=False, **kwargs)
+
+        def decorate(fn):
+            @functools.wraps(fn)
+            async def wrapper(**kw):
+                args = _log_args(kw)
+                started = time.monotonic()
+                try:
+                    text = _to_text(await fn(**kw))
+                except Exception:
+                    logger.exception("MCP %s(%s) failed after %.2fs", fn.__name__, args,
+                                     time.monotonic() - started)
+                    raise
+                logger.info("MCP %s(%s) -> %d chars in %.2fs", fn.__name__, args,
+                            len(text), time.monotonic() - started)
+                return text
+            return register(wrapper)
+        return decorate
+
+    @tool(annotations=read_only("Search files"))
+    async def search_files(criteria: _criteria_param("are returned", same_as_search=False) = None, page: int = 0,
                            page_size: int = 100) -> dict:
         """Search the file library.
 
@@ -640,35 +829,46 @@ def build_mcp(context: ApplicationContext):
         clean = criteria.model_dump(exclude_none=True, mode="json") if criteria else None
         return await anyio.to_thread.run_sync(query_search, context, clean, page, page_size)
 
-    @mcp.tool(annotations=read_only("Target report"))
-    async def report_targets(criteria: Optional[SearchCriteriaInput] = None, page: int = 0,
-                             page_size: int = 100, include_paths: bool = True,
-                             max_paths: int = MAX_REPORT_PATHS) -> dict:
+    @tool(annotations=read_only("Target report"))
+    async def report_targets(criteria: _criteria_param("are summed into the report") = None,
+                             page: int = 0, page_size: int = 100, include_paths: bool = True,
+                             max_paths: int = MAX_REPORT_PATHS,
+                             format: FormatParam = "json") -> dict:
         """Total integration time per target, grouped by object / filter / telescope / camera.
 
-        The same aggregate as the application's Target Report, over the same `criteria` as
-        `search_files`. Each row carries the summed exposure in seconds, the file count, the
+        Accepts the same `criteria` filters as `search_files` to narrow which files are
+        counted -- e.g. `criteria={"object_name": "M 31"}` for one target, or a
+        `start_datetime`/`end_datetime` range for one season.
+
+        The same aggregate as the application's Target Report. Each row carries the summed exposure in seconds, the file count, the
         most recent observation, and the library directories the files sit in. Files with no
         object name are excluded. Grouping is purely by the `object_name` recorded in each
         file's header (plus filter/telescope/camera) -- plate solving is not required.
 
-        Returns `{results, page, page_size, total, has_more, total_exposure_seconds_all}`,
-        where `total_exposure_seconds_all` sums every group, not just this page. Set
-        `include_paths=false` when you only need integration totals; `paths` is capped at
-        `max_paths` per row and `paths_truncated` says when it hit the cap. Narrow `criteria`
-        rather than paging through thousands of groups.
+        Returns `{format, results, page, page_size, total, has_more,
+        total_exposure_seconds_all}`, where `total_exposure_seconds_all` sums every group,
+        not just this page. Set `include_paths=false` when you only need integration totals;
+        `paths` is capped at `max_paths` per row and `paths_truncated` says when it hit the
+        cap. `format="csv"` is the most compact way to get totals for many targets. Narrow
+        `criteria` rather than paging through thousands of groups.
         """
         clean = criteria.model_dump(exclude_none=True, mode="json") if criteria else None
         return await anyio.to_thread.run_sync(query_target_report, context, clean, page,
-                                              page_size, include_paths, max_paths)
+                                              page_size, include_paths, max_paths, format)
 
-    @mcp.tool(annotations=read_only("Catalog coverage report"))
+    @tool(annotations=read_only("Catalog coverage report"))
     async def report_catalog_coverage(catalog: str,
-                                      criteria: Optional[SearchCriteriaInput] = None,
+                                      criteria: _criteria_param(
+                                          "are tested against the catalog") = None,
                                       only_matching: bool = True, page: int = 0,
                                       page_size: int = 100, include_files: bool = True,
-                                      max_files: int = MAX_FILES_PER_OBJECT) -> dict:
+                                      max_files: int = MAX_FILES_PER_OBJECT,
+                                      format: FormatParam = "json") -> dict:
         """Which objects of a catalog the library's images actually cover.
+
+        Accepts the same `criteria` filters as `search_files` to narrow which images are
+        considered -- e.g. `criteria={"telescope": "RedCat 51"}` for one rig, or `paths`
+        for one library root.
 
         The same coverage report as the application's Catalog Report: each catalog entry is
         tested against the precise footprint of every matching image, not just its centre.
@@ -682,17 +882,17 @@ def build_mcp(context: ApplicationContext):
         false also lists objects you have *not* imaged, which for a catalog like NGC means
         paging through ~785k rows; you almost never want it.
 
-        Returns `{catalog, only_matching, results, page, page_size, total, has_more,
+        Returns `{catalog, only_matching, format, results, page, page_size, total, has_more,
         images_considered, objects_matched}`. Each result's `files` entries carry a `rowid`
         usable with `get_file_details`, capped at `max_files` with a `files_truncated` flag;
-        set `include_files=false` for a pure coverage list.
+        set `include_files=false`, or `format="csv"`, for a pure coverage list.
         """
         clean = criteria.model_dump(exclude_none=True, mode="json") if criteria else None
         return await anyio.to_thread.run_sync(query_catalog_report, context, catalog, clean,
                                               only_matching, page, page_size, include_files,
-                                              max_files)
+                                              max_files, format)
 
-    @mcp.tool(
+    @tool(
         # Description passed explicitly rather than as a docstring because it has to name
         # MAX_HEADER_KEYWORDS -- same reason as plate_solve_files below.
         description=(
@@ -700,6 +900,9 @@ def build_mcp(context: ApplicationContext):
             "The bulk form of `get_file_details`: instead of one file's entire header, this "
             "returns only the `fields` you name, across every file matching `criteria`. Use "
             'it for questions like "what was FOCTEMP across last night\'s subs".\n\n'
+            "`criteria` takes the same filters as `search_files` and should almost always be "
+            'given -- e.g. `criteria={"object_name": "M 31", "start_datetime": '
+            '"2025-03-01T18:00:00", "end_datetime": "2025-03-02T06:00:00"}`.\n\n'
             "Each entry of `fields` names its source by prefix:\n"
             '- `"File.size"`, `"Image.exposure"` -- a PhotonFinder model field\n'
             '- `"WCS:CRVAL1"` -- a keyword from the plate-solve solution\n'
@@ -709,18 +912,21 @@ def build_mcp(context: ApplicationContext):
             "call `get_file_details` on one representative file and read its `header`.\n\n"
             f"At most {MAX_HEADER_KEYWORDS} fields per call. A field a file does not have "
             "comes back as null rather than an error. Returns "
-            "{results, page, page_size, total, has_more} with one "
-            "{rowid, full_filename, values} entry per file."
+            "{format, results, page, page_size, total, has_more} with one "
+            "{rowid, full_filename, values} entry per file; with `format=\"csv\"` the "
+            "columns are rowid, full_filename, then one per requested field, named as you "
+            "spelled it."
         ),
         annotations=read_only("Header values"))
     async def get_header_values(fields: list[str],
-                                criteria: Optional[SearchCriteriaInput] = None,
-                                page: int = 0, page_size: int = 100) -> dict:
+                                criteria: _criteria_param("are read") = None,
+                                page: int = 0, page_size: int = 100,
+                                format: FormatParam = "json") -> dict:
         clean = criteria.model_dump(exclude_none=True, mode="json") if criteria else None
         return await anyio.to_thread.run_sync(query_header_values, context, fields, clean,
-                                              page, page_size)
+                                              page, page_size, format)
 
-    @mcp.tool(annotations=read_only("List library roots"))
+    @tool(annotations=read_only("List library roots"))
     async def list_library_roots() -> list[dict]:
         """List the configured library roots (top-level scanned directories).
 
@@ -730,7 +936,7 @@ def build_mcp(context: ApplicationContext):
         can scope a search instead of scanning the whole library."""
         return await anyio.to_thread.run_sync(query_library_roots, context)
 
-    @mcp.tool(annotations=read_only("List projects"))
+    @tool(annotations=read_only("List projects"))
     async def list_projects() -> list[dict]:
         """List projects defined in the library, with summary info per project:
         `file_count`, `last_date_obs` (most recent image's observation time), and the
@@ -739,13 +945,13 @@ def build_mcp(context: ApplicationContext):
         `get_project_details` for the same summary for a single project."""
         return await anyio.to_thread.run_sync(query_projects, context)
 
-    @mcp.tool(annotations=read_only("Project details"))
+    @tool(annotations=read_only("Project details"))
     async def get_project_details(rowid: int) -> dict:
         """Get summary details for a single project by its rowid: `file_count`,
         `last_date_obs`, and `coord_ra`/`coord_dec` of its most recent image."""
         return await anyio.to_thread.run_sync(query_project_details, context, rowid)
 
-    @mcp.tool(annotations=read_only("List distinct values"))
+    @tool(annotations=read_only("List distinct values"))
     async def list_distinct_values(field: str) -> list:
         """List the distinct values present for a field, to help build search criteria.
 
@@ -753,21 +959,21 @@ def build_mcp(context: ApplicationContext):
         """
         return await anyio.to_thread.run_sync(query_distinct_values, context, field)
 
-    @mcp.tool(annotations=read_only("File details"))
+    @tool(annotations=read_only("File details"))
     async def get_file_details(rowid: int) -> dict:
         """Get full metadata for a single file by its rowid, including the decompressed
         FITS header keywords and plate-solve status. Use the `rowid` from `search_files`
         results."""
         return await anyio.to_thread.run_sync(query_file_details, context, rowid)
 
-    @mcp.tool(annotations=read_only("List catalogs"))
+    @tool(annotations=read_only("List catalogs"))
     async def list_catalogs() -> list[str]:
         """List the local catalog names available for `lookup_object` (e.g. "NGC", "IC",
         "M"). Backed entirely by PhotonFinder's local catalog database; performs no
         online lookups."""
         return await anyio.to_thread.run_sync(query_list_catalogs, context)
 
-    @mcp.tool(annotations=read_only("Look up object"))
+    @tool(annotations=read_only("Look up object"))
     async def lookup_object(catalog: str, catalog_id: str) -> dict:
         """Resolve an object's RA/Dec (degrees) from PhotonFinder's local catalog
         database only -- no online services (Simbad, Telescopius, etc.) are contacted.
@@ -781,7 +987,7 @@ def build_mcp(context: ApplicationContext):
         """
         return await anyio.to_thread.run_sync(query_lookup_object, context, catalog, catalog_id)
 
-    @mcp.tool(description=(
+    @tool(description=(
             f"Plate-solve up to {MAX_SOLVE_BATCH} files at once by rowid (from "
             "`search_files`/`get_file_details`), writing the resulting WCS solution and "
             "coordinates to the library. "

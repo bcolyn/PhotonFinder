@@ -286,6 +286,75 @@ def test_header_values_paginates(sample):
     assert len(result["results"]) == 1
 
 
+def _parse_csv(text):
+    import csv
+    import io
+    return list(csv.DictReader(io.StringIO(text)))
+
+
+def test_target_report_csv(sample):
+    ctx, _ = sample
+    result = mcp_server.query_target_report(ctx, {}, output_format="csv")
+    assert result["format"] == "csv"
+    # Totals and paging stay in the wrapper; only `results` changes shape.
+    assert result["total"] == 1
+    assert result["total_exposure_seconds_all"] == 300.0
+
+    assert result["results"].splitlines()[0] == ",".join(mcp_server._TARGET_CSV_COLUMNS)
+    [row] = _parse_csv(result["results"])
+    assert row["object_name"] == "M31"
+    assert float(row["total_exposure_seconds"]) == 300.0
+    assert row["file_count"] == "1"
+    assert "paths" not in row
+
+
+def test_catalog_report_csv(solved_sample):
+    ctx, _ = solved_sample
+    result = mcp_server.query_catalog_report(ctx, "NGC", output_format="csv")
+    rows = _parse_csv(result["results"])
+    row = next(r for r in rows if r["catalog_id"] == "224")
+    assert row["file_count"] == "1"
+    assert set(row) == set(mcp_server._CATALOG_CSV_COLUMNS)
+
+
+def test_header_values_csv_has_one_column_per_field(solved_sample):
+    ctx, data = solved_sample
+    result = mcp_server.query_header_values(
+        ctx, ["GAIN", "NOSUCHKW", "WCS:CRVAL1"], {"type": "LIGHT"}, output_format="csv")
+    assert result["results"].splitlines()[0] == "rowid,full_filename,GAIN,NOSUCHKW,WCS:CRVAL1"
+    [row] = _parse_csv(result["results"])
+    assert row["rowid"] == str(data["light"].rowid)
+    assert row["GAIN"] == "100"
+    assert row["NOSUCHKW"] == ""  # null -> empty cell
+    assert float(row["WCS:CRVAL1"]) == 10.68
+
+
+def test_report_rejects_unknown_format(sample):
+    ctx, _ = sample
+    for result in (mcp_server.query_target_report(ctx, {}, output_format="xml"),
+                   mcp_server.query_header_values(ctx, ["GAIN"], output_format="xml")):
+        assert "xml" in result["error"]
+
+
+def test_tool_results_are_compact_json(sample, caplog):
+    """Tools answer with one unindented JSON text block and no duplicate structured copy,
+    and every call is logged with its arguments."""
+    import asyncio
+    import json
+    import logging
+    ctx, _ = sample
+    ctx.settings._store["mcp_allow_plate_solve"] = False
+    with caplog.at_level(logging.INFO, logger=mcp_server.logger.name):
+        result = asyncio.run(
+            mcp_server.build_mcp(ctx).call_tool("plate_solve_files", {"rowids": [1]}))
+
+    [block] = result
+    assert "\n" not in block.text and ": " not in block.text
+    assert "disabled" in json.loads(block.text)["error"]
+    assert any(r.getMessage().startswith('MCP plate_solve_files("rowids":[1]')
+               for r in caplog.records)
+
+
 def test_list_library_roots(sample):
     ctx, data = sample
     roots = mcp_server.query_library_roots(ctx)

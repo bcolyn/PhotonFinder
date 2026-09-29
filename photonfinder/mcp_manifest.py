@@ -21,11 +21,21 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                  'menu -- total integration per target (matched by object name; no plate solving '
                  'required), and which catalog objects the library covers (only considering '
                  'plate-solved images) -- and `get_header_values` reads a few named FITS/model/WCS '
-                 'fields across many files at once instead of one whole header at a time. Every '
-                 'one of these is read-only, and PhotonFinder never writes files on your behalf: '
-                 'report content is returned to you to save as you see fit. `plate_solve_files` is '
-                 'the sole exception and the user must opt into it in Settings; it plate-solves up '
-                 'to 10 files at once and writes the resulting WCS/coordinates to the library.',
+                 'fields across many files at once instead of one whole header at a time. '
+                 '`report_targets`, `report_catalog_coverage` and `get_header_values` all take the '
+                 'same optional `criteria` object as `search_files`, so scope them to the files '
+                 'you care about (an object, a filter, a date range, a library root...) instead of '
+                 'running them over the whole library. Those three also accept `format="csv"`, '
+                 'which returns the same rows far more compactly. Everything is answered from a '
+                 'local, indexed database, so you can assume most calls are fast: prefer several '
+                 'narrow, targeted calls (discover values first, then filter) over one broad call '
+                 'you have to page through. The exceptions are `report_catalog_coverage`, which '
+                 'can take tens of seconds on a large library, and `plate_solve_files`, which runs '
+                 'an external solver per file. Every one of these is read-only, and PhotonFinder '
+                 'never writes files on your behalf: report content is returned to you to save as '
+                 'you see fit. `plate_solve_files` is the sole exception and the user must opt '
+                 'into it in Settings; it plate-solves up to 10 files at once and writes the '
+                 'resulting WCS/coordinates to the library.',
  'tools': [{'name': 'search_files',
             'description': 'Search the file library.\n'
                            '\n'
@@ -34,35 +44,116 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            'Discover valid values for `filter`/`type`/`camera`/etc. via '
                            '`list_distinct_values`,\n'
                            'and valid `paths` roots via `list_library_roots`.\n',
-            'inputSchema': {'$defs': {'SearchCriteriaInput': {'description': 'Search filters. Omit '
-                                                                             'any field to leave '
-                                                                             'it unconstrained.',
+            'inputSchema': {'$defs': {'SearchCriteriaInput': {'description': 'Search filters, '
+                                                                             'shared by '
+                                                                             '`search_files` and '
+                                                                             'the report tools. '
+                                                                             'Every field is\n'
+                                                                             'optional; omit any '
+                                                                             'field to leave it '
+                                                                             'unconstrained. All '
+                                                                             'given fields are '
+                                                                             'combined\n'
+                                                                             'with AND.',
                                                               'properties': {'type': {'anyOf': [{'type': 'string'},
                                                                                                 {'type': 'null'}],
                                                                                       'default': None,
-                                                                                      'description': 'LIGHT/DARK/FLAT/BIAS/MASTER '
-                                                                                                     '...',
+                                                                                      'description': 'Exact '
+                                                                                                     'image '
+                                                                                                     'type, '
+                                                                                                     'e.g. '
+                                                                                                     'LIGHT, '
+                                                                                                     'DARK, '
+                                                                                                     'FLAT, '
+                                                                                                     'BIAS, '
+                                                                                                     'MASTER '
+                                                                                                     'DARK. '
+                                                                                                     'See '
+                                                                                                     "`list_distinct_values('type')`.",
                                                                                       'title': 'Type'},
                                                                              'filter': {'anyOf': [{'type': 'string'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Exact '
+                                                                                                       'filter '
+                                                                                                       'name '
+                                                                                                       'as '
+                                                                                                       'recorded '
+                                                                                                       'in '
+                                                                                                       'the '
+                                                                                                       'header, '
+                                                                                                       'e.g. '
+                                                                                                       'Ha. '
+                                                                                                       'See '
+                                                                                                       "`list_distinct_values('filter')`.",
                                                                                         'title': 'Filter'},
                                                                              'camera': {'anyOf': [{'type': 'string'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Exact '
+                                                                                                       'camera '
+                                                                                                       'name. '
+                                                                                                       'See '
+                                                                                                       "`list_distinct_values('camera')`.",
                                                                                         'title': 'Camera'},
                                                                              'telescope': {'anyOf': [{'type': 'string'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Substring '
+                                                                                                          'match '
+                                                                                                          'on '
+                                                                                                          'the '
+                                                                                                          'telescope '
+                                                                                                          'name. '
+                                                                                                          'See '
+                                                                                                          "`list_distinct_values('telescope')`.",
                                                                                            'title': 'Telescope'},
                                                                              'object_name': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
+                                                                                             'description': 'Substring '
+                                                                                                            'match '
+                                                                                                            'on '
+                                                                                                            'the '
+                                                                                                            'OBJECT '
+                                                                                                            'name '
+                                                                                                            'recorded '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            'header, '
+                                                                                                            'e.g. '
+                                                                                                            '"M '
+                                                                                                            '31". '
+                                                                                                            'Spelling '
+                                                                                                            'varies '
+                                                                                                            'per '
+                                                                                                            'capture '
+                                                                                                            'program; '
+                                                                                                            'check '
+                                                                                                            "`list_distinct_values('object_name')`, "
+                                                                                                            'or '
+                                                                                                            'use '
+                                                                                                            'a '
+                                                                                                            'coordinate '
+                                                                                                            'search '
+                                                                                                            'to '
+                                                                                                            'catch '
+                                                                                                            'every '
+                                                                                                            'spelling.',
                                                                                              'title': 'Object '
                                                                                                       'Name'},
                                                                              'file_name': {'anyOf': [{'type': 'string'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Substring '
+                                                                                                          'match '
+                                                                                                          'on '
+                                                                                                          'the '
+                                                                                                          'file '
+                                                                                                          'name '
+                                                                                                          '(not '
+                                                                                                          'the '
+                                                                                                          'directory).',
                                                                                            'title': 'File '
                                                                                                     'Name'},
                                                                              'exposure': {'anyOf': [{'type': 'string'},
@@ -71,7 +162,9 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                           'description': 'Exposure '
                                                                                                          'time '
                                                                                                          'in '
-                                                                                                         'seconds.',
+                                                                                                         'seconds, '
+                                                                                                         'e.g. '
+                                                                                                         '"300".',
                                                                                           'title': 'Exposure'},
                                                                              'exposure_tolerance': {'anyOf': [{'type': 'number'},
                                                                                                               {'type': 'null'}],
@@ -91,18 +184,37 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'binning': {'anyOf': [{'type': 'string'},
                                                                                                    {'type': 'null'}],
                                                                                          'default': None,
+                                                                                         'description': 'Binning '
+                                                                                                        'factor, '
+                                                                                                        'e.g. '
+                                                                                                        '"2" '
+                                                                                                        'for '
+                                                                                                        '2x2.',
                                                                                          'title': 'Binning'},
                                                                              'gain': {'anyOf': [{'type': 'string'},
                                                                                                 {'type': 'null'}],
                                                                                       'default': None,
+                                                                                      'description': 'Camera '
+                                                                                                     'gain, '
+                                                                                                     'e.g. '
+                                                                                                     '"100".',
                                                                                       'title': 'Gain'},
                                                                              'offset': {'anyOf': [{'type': 'integer'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Camera '
+                                                                                                       'offset.',
                                                                                         'title': 'Offset'},
                                                                              'temperature': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
+                                                                                             'description': 'Sensor '
+                                                                                                            'cooling '
+                                                                                                            'set-point '
+                                                                                                            'in '
+                                                                                                            '°C, '
+                                                                                                            'e.g. '
+                                                                                                            '"-10".',
                                                                                              'title': 'Temperature'},
                                                                              'temperature_tolerance': {'anyOf': [{'type': 'number'},
                                                                                                                  {'type': 'null'}],
@@ -125,7 +237,30 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                           'description': 'Right '
                                                                                                          'Ascension '
                                                                                                          'in '
-                                                                                                         'hours.',
+                                                                                                         'hours, '
+                                                                                                         'decimal '
+                                                                                                         '("0.712") '
+                                                                                                         'or '
+                                                                                                         'sexagesimal '
+                                                                                                         '("00:42:44"). '
+                                                                                                         'Requires '
+                                                                                                         '`coord_dec`. '
+                                                                                                         'Use '
+                                                                                                         '`lookup_object` '
+                                                                                                         'to '
+                                                                                                         'get '
+                                                                                                         'an '
+                                                                                                         "object's "
+                                                                                                         'coordinates '
+                                                                                                         '(note '
+                                                                                                         'it '
+                                                                                                         'returns '
+                                                                                                         'RA '
+                                                                                                         'in '
+                                                                                                         'degrees: '
+                                                                                                         'divide '
+                                                                                                         'by '
+                                                                                                         '15).',
                                                                                           'title': 'Coord '
                                                                                                    'Ra'},
                                                                              'coord_dec': {'anyOf': [{'type': 'string'},
@@ -133,7 +268,14 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                            'default': None,
                                                                                            'description': 'Declination '
                                                                                                           'in '
-                                                                                                          'degrees.',
+                                                                                                          'degrees, '
+                                                                                                          'decimal '
+                                                                                                          '("41.27") '
+                                                                                                          'or '
+                                                                                                          'sexagesimal '
+                                                                                                          '("+41:16:09"). '
+                                                                                                          'Requires '
+                                                                                                          '`coord_ra`.',
                                                                                            'title': 'Coord '
                                                                                                     'Dec'},
                                                                              'coord_radius': {'anyOf': [{'type': 'number'},
@@ -147,36 +289,89 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                              'degrees '
                                                                                                              '(used '
                                                                                                              'with '
-                                                                                                             '`coord_ra`/`coord_dec`).',
+                                                                                                             '`coord_ra`/`coord_dec`); '
+                                                                                                             'defaults '
+                                                                                                             'to '
+                                                                                                             '0.5.',
                                                                                               'title': 'Coord '
                                                                                                        'Radius'},
                                                                              'start_datetime': {'anyOf': [{'format': 'date-time',
                                                                                                            'type': 'string'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Only '
+                                                                                                               'images '
+                                                                                                               'observed '
+                                                                                                               'at '
+                                                                                                               'or '
+                                                                                                               'after '
+                                                                                                               'this '
+                                                                                                               'time '
+                                                                                                               '(ISO '
+                                                                                                               '8601, '
+                                                                                                               'compared '
+                                                                                                               'with '
+                                                                                                               'the '
+                                                                                                               "header's "
+                                                                                                               'DATE-OBS, '
+                                                                                                               'normally '
+                                                                                                               'UTC).',
                                                                                                 'title': 'Start '
                                                                                                          'Datetime'},
                                                                              'end_datetime': {'anyOf': [{'format': 'date-time',
                                                                                                          'type': 'string'},
                                                                                                         {'type': 'null'}],
                                                                                               'default': None,
+                                                                                              'description': 'Only '
+                                                                                                             'images '
+                                                                                                             'observed '
+                                                                                                             'at '
+                                                                                                             'or '
+                                                                                                             'before '
+                                                                                                             'this '
+                                                                                                             'time '
+                                                                                                             '(ISO '
+                                                                                                             '8601, '
+                                                                                                             'compared '
+                                                                                                             'with '
+                                                                                                             'the '
+                                                                                                             "header's "
+                                                                                                             'DATE-OBS, '
+                                                                                                             'normally '
+                                                                                                             'UTC).',
                                                                                               'title': 'End '
                                                                                                        'Datetime'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
-                                                                                             'description': 'Free '
-                                                                                                            'text '
-                                                                                                            'or '
-                                                                                                            'a '
-                                                                                                            '"KEYWORD=value"/"KEYWORD<value" '
-                                                                                                            'style '
-                                                                                                            'FITS '
+                                                                                             'description': 'FITS '
                                                                                                             'header '
-                                                                                                            'match, '
+                                                                                                            'match: '
+                                                                                                            '"KEYWORD=value", '
+                                                                                                            '"KEYWORD<value" '
+                                                                                                            'or '
+                                                                                                            '"KEYWORD>value" '
+                                                                                                            'compares '
+                                                                                                            'one '
+                                                                                                            'keyword '
+                                                                                                            'numerically, '
                                                                                                             'e.g. '
-                                                                                                            '"GAIN=100", '
-                                                                                                            '"FOCTEMP<0".',
+                                                                                                            '"FOCTEMP<0"; '
+                                                                                                            'anything '
+                                                                                                            'else '
+                                                                                                            '(including '
+                                                                                                            'a '
+                                                                                                            'non-numeric '
+                                                                                                            'value) '
+                                                                                                            'is '
+                                                                                                            'a '
+                                                                                                            'substring '
+                                                                                                            'search '
+                                                                                                            'over '
+                                                                                                            'the '
+                                                                                                            'whole '
+                                                                                                            'header '
+                                                                                                            'text.',
                                                                                              'title': 'Header '
                                                                                                       'Text'},
                                                                              'plate_solved': {'anyOf': [{'type': 'boolean'},
@@ -219,18 +414,33 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                  {'type': 'null'}],
                                                                                        'default': None,
                                                                                        'description': 'Restrict '
-                                                                                                      'the '
-                                                                                                      'search '
                                                                                                       'to '
                                                                                                       'one '
                                                                                                       'or '
                                                                                                       'more '
                                                                                                       'library '
-                                                                                                      'roots.',
+                                                                                                      'roots '
+                                                                                                      '(optionally '
+                                                                                                      'a '
+                                                                                                      'subdirectory '
+                                                                                                      'of '
+                                                                                                      'each), '
+                                                                                                      'e.g. '
+                                                                                                      '[{"root_id": '
+                                                                                                      '2}]. '
+                                                                                                      'Get '
+                                                                                                      '`root_id`s '
+                                                                                                      'from '
+                                                                                                      '`list_library_roots`.',
                                                                                        'title': 'Paths'},
                                                                              'width_min': {'anyOf': [{'type': 'integer'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Image '
+                                                                                                          'width '
+                                                                                                          'in '
+                                                                                                          'pixels, '
+                                                                                                          'inclusive.',
                                                                                            'title': 'Width '
                                                                                                     'Min'},
                                                                              'width_max': {'anyOf': [{'type': 'integer'},
@@ -241,6 +451,11 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'height_min': {'anyOf': [{'type': 'integer'},
                                                                                                       {'type': 'null'}],
                                                                                             'default': None,
+                                                                                            'description': 'Image '
+                                                                                                           'height '
+                                                                                                           'in '
+                                                                                                           'pixels, '
+                                                                                                           'inclusive.',
                                                                                             'title': 'Height '
                                                                                                      'Min'},
                                                                              'height_max': {'anyOf': [{'type': 'integer'},
@@ -252,8 +467,16 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
                                                                                            'description': 'Plate '
-                                                                                                          'scale, '
-                                                                                                          'arcsec/pixel.',
+                                                                                                          'scale '
+                                                                                                          'in '
+                                                                                                          'arcsec/pixel, '
+                                                                                                          'inclusive. '
+                                                                                                          'Only '
+                                                                                                          'plate-solved '
+                                                                                                          'images '
+                                                                                                          'have '
+                                                                                                          'a '
+                                                                                                          'scale.',
                                                                                            'title': 'Scale '
                                                                                                     'Min'},
                                                                              'scale_max': {'anyOf': [{'type': 'number'},
@@ -264,6 +487,35 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'star_count_min': {'anyOf': [{'type': 'integer'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Detected '
+                                                                                                               'star '
+                                                                                                               'count, '
+                                                                                                               'inclusive. '
+                                                                                                               'Like '
+                                                                                                               'all '
+                                                                                                               'the '
+                                                                                                               'image-quality '
+                                                                                                               'filters '
+                                                                                                               '(star_count, '
+                                                                                                               'fwhm, '
+                                                                                                               'background, '
+                                                                                                               'background_rms, '
+                                                                                                               'elongation), '
+                                                                                                               'this '
+                                                                                                               'only '
+                                                                                                               'matches '
+                                                                                                               'images '
+                                                                                                               'that '
+                                                                                                               'have '
+                                                                                                               'been '
+                                                                                                               'analysed '
+                                                                                                               'in '
+                                                                                                               'PhotonFinder '
+                                                                                                               '-- '
+                                                                                                               'unanalysed '
+                                                                                                               'images '
+                                                                                                               'are '
+                                                                                                               'excluded.',
                                                                                                 'title': 'Star '
                                                                                                          'Count '
                                                                                                          'Min'},
@@ -276,6 +528,15 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'fwhm_min': {'anyOf': [{'type': 'number'},
                                                                                                     {'type': 'null'}],
                                                                                           'default': None,
+                                                                                          'description': 'Median '
+                                                                                                         'star '
+                                                                                                         'FWHM '
+                                                                                                         'in '
+                                                                                                         'pixels, '
+                                                                                                         'inclusive. '
+                                                                                                         'Lower '
+                                                                                                         'is '
+                                                                                                         'sharper.',
                                                                                           'title': 'Fwhm '
                                                                                                    'Min'},
                                                                              'fwhm_max': {'anyOf': [{'type': 'number'},
@@ -286,6 +547,33 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'background_min': {'anyOf': [{'type': 'number'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Median '
+                                                                                                               'sky '
+                                                                                                               'background '
+                                                                                                               'level, '
+                                                                                                               'inclusive, '
+                                                                                                               'in '
+                                                                                                               'the '
+                                                                                                               "image's "
+                                                                                                               'own '
+                                                                                                               'pixel '
+                                                                                                               'units '
+                                                                                                               '(ADU '
+                                                                                                               'for '
+                                                                                                               'integer '
+                                                                                                               'data, '
+                                                                                                               '0-1 '
+                                                                                                               'for '
+                                                                                                               'normalised '
+                                                                                                               'float '
+                                                                                                               'data) '
+                                                                                                               '-- '
+                                                                                                               'so '
+                                                                                                               'only '
+                                                                                                               'comparable '
+                                                                                                               'across '
+                                                                                                               'similar '
+                                                                                                               'files.',
                                                                                                 'title': 'Background '
                                                                                                          'Min'},
                                                                              'background_max': {'anyOf': [{'type': 'number'},
@@ -296,6 +584,18 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'background_rms_min': {'anyOf': [{'type': 'number'},
                                                                                                               {'type': 'null'}],
                                                                                                     'default': None,
+                                                                                                    'description': 'Sky '
+                                                                                                                   'background '
+                                                                                                                   'noise '
+                                                                                                                   '(RMS), '
+                                                                                                                   'inclusive, '
+                                                                                                                   'in '
+                                                                                                                   'the '
+                                                                                                                   'same '
+                                                                                                                   'pixel '
+                                                                                                                   'units '
+                                                                                                                   'as '
+                                                                                                                   '`background_min`.',
                                                                                                     'title': 'Background '
                                                                                                              'Rms '
                                                                                                              'Min'},
@@ -308,6 +608,20 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'elongation_min': {'anyOf': [{'type': 'number'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Median '
+                                                                                                               'star '
+                                                                                                               'elongation '
+                                                                                                               '(major/minor '
+                                                                                                               'axis '
+                                                                                                               'ratio), '
+                                                                                                               'inclusive; '
+                                                                                                               '1.0 '
+                                                                                                               'is '
+                                                                                                               'perfectly '
+                                                                                                               'round, '
+                                                                                                               'higher '
+                                                                                                               'suggests '
+                                                                                                               'trailing.',
                                                                                                 'title': 'Elongation '
                                                                                                          'Min'},
                                                                              'elongation_max': {'anyOf': [{'type': 'number'},
@@ -423,7 +737,17 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                             'type': 'object'}},
                             'properties': {'criteria': {'anyOf': [{'$ref': '#/$defs/SearchCriteriaInput'},
                                                                   {'type': 'null'}],
-                                                        'default': None},
+                                                        'default': None,
+                                                        'description': 'Optional filters '
+                                                                       'restricting which files '
+                                                                       'are returned. Omit a field '
+                                                                       'to leave it unconstrained; '
+                                                                       'omit `criteria` for the '
+                                                                       'whole library. Example: '
+                                                                       '{"object_name": "M 31", '
+                                                                       '"filter": "Ha", "type": '
+                                                                       '"LIGHT", "start_datetime": '
+                                                                       '"2025-01-01T00:00:00"}.'},
                                            'page': {'default': 0,
                                                     'title': 'Page',
                                                     'type': 'integer'},
@@ -437,10 +761,14 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
             'description': 'Total integration time per target, grouped by object / filter / '
                            'telescope / camera.\n'
                            '\n'
-                           "The same aggregate as the application's Target Report, over the same "
-                           '`criteria` as\n'
-                           '`search_files`. Each row carries the summed exposure in seconds, the '
-                           'file count, the\n'
+                           'Accepts the same `criteria` filters as `search_files` to narrow which '
+                           'files are\n'
+                           'counted -- e.g. `criteria={"object_name": "M 31"}` for one target, or '
+                           'a\n'
+                           '`start_datetime`/`end_datetime` range for one season.\n'
+                           '\n'
+                           "The same aggregate as the application's Target Report. Each row "
+                           'carries the summed exposure in seconds, the file count, the\n'
                            'most recent observation, and the library directories the files sit in. '
                            'Files with no\n'
                            'object name are excluded. Grouping is purely by the `object_name` '
@@ -448,44 +776,126 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            "file's header (plus filter/telescope/camera) -- plate solving is not "
                            'required.\n'
                            '\n'
-                           'Returns `{results, page, page_size, total, has_more, '
-                           'total_exposure_seconds_all}`,\n'
-                           'where `total_exposure_seconds_all` sums every group, not just this '
-                           'page. Set\n'
-                           '`include_paths=false` when you only need integration totals; `paths` '
-                           'is capped at\n'
-                           '`max_paths` per row and `paths_truncated` says when it hit the cap. '
-                           'Narrow `criteria`\n'
-                           'rather than paging through thousands of groups.\n',
-            'inputSchema': {'$defs': {'SearchCriteriaInput': {'description': 'Search filters. Omit '
-                                                                             'any field to leave '
-                                                                             'it unconstrained.',
+                           'Returns `{format, results, page, page_size, total, has_more,\n'
+                           'total_exposure_seconds_all}`, where `total_exposure_seconds_all` sums '
+                           'every group,\n'
+                           'not just this page. Set `include_paths=false` when you only need '
+                           'integration totals;\n'
+                           '`paths` is capped at `max_paths` per row and `paths_truncated` says '
+                           'when it hit the\n'
+                           'cap. `format="csv"` is the most compact way to get totals for many '
+                           'targets. Narrow\n'
+                           '`criteria` rather than paging through thousands of groups.\n',
+            'inputSchema': {'$defs': {'SearchCriteriaInput': {'description': 'Search filters, '
+                                                                             'shared by '
+                                                                             '`search_files` and '
+                                                                             'the report tools. '
+                                                                             'Every field is\n'
+                                                                             'optional; omit any '
+                                                                             'field to leave it '
+                                                                             'unconstrained. All '
+                                                                             'given fields are '
+                                                                             'combined\n'
+                                                                             'with AND.',
                                                               'properties': {'type': {'anyOf': [{'type': 'string'},
                                                                                                 {'type': 'null'}],
                                                                                       'default': None,
-                                                                                      'description': 'LIGHT/DARK/FLAT/BIAS/MASTER '
-                                                                                                     '...',
+                                                                                      'description': 'Exact '
+                                                                                                     'image '
+                                                                                                     'type, '
+                                                                                                     'e.g. '
+                                                                                                     'LIGHT, '
+                                                                                                     'DARK, '
+                                                                                                     'FLAT, '
+                                                                                                     'BIAS, '
+                                                                                                     'MASTER '
+                                                                                                     'DARK. '
+                                                                                                     'See '
+                                                                                                     "`list_distinct_values('type')`.",
                                                                                       'title': 'Type'},
                                                                              'filter': {'anyOf': [{'type': 'string'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Exact '
+                                                                                                       'filter '
+                                                                                                       'name '
+                                                                                                       'as '
+                                                                                                       'recorded '
+                                                                                                       'in '
+                                                                                                       'the '
+                                                                                                       'header, '
+                                                                                                       'e.g. '
+                                                                                                       'Ha. '
+                                                                                                       'See '
+                                                                                                       "`list_distinct_values('filter')`.",
                                                                                         'title': 'Filter'},
                                                                              'camera': {'anyOf': [{'type': 'string'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Exact '
+                                                                                                       'camera '
+                                                                                                       'name. '
+                                                                                                       'See '
+                                                                                                       "`list_distinct_values('camera')`.",
                                                                                         'title': 'Camera'},
                                                                              'telescope': {'anyOf': [{'type': 'string'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Substring '
+                                                                                                          'match '
+                                                                                                          'on '
+                                                                                                          'the '
+                                                                                                          'telescope '
+                                                                                                          'name. '
+                                                                                                          'See '
+                                                                                                          "`list_distinct_values('telescope')`.",
                                                                                            'title': 'Telescope'},
                                                                              'object_name': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
+                                                                                             'description': 'Substring '
+                                                                                                            'match '
+                                                                                                            'on '
+                                                                                                            'the '
+                                                                                                            'OBJECT '
+                                                                                                            'name '
+                                                                                                            'recorded '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            'header, '
+                                                                                                            'e.g. '
+                                                                                                            '"M '
+                                                                                                            '31". '
+                                                                                                            'Spelling '
+                                                                                                            'varies '
+                                                                                                            'per '
+                                                                                                            'capture '
+                                                                                                            'program; '
+                                                                                                            'check '
+                                                                                                            "`list_distinct_values('object_name')`, "
+                                                                                                            'or '
+                                                                                                            'use '
+                                                                                                            'a '
+                                                                                                            'coordinate '
+                                                                                                            'search '
+                                                                                                            'to '
+                                                                                                            'catch '
+                                                                                                            'every '
+                                                                                                            'spelling.',
                                                                                              'title': 'Object '
                                                                                                       'Name'},
                                                                              'file_name': {'anyOf': [{'type': 'string'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Substring '
+                                                                                                          'match '
+                                                                                                          'on '
+                                                                                                          'the '
+                                                                                                          'file '
+                                                                                                          'name '
+                                                                                                          '(not '
+                                                                                                          'the '
+                                                                                                          'directory).',
                                                                                            'title': 'File '
                                                                                                     'Name'},
                                                                              'exposure': {'anyOf': [{'type': 'string'},
@@ -494,7 +904,9 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                           'description': 'Exposure '
                                                                                                          'time '
                                                                                                          'in '
-                                                                                                         'seconds.',
+                                                                                                         'seconds, '
+                                                                                                         'e.g. '
+                                                                                                         '"300".',
                                                                                           'title': 'Exposure'},
                                                                              'exposure_tolerance': {'anyOf': [{'type': 'number'},
                                                                                                               {'type': 'null'}],
@@ -514,18 +926,37 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'binning': {'anyOf': [{'type': 'string'},
                                                                                                    {'type': 'null'}],
                                                                                          'default': None,
+                                                                                         'description': 'Binning '
+                                                                                                        'factor, '
+                                                                                                        'e.g. '
+                                                                                                        '"2" '
+                                                                                                        'for '
+                                                                                                        '2x2.',
                                                                                          'title': 'Binning'},
                                                                              'gain': {'anyOf': [{'type': 'string'},
                                                                                                 {'type': 'null'}],
                                                                                       'default': None,
+                                                                                      'description': 'Camera '
+                                                                                                     'gain, '
+                                                                                                     'e.g. '
+                                                                                                     '"100".',
                                                                                       'title': 'Gain'},
                                                                              'offset': {'anyOf': [{'type': 'integer'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Camera '
+                                                                                                       'offset.',
                                                                                         'title': 'Offset'},
                                                                              'temperature': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
+                                                                                             'description': 'Sensor '
+                                                                                                            'cooling '
+                                                                                                            'set-point '
+                                                                                                            'in '
+                                                                                                            '°C, '
+                                                                                                            'e.g. '
+                                                                                                            '"-10".',
                                                                                              'title': 'Temperature'},
                                                                              'temperature_tolerance': {'anyOf': [{'type': 'number'},
                                                                                                                  {'type': 'null'}],
@@ -548,7 +979,30 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                           'description': 'Right '
                                                                                                          'Ascension '
                                                                                                          'in '
-                                                                                                         'hours.',
+                                                                                                         'hours, '
+                                                                                                         'decimal '
+                                                                                                         '("0.712") '
+                                                                                                         'or '
+                                                                                                         'sexagesimal '
+                                                                                                         '("00:42:44"). '
+                                                                                                         'Requires '
+                                                                                                         '`coord_dec`. '
+                                                                                                         'Use '
+                                                                                                         '`lookup_object` '
+                                                                                                         'to '
+                                                                                                         'get '
+                                                                                                         'an '
+                                                                                                         "object's "
+                                                                                                         'coordinates '
+                                                                                                         '(note '
+                                                                                                         'it '
+                                                                                                         'returns '
+                                                                                                         'RA '
+                                                                                                         'in '
+                                                                                                         'degrees: '
+                                                                                                         'divide '
+                                                                                                         'by '
+                                                                                                         '15).',
                                                                                           'title': 'Coord '
                                                                                                    'Ra'},
                                                                              'coord_dec': {'anyOf': [{'type': 'string'},
@@ -556,7 +1010,14 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                            'default': None,
                                                                                            'description': 'Declination '
                                                                                                           'in '
-                                                                                                          'degrees.',
+                                                                                                          'degrees, '
+                                                                                                          'decimal '
+                                                                                                          '("41.27") '
+                                                                                                          'or '
+                                                                                                          'sexagesimal '
+                                                                                                          '("+41:16:09"). '
+                                                                                                          'Requires '
+                                                                                                          '`coord_ra`.',
                                                                                            'title': 'Coord '
                                                                                                     'Dec'},
                                                                              'coord_radius': {'anyOf': [{'type': 'number'},
@@ -570,36 +1031,89 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                              'degrees '
                                                                                                              '(used '
                                                                                                              'with '
-                                                                                                             '`coord_ra`/`coord_dec`).',
+                                                                                                             '`coord_ra`/`coord_dec`); '
+                                                                                                             'defaults '
+                                                                                                             'to '
+                                                                                                             '0.5.',
                                                                                               'title': 'Coord '
                                                                                                        'Radius'},
                                                                              'start_datetime': {'anyOf': [{'format': 'date-time',
                                                                                                            'type': 'string'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Only '
+                                                                                                               'images '
+                                                                                                               'observed '
+                                                                                                               'at '
+                                                                                                               'or '
+                                                                                                               'after '
+                                                                                                               'this '
+                                                                                                               'time '
+                                                                                                               '(ISO '
+                                                                                                               '8601, '
+                                                                                                               'compared '
+                                                                                                               'with '
+                                                                                                               'the '
+                                                                                                               "header's "
+                                                                                                               'DATE-OBS, '
+                                                                                                               'normally '
+                                                                                                               'UTC).',
                                                                                                 'title': 'Start '
                                                                                                          'Datetime'},
                                                                              'end_datetime': {'anyOf': [{'format': 'date-time',
                                                                                                          'type': 'string'},
                                                                                                         {'type': 'null'}],
                                                                                               'default': None,
+                                                                                              'description': 'Only '
+                                                                                                             'images '
+                                                                                                             'observed '
+                                                                                                             'at '
+                                                                                                             'or '
+                                                                                                             'before '
+                                                                                                             'this '
+                                                                                                             'time '
+                                                                                                             '(ISO '
+                                                                                                             '8601, '
+                                                                                                             'compared '
+                                                                                                             'with '
+                                                                                                             'the '
+                                                                                                             "header's "
+                                                                                                             'DATE-OBS, '
+                                                                                                             'normally '
+                                                                                                             'UTC).',
                                                                                               'title': 'End '
                                                                                                        'Datetime'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
-                                                                                             'description': 'Free '
-                                                                                                            'text '
-                                                                                                            'or '
-                                                                                                            'a '
-                                                                                                            '"KEYWORD=value"/"KEYWORD<value" '
-                                                                                                            'style '
-                                                                                                            'FITS '
+                                                                                             'description': 'FITS '
                                                                                                             'header '
-                                                                                                            'match, '
+                                                                                                            'match: '
+                                                                                                            '"KEYWORD=value", '
+                                                                                                            '"KEYWORD<value" '
+                                                                                                            'or '
+                                                                                                            '"KEYWORD>value" '
+                                                                                                            'compares '
+                                                                                                            'one '
+                                                                                                            'keyword '
+                                                                                                            'numerically, '
                                                                                                             'e.g. '
-                                                                                                            '"GAIN=100", '
-                                                                                                            '"FOCTEMP<0".',
+                                                                                                            '"FOCTEMP<0"; '
+                                                                                                            'anything '
+                                                                                                            'else '
+                                                                                                            '(including '
+                                                                                                            'a '
+                                                                                                            'non-numeric '
+                                                                                                            'value) '
+                                                                                                            'is '
+                                                                                                            'a '
+                                                                                                            'substring '
+                                                                                                            'search '
+                                                                                                            'over '
+                                                                                                            'the '
+                                                                                                            'whole '
+                                                                                                            'header '
+                                                                                                            'text.',
                                                                                              'title': 'Header '
                                                                                                       'Text'},
                                                                              'plate_solved': {'anyOf': [{'type': 'boolean'},
@@ -642,18 +1156,33 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                  {'type': 'null'}],
                                                                                        'default': None,
                                                                                        'description': 'Restrict '
-                                                                                                      'the '
-                                                                                                      'search '
                                                                                                       'to '
                                                                                                       'one '
                                                                                                       'or '
                                                                                                       'more '
                                                                                                       'library '
-                                                                                                      'roots.',
+                                                                                                      'roots '
+                                                                                                      '(optionally '
+                                                                                                      'a '
+                                                                                                      'subdirectory '
+                                                                                                      'of '
+                                                                                                      'each), '
+                                                                                                      'e.g. '
+                                                                                                      '[{"root_id": '
+                                                                                                      '2}]. '
+                                                                                                      'Get '
+                                                                                                      '`root_id`s '
+                                                                                                      'from '
+                                                                                                      '`list_library_roots`.',
                                                                                        'title': 'Paths'},
                                                                              'width_min': {'anyOf': [{'type': 'integer'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Image '
+                                                                                                          'width '
+                                                                                                          'in '
+                                                                                                          'pixels, '
+                                                                                                          'inclusive.',
                                                                                            'title': 'Width '
                                                                                                     'Min'},
                                                                              'width_max': {'anyOf': [{'type': 'integer'},
@@ -664,6 +1193,11 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'height_min': {'anyOf': [{'type': 'integer'},
                                                                                                       {'type': 'null'}],
                                                                                             'default': None,
+                                                                                            'description': 'Image '
+                                                                                                           'height '
+                                                                                                           'in '
+                                                                                                           'pixels, '
+                                                                                                           'inclusive.',
                                                                                             'title': 'Height '
                                                                                                      'Min'},
                                                                              'height_max': {'anyOf': [{'type': 'integer'},
@@ -675,8 +1209,16 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
                                                                                            'description': 'Plate '
-                                                                                                          'scale, '
-                                                                                                          'arcsec/pixel.',
+                                                                                                          'scale '
+                                                                                                          'in '
+                                                                                                          'arcsec/pixel, '
+                                                                                                          'inclusive. '
+                                                                                                          'Only '
+                                                                                                          'plate-solved '
+                                                                                                          'images '
+                                                                                                          'have '
+                                                                                                          'a '
+                                                                                                          'scale.',
                                                                                            'title': 'Scale '
                                                                                                     'Min'},
                                                                              'scale_max': {'anyOf': [{'type': 'number'},
@@ -687,6 +1229,35 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'star_count_min': {'anyOf': [{'type': 'integer'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Detected '
+                                                                                                               'star '
+                                                                                                               'count, '
+                                                                                                               'inclusive. '
+                                                                                                               'Like '
+                                                                                                               'all '
+                                                                                                               'the '
+                                                                                                               'image-quality '
+                                                                                                               'filters '
+                                                                                                               '(star_count, '
+                                                                                                               'fwhm, '
+                                                                                                               'background, '
+                                                                                                               'background_rms, '
+                                                                                                               'elongation), '
+                                                                                                               'this '
+                                                                                                               'only '
+                                                                                                               'matches '
+                                                                                                               'images '
+                                                                                                               'that '
+                                                                                                               'have '
+                                                                                                               'been '
+                                                                                                               'analysed '
+                                                                                                               'in '
+                                                                                                               'PhotonFinder '
+                                                                                                               '-- '
+                                                                                                               'unanalysed '
+                                                                                                               'images '
+                                                                                                               'are '
+                                                                                                               'excluded.',
                                                                                                 'title': 'Star '
                                                                                                          'Count '
                                                                                                          'Min'},
@@ -699,6 +1270,15 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'fwhm_min': {'anyOf': [{'type': 'number'},
                                                                                                     {'type': 'null'}],
                                                                                           'default': None,
+                                                                                          'description': 'Median '
+                                                                                                         'star '
+                                                                                                         'FWHM '
+                                                                                                         'in '
+                                                                                                         'pixels, '
+                                                                                                         'inclusive. '
+                                                                                                         'Lower '
+                                                                                                         'is '
+                                                                                                         'sharper.',
                                                                                           'title': 'Fwhm '
                                                                                                    'Min'},
                                                                              'fwhm_max': {'anyOf': [{'type': 'number'},
@@ -709,6 +1289,33 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'background_min': {'anyOf': [{'type': 'number'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Median '
+                                                                                                               'sky '
+                                                                                                               'background '
+                                                                                                               'level, '
+                                                                                                               'inclusive, '
+                                                                                                               'in '
+                                                                                                               'the '
+                                                                                                               "image's "
+                                                                                                               'own '
+                                                                                                               'pixel '
+                                                                                                               'units '
+                                                                                                               '(ADU '
+                                                                                                               'for '
+                                                                                                               'integer '
+                                                                                                               'data, '
+                                                                                                               '0-1 '
+                                                                                                               'for '
+                                                                                                               'normalised '
+                                                                                                               'float '
+                                                                                                               'data) '
+                                                                                                               '-- '
+                                                                                                               'so '
+                                                                                                               'only '
+                                                                                                               'comparable '
+                                                                                                               'across '
+                                                                                                               'similar '
+                                                                                                               'files.',
                                                                                                 'title': 'Background '
                                                                                                          'Min'},
                                                                              'background_max': {'anyOf': [{'type': 'number'},
@@ -719,6 +1326,18 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'background_rms_min': {'anyOf': [{'type': 'number'},
                                                                                                               {'type': 'null'}],
                                                                                                     'default': None,
+                                                                                                    'description': 'Sky '
+                                                                                                                   'background '
+                                                                                                                   'noise '
+                                                                                                                   '(RMS), '
+                                                                                                                   'inclusive, '
+                                                                                                                   'in '
+                                                                                                                   'the '
+                                                                                                                   'same '
+                                                                                                                   'pixel '
+                                                                                                                   'units '
+                                                                                                                   'as '
+                                                                                                                   '`background_min`.',
                                                                                                     'title': 'Background '
                                                                                                              'Rms '
                                                                                                              'Min'},
@@ -731,6 +1350,20 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'elongation_min': {'anyOf': [{'type': 'number'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Median '
+                                                                                                               'star '
+                                                                                                               'elongation '
+                                                                                                               '(major/minor '
+                                                                                                               'axis '
+                                                                                                               'ratio), '
+                                                                                                               'inclusive; '
+                                                                                                               '1.0 '
+                                                                                                               'is '
+                                                                                                               'perfectly '
+                                                                                                               'round, '
+                                                                                                               'higher '
+                                                                                                               'suggests '
+                                                                                                               'trailing.',
                                                                                                 'title': 'Elongation '
                                                                                                          'Min'},
                                                                              'elongation_max': {'anyOf': [{'type': 'number'},
@@ -846,7 +1479,22 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                             'type': 'object'}},
                             'properties': {'criteria': {'anyOf': [{'$ref': '#/$defs/SearchCriteriaInput'},
                                                                   {'type': 'null'}],
-                                                        'default': None},
+                                                        'default': None,
+                                                        'description': 'Optional filters '
+                                                                       'restricting which files '
+                                                                       'are summed into the '
+                                                                       'report. The same '
+                                                                       'SearchCriteria object '
+                                                                       '`search_files` takes -- '
+                                                                       'every field works here '
+                                                                       'too. Omit a field to leave '
+                                                                       'it unconstrained; omit '
+                                                                       '`criteria` for the whole '
+                                                                       'library. Example: '
+                                                                       '{"object_name": "M 31", '
+                                                                       '"filter": "Ha", "type": '
+                                                                       '"LIGHT", "start_datetime": '
+                                                                       '"2025-01-01T00:00:00"}.'},
                                            'page': {'default': 0,
                                                     'title': 'Page',
                                                     'type': 'integer'},
@@ -858,7 +1506,24 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                              'type': 'boolean'},
                                            'max_paths': {'default': 20,
                                                          'title': 'Max Paths',
-                                                         'type': 'integer'}},
+                                                         'type': 'integer'},
+                                           'format': {'default': 'json',
+                                                      'description': '"json" (default) returns '
+                                                                     '`results` as a list of '
+                                                                     'objects. "csv" returns '
+                                                                     '`results` as one CSV string '
+                                                                     'with a header row -- the '
+                                                                     'same rows at a fraction of '
+                                                                     'the size, so prefer it for '
+                                                                     'large summaries. Nested '
+                                                                     'lists (`paths`, `files`) are '
+                                                                     'omitted in CSV; empty cells '
+                                                                     'are nulls. Totals and paging '
+                                                                     'fields stay in the JSON '
+                                                                     'wrapper either way.',
+                                                      'enum': ['json', 'csv'],
+                                                      'title': 'Format',
+                                                      'type': 'string'}},
                             'title': 'report_targetsArguments',
                             'type': 'object'},
             'annotations': {'title': 'Target report',
@@ -866,6 +1531,12 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                             'openWorldHint': False}},
            {'name': 'report_catalog_coverage',
             'description': "Which objects of a catalog the library's images actually cover.\n"
+                           '\n'
+                           'Accepts the same `criteria` filters as `search_files` to narrow which '
+                           'images are\n'
+                           'considered -- e.g. `criteria={"telescope": "RedCat 51"}` for one rig, '
+                           'or `paths`\n'
+                           'for one library root.\n'
                            '\n'
                            "The same coverage report as the application's Catalog Report: each "
                            'catalog entry is\n'
@@ -885,42 +1556,124 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            'like NGC means\n'
                            'paging through ~785k rows; you almost never want it.\n'
                            '\n'
-                           'Returns `{catalog, only_matching, results, page, page_size, total, '
-                           'has_more,\n'
+                           'Returns `{catalog, only_matching, format, results, page, page_size, '
+                           'total, has_more,\n'
                            "images_considered, objects_matched}`. Each result's `files` entries "
                            'carry a `rowid`\n'
                            'usable with `get_file_details`, capped at `max_files` with a '
                            '`files_truncated` flag;\n'
-                           'set `include_files=false` for a pure coverage list.\n',
-            'inputSchema': {'$defs': {'SearchCriteriaInput': {'description': 'Search filters. Omit '
-                                                                             'any field to leave '
-                                                                             'it unconstrained.',
+                           'set `include_files=false`, or `format="csv"`, for a pure coverage '
+                           'list.\n',
+            'inputSchema': {'$defs': {'SearchCriteriaInput': {'description': 'Search filters, '
+                                                                             'shared by '
+                                                                             '`search_files` and '
+                                                                             'the report tools. '
+                                                                             'Every field is\n'
+                                                                             'optional; omit any '
+                                                                             'field to leave it '
+                                                                             'unconstrained. All '
+                                                                             'given fields are '
+                                                                             'combined\n'
+                                                                             'with AND.',
                                                               'properties': {'type': {'anyOf': [{'type': 'string'},
                                                                                                 {'type': 'null'}],
                                                                                       'default': None,
-                                                                                      'description': 'LIGHT/DARK/FLAT/BIAS/MASTER '
-                                                                                                     '...',
+                                                                                      'description': 'Exact '
+                                                                                                     'image '
+                                                                                                     'type, '
+                                                                                                     'e.g. '
+                                                                                                     'LIGHT, '
+                                                                                                     'DARK, '
+                                                                                                     'FLAT, '
+                                                                                                     'BIAS, '
+                                                                                                     'MASTER '
+                                                                                                     'DARK. '
+                                                                                                     'See '
+                                                                                                     "`list_distinct_values('type')`.",
                                                                                       'title': 'Type'},
                                                                              'filter': {'anyOf': [{'type': 'string'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Exact '
+                                                                                                       'filter '
+                                                                                                       'name '
+                                                                                                       'as '
+                                                                                                       'recorded '
+                                                                                                       'in '
+                                                                                                       'the '
+                                                                                                       'header, '
+                                                                                                       'e.g. '
+                                                                                                       'Ha. '
+                                                                                                       'See '
+                                                                                                       "`list_distinct_values('filter')`.",
                                                                                         'title': 'Filter'},
                                                                              'camera': {'anyOf': [{'type': 'string'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Exact '
+                                                                                                       'camera '
+                                                                                                       'name. '
+                                                                                                       'See '
+                                                                                                       "`list_distinct_values('camera')`.",
                                                                                         'title': 'Camera'},
                                                                              'telescope': {'anyOf': [{'type': 'string'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Substring '
+                                                                                                          'match '
+                                                                                                          'on '
+                                                                                                          'the '
+                                                                                                          'telescope '
+                                                                                                          'name. '
+                                                                                                          'See '
+                                                                                                          "`list_distinct_values('telescope')`.",
                                                                                            'title': 'Telescope'},
                                                                              'object_name': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
+                                                                                             'description': 'Substring '
+                                                                                                            'match '
+                                                                                                            'on '
+                                                                                                            'the '
+                                                                                                            'OBJECT '
+                                                                                                            'name '
+                                                                                                            'recorded '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            'header, '
+                                                                                                            'e.g. '
+                                                                                                            '"M '
+                                                                                                            '31". '
+                                                                                                            'Spelling '
+                                                                                                            'varies '
+                                                                                                            'per '
+                                                                                                            'capture '
+                                                                                                            'program; '
+                                                                                                            'check '
+                                                                                                            "`list_distinct_values('object_name')`, "
+                                                                                                            'or '
+                                                                                                            'use '
+                                                                                                            'a '
+                                                                                                            'coordinate '
+                                                                                                            'search '
+                                                                                                            'to '
+                                                                                                            'catch '
+                                                                                                            'every '
+                                                                                                            'spelling.',
                                                                                              'title': 'Object '
                                                                                                       'Name'},
                                                                              'file_name': {'anyOf': [{'type': 'string'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Substring '
+                                                                                                          'match '
+                                                                                                          'on '
+                                                                                                          'the '
+                                                                                                          'file '
+                                                                                                          'name '
+                                                                                                          '(not '
+                                                                                                          'the '
+                                                                                                          'directory).',
                                                                                            'title': 'File '
                                                                                                     'Name'},
                                                                              'exposure': {'anyOf': [{'type': 'string'},
@@ -929,7 +1682,9 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                           'description': 'Exposure '
                                                                                                          'time '
                                                                                                          'in '
-                                                                                                         'seconds.',
+                                                                                                         'seconds, '
+                                                                                                         'e.g. '
+                                                                                                         '"300".',
                                                                                           'title': 'Exposure'},
                                                                              'exposure_tolerance': {'anyOf': [{'type': 'number'},
                                                                                                               {'type': 'null'}],
@@ -949,18 +1704,37 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'binning': {'anyOf': [{'type': 'string'},
                                                                                                    {'type': 'null'}],
                                                                                          'default': None,
+                                                                                         'description': 'Binning '
+                                                                                                        'factor, '
+                                                                                                        'e.g. '
+                                                                                                        '"2" '
+                                                                                                        'for '
+                                                                                                        '2x2.',
                                                                                          'title': 'Binning'},
                                                                              'gain': {'anyOf': [{'type': 'string'},
                                                                                                 {'type': 'null'}],
                                                                                       'default': None,
+                                                                                      'description': 'Camera '
+                                                                                                     'gain, '
+                                                                                                     'e.g. '
+                                                                                                     '"100".',
                                                                                       'title': 'Gain'},
                                                                              'offset': {'anyOf': [{'type': 'integer'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Camera '
+                                                                                                       'offset.',
                                                                                         'title': 'Offset'},
                                                                              'temperature': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
+                                                                                             'description': 'Sensor '
+                                                                                                            'cooling '
+                                                                                                            'set-point '
+                                                                                                            'in '
+                                                                                                            '°C, '
+                                                                                                            'e.g. '
+                                                                                                            '"-10".',
                                                                                              'title': 'Temperature'},
                                                                              'temperature_tolerance': {'anyOf': [{'type': 'number'},
                                                                                                                  {'type': 'null'}],
@@ -983,7 +1757,30 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                           'description': 'Right '
                                                                                                          'Ascension '
                                                                                                          'in '
-                                                                                                         'hours.',
+                                                                                                         'hours, '
+                                                                                                         'decimal '
+                                                                                                         '("0.712") '
+                                                                                                         'or '
+                                                                                                         'sexagesimal '
+                                                                                                         '("00:42:44"). '
+                                                                                                         'Requires '
+                                                                                                         '`coord_dec`. '
+                                                                                                         'Use '
+                                                                                                         '`lookup_object` '
+                                                                                                         'to '
+                                                                                                         'get '
+                                                                                                         'an '
+                                                                                                         "object's "
+                                                                                                         'coordinates '
+                                                                                                         '(note '
+                                                                                                         'it '
+                                                                                                         'returns '
+                                                                                                         'RA '
+                                                                                                         'in '
+                                                                                                         'degrees: '
+                                                                                                         'divide '
+                                                                                                         'by '
+                                                                                                         '15).',
                                                                                           'title': 'Coord '
                                                                                                    'Ra'},
                                                                              'coord_dec': {'anyOf': [{'type': 'string'},
@@ -991,7 +1788,14 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                            'default': None,
                                                                                            'description': 'Declination '
                                                                                                           'in '
-                                                                                                          'degrees.',
+                                                                                                          'degrees, '
+                                                                                                          'decimal '
+                                                                                                          '("41.27") '
+                                                                                                          'or '
+                                                                                                          'sexagesimal '
+                                                                                                          '("+41:16:09"). '
+                                                                                                          'Requires '
+                                                                                                          '`coord_ra`.',
                                                                                            'title': 'Coord '
                                                                                                     'Dec'},
                                                                              'coord_radius': {'anyOf': [{'type': 'number'},
@@ -1005,36 +1809,89 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                              'degrees '
                                                                                                              '(used '
                                                                                                              'with '
-                                                                                                             '`coord_ra`/`coord_dec`).',
+                                                                                                             '`coord_ra`/`coord_dec`); '
+                                                                                                             'defaults '
+                                                                                                             'to '
+                                                                                                             '0.5.',
                                                                                               'title': 'Coord '
                                                                                                        'Radius'},
                                                                              'start_datetime': {'anyOf': [{'format': 'date-time',
                                                                                                            'type': 'string'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Only '
+                                                                                                               'images '
+                                                                                                               'observed '
+                                                                                                               'at '
+                                                                                                               'or '
+                                                                                                               'after '
+                                                                                                               'this '
+                                                                                                               'time '
+                                                                                                               '(ISO '
+                                                                                                               '8601, '
+                                                                                                               'compared '
+                                                                                                               'with '
+                                                                                                               'the '
+                                                                                                               "header's "
+                                                                                                               'DATE-OBS, '
+                                                                                                               'normally '
+                                                                                                               'UTC).',
                                                                                                 'title': 'Start '
                                                                                                          'Datetime'},
                                                                              'end_datetime': {'anyOf': [{'format': 'date-time',
                                                                                                          'type': 'string'},
                                                                                                         {'type': 'null'}],
                                                                                               'default': None,
+                                                                                              'description': 'Only '
+                                                                                                             'images '
+                                                                                                             'observed '
+                                                                                                             'at '
+                                                                                                             'or '
+                                                                                                             'before '
+                                                                                                             'this '
+                                                                                                             'time '
+                                                                                                             '(ISO '
+                                                                                                             '8601, '
+                                                                                                             'compared '
+                                                                                                             'with '
+                                                                                                             'the '
+                                                                                                             "header's "
+                                                                                                             'DATE-OBS, '
+                                                                                                             'normally '
+                                                                                                             'UTC).',
                                                                                               'title': 'End '
                                                                                                        'Datetime'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
-                                                                                             'description': 'Free '
-                                                                                                            'text '
-                                                                                                            'or '
-                                                                                                            'a '
-                                                                                                            '"KEYWORD=value"/"KEYWORD<value" '
-                                                                                                            'style '
-                                                                                                            'FITS '
+                                                                                             'description': 'FITS '
                                                                                                             'header '
-                                                                                                            'match, '
+                                                                                                            'match: '
+                                                                                                            '"KEYWORD=value", '
+                                                                                                            '"KEYWORD<value" '
+                                                                                                            'or '
+                                                                                                            '"KEYWORD>value" '
+                                                                                                            'compares '
+                                                                                                            'one '
+                                                                                                            'keyword '
+                                                                                                            'numerically, '
                                                                                                             'e.g. '
-                                                                                                            '"GAIN=100", '
-                                                                                                            '"FOCTEMP<0".',
+                                                                                                            '"FOCTEMP<0"; '
+                                                                                                            'anything '
+                                                                                                            'else '
+                                                                                                            '(including '
+                                                                                                            'a '
+                                                                                                            'non-numeric '
+                                                                                                            'value) '
+                                                                                                            'is '
+                                                                                                            'a '
+                                                                                                            'substring '
+                                                                                                            'search '
+                                                                                                            'over '
+                                                                                                            'the '
+                                                                                                            'whole '
+                                                                                                            'header '
+                                                                                                            'text.',
                                                                                              'title': 'Header '
                                                                                                       'Text'},
                                                                              'plate_solved': {'anyOf': [{'type': 'boolean'},
@@ -1077,18 +1934,33 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                  {'type': 'null'}],
                                                                                        'default': None,
                                                                                        'description': 'Restrict '
-                                                                                                      'the '
-                                                                                                      'search '
                                                                                                       'to '
                                                                                                       'one '
                                                                                                       'or '
                                                                                                       'more '
                                                                                                       'library '
-                                                                                                      'roots.',
+                                                                                                      'roots '
+                                                                                                      '(optionally '
+                                                                                                      'a '
+                                                                                                      'subdirectory '
+                                                                                                      'of '
+                                                                                                      'each), '
+                                                                                                      'e.g. '
+                                                                                                      '[{"root_id": '
+                                                                                                      '2}]. '
+                                                                                                      'Get '
+                                                                                                      '`root_id`s '
+                                                                                                      'from '
+                                                                                                      '`list_library_roots`.',
                                                                                        'title': 'Paths'},
                                                                              'width_min': {'anyOf': [{'type': 'integer'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Image '
+                                                                                                          'width '
+                                                                                                          'in '
+                                                                                                          'pixels, '
+                                                                                                          'inclusive.',
                                                                                            'title': 'Width '
                                                                                                     'Min'},
                                                                              'width_max': {'anyOf': [{'type': 'integer'},
@@ -1099,6 +1971,11 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'height_min': {'anyOf': [{'type': 'integer'},
                                                                                                       {'type': 'null'}],
                                                                                             'default': None,
+                                                                                            'description': 'Image '
+                                                                                                           'height '
+                                                                                                           'in '
+                                                                                                           'pixels, '
+                                                                                                           'inclusive.',
                                                                                             'title': 'Height '
                                                                                                      'Min'},
                                                                              'height_max': {'anyOf': [{'type': 'integer'},
@@ -1110,8 +1987,16 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
                                                                                            'description': 'Plate '
-                                                                                                          'scale, '
-                                                                                                          'arcsec/pixel.',
+                                                                                                          'scale '
+                                                                                                          'in '
+                                                                                                          'arcsec/pixel, '
+                                                                                                          'inclusive. '
+                                                                                                          'Only '
+                                                                                                          'plate-solved '
+                                                                                                          'images '
+                                                                                                          'have '
+                                                                                                          'a '
+                                                                                                          'scale.',
                                                                                            'title': 'Scale '
                                                                                                     'Min'},
                                                                              'scale_max': {'anyOf': [{'type': 'number'},
@@ -1122,6 +2007,35 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'star_count_min': {'anyOf': [{'type': 'integer'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Detected '
+                                                                                                               'star '
+                                                                                                               'count, '
+                                                                                                               'inclusive. '
+                                                                                                               'Like '
+                                                                                                               'all '
+                                                                                                               'the '
+                                                                                                               'image-quality '
+                                                                                                               'filters '
+                                                                                                               '(star_count, '
+                                                                                                               'fwhm, '
+                                                                                                               'background, '
+                                                                                                               'background_rms, '
+                                                                                                               'elongation), '
+                                                                                                               'this '
+                                                                                                               'only '
+                                                                                                               'matches '
+                                                                                                               'images '
+                                                                                                               'that '
+                                                                                                               'have '
+                                                                                                               'been '
+                                                                                                               'analysed '
+                                                                                                               'in '
+                                                                                                               'PhotonFinder '
+                                                                                                               '-- '
+                                                                                                               'unanalysed '
+                                                                                                               'images '
+                                                                                                               'are '
+                                                                                                               'excluded.',
                                                                                                 'title': 'Star '
                                                                                                          'Count '
                                                                                                          'Min'},
@@ -1134,6 +2048,15 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'fwhm_min': {'anyOf': [{'type': 'number'},
                                                                                                     {'type': 'null'}],
                                                                                           'default': None,
+                                                                                          'description': 'Median '
+                                                                                                         'star '
+                                                                                                         'FWHM '
+                                                                                                         'in '
+                                                                                                         'pixels, '
+                                                                                                         'inclusive. '
+                                                                                                         'Lower '
+                                                                                                         'is '
+                                                                                                         'sharper.',
                                                                                           'title': 'Fwhm '
                                                                                                    'Min'},
                                                                              'fwhm_max': {'anyOf': [{'type': 'number'},
@@ -1144,6 +2067,33 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'background_min': {'anyOf': [{'type': 'number'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Median '
+                                                                                                               'sky '
+                                                                                                               'background '
+                                                                                                               'level, '
+                                                                                                               'inclusive, '
+                                                                                                               'in '
+                                                                                                               'the '
+                                                                                                               "image's "
+                                                                                                               'own '
+                                                                                                               'pixel '
+                                                                                                               'units '
+                                                                                                               '(ADU '
+                                                                                                               'for '
+                                                                                                               'integer '
+                                                                                                               'data, '
+                                                                                                               '0-1 '
+                                                                                                               'for '
+                                                                                                               'normalised '
+                                                                                                               'float '
+                                                                                                               'data) '
+                                                                                                               '-- '
+                                                                                                               'so '
+                                                                                                               'only '
+                                                                                                               'comparable '
+                                                                                                               'across '
+                                                                                                               'similar '
+                                                                                                               'files.',
                                                                                                 'title': 'Background '
                                                                                                          'Min'},
                                                                              'background_max': {'anyOf': [{'type': 'number'},
@@ -1154,6 +2104,18 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'background_rms_min': {'anyOf': [{'type': 'number'},
                                                                                                               {'type': 'null'}],
                                                                                                     'default': None,
+                                                                                                    'description': 'Sky '
+                                                                                                                   'background '
+                                                                                                                   'noise '
+                                                                                                                   '(RMS), '
+                                                                                                                   'inclusive, '
+                                                                                                                   'in '
+                                                                                                                   'the '
+                                                                                                                   'same '
+                                                                                                                   'pixel '
+                                                                                                                   'units '
+                                                                                                                   'as '
+                                                                                                                   '`background_min`.',
                                                                                                     'title': 'Background '
                                                                                                              'Rms '
                                                                                                              'Min'},
@@ -1166,6 +2128,20 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'elongation_min': {'anyOf': [{'type': 'number'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Median '
+                                                                                                               'star '
+                                                                                                               'elongation '
+                                                                                                               '(major/minor '
+                                                                                                               'axis '
+                                                                                                               'ratio), '
+                                                                                                               'inclusive; '
+                                                                                                               '1.0 '
+                                                                                                               'is '
+                                                                                                               'perfectly '
+                                                                                                               'round, '
+                                                                                                               'higher '
+                                                                                                               'suggests '
+                                                                                                               'trailing.',
                                                                                                 'title': 'Elongation '
                                                                                                          'Min'},
                                                                              'elongation_max': {'anyOf': [{'type': 'number'},
@@ -1282,7 +2258,22 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                             'properties': {'catalog': {'title': 'Catalog', 'type': 'string'},
                                            'criteria': {'anyOf': [{'$ref': '#/$defs/SearchCriteriaInput'},
                                                                   {'type': 'null'}],
-                                                        'default': None},
+                                                        'default': None,
+                                                        'description': 'Optional filters '
+                                                                       'restricting which files '
+                                                                       'are tested against the '
+                                                                       'catalog. The same '
+                                                                       'SearchCriteria object '
+                                                                       '`search_files` takes -- '
+                                                                       'every field works here '
+                                                                       'too. Omit a field to leave '
+                                                                       'it unconstrained; omit '
+                                                                       '`criteria` for the whole '
+                                                                       'library. Example: '
+                                                                       '{"object_name": "M 31", '
+                                                                       '"filter": "Ha", "type": '
+                                                                       '"LIGHT", "start_datetime": '
+                                                                       '"2025-01-01T00:00:00"}.'},
                                            'only_matching': {'default': True,
                                                              'title': 'Only Matching',
                                                              'type': 'boolean'},
@@ -1297,7 +2288,24 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                              'type': 'boolean'},
                                            'max_files': {'default': 10,
                                                          'title': 'Max Files',
-                                                         'type': 'integer'}},
+                                                         'type': 'integer'},
+                                           'format': {'default': 'json',
+                                                      'description': '"json" (default) returns '
+                                                                     '`results` as a list of '
+                                                                     'objects. "csv" returns '
+                                                                     '`results` as one CSV string '
+                                                                     'with a header row -- the '
+                                                                     'same rows at a fraction of '
+                                                                     'the size, so prefer it for '
+                                                                     'large summaries. Nested '
+                                                                     'lists (`paths`, `files`) are '
+                                                                     'omitted in CSV; empty cells '
+                                                                     'are nulls. Totals and paging '
+                                                                     'fields stay in the JSON '
+                                                                     'wrapper either way.',
+                                                      'enum': ['json', 'csv'],
+                                                      'title': 'Format',
+                                                      'type': 'string'}},
                             'required': ['catalog'],
                             'title': 'report_catalog_coverageArguments',
                             'type': 'object'},
@@ -1312,6 +2320,11 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            'matching `criteria`. Use it for questions like "what was FOCTEMP '
                            'across last night\'s subs".\n'
                            '\n'
+                           '`criteria` takes the same filters as `search_files` and should almost '
+                           'always be given -- e.g. `criteria={"object_name": "M 31", '
+                           '"start_datetime": "2025-03-01T18:00:00", "end_datetime": '
+                           '"2025-03-02T06:00:00"}`.\n'
+                           '\n'
                            'Each entry of `fields` names its source by prefix:\n'
                            '- `"File.size"`, `"Image.exposure"` -- a PhotonFinder model field\n'
                            '- `"WCS:CRVAL1"` -- a keyword from the plate-solve solution\n'
@@ -1323,37 +2336,120 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            'read its `header`.\n'
                            '\n'
                            'At most 20 fields per call. A field a file does not have comes back as '
-                           'null rather than an error. Returns {results, page, page_size, total, '
-                           'has_more} with one {rowid, full_filename, values} entry per file.',
-            'inputSchema': {'$defs': {'SearchCriteriaInput': {'description': 'Search filters. Omit '
-                                                                             'any field to leave '
-                                                                             'it unconstrained.',
+                           'null rather than an error. Returns {format, results, page, page_size, '
+                           'total, has_more} with one {rowid, full_filename, values} entry per '
+                           'file; with `format="csv"` the columns are rowid, full_filename, then '
+                           'one per requested field, named as you spelled it.',
+            'inputSchema': {'$defs': {'SearchCriteriaInput': {'description': 'Search filters, '
+                                                                             'shared by '
+                                                                             '`search_files` and '
+                                                                             'the report tools. '
+                                                                             'Every field is\n'
+                                                                             'optional; omit any '
+                                                                             'field to leave it '
+                                                                             'unconstrained. All '
+                                                                             'given fields are '
+                                                                             'combined\n'
+                                                                             'with AND.',
                                                               'properties': {'type': {'anyOf': [{'type': 'string'},
                                                                                                 {'type': 'null'}],
                                                                                       'default': None,
-                                                                                      'description': 'LIGHT/DARK/FLAT/BIAS/MASTER '
-                                                                                                     '...',
+                                                                                      'description': 'Exact '
+                                                                                                     'image '
+                                                                                                     'type, '
+                                                                                                     'e.g. '
+                                                                                                     'LIGHT, '
+                                                                                                     'DARK, '
+                                                                                                     'FLAT, '
+                                                                                                     'BIAS, '
+                                                                                                     'MASTER '
+                                                                                                     'DARK. '
+                                                                                                     'See '
+                                                                                                     "`list_distinct_values('type')`.",
                                                                                       'title': 'Type'},
                                                                              'filter': {'anyOf': [{'type': 'string'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Exact '
+                                                                                                       'filter '
+                                                                                                       'name '
+                                                                                                       'as '
+                                                                                                       'recorded '
+                                                                                                       'in '
+                                                                                                       'the '
+                                                                                                       'header, '
+                                                                                                       'e.g. '
+                                                                                                       'Ha. '
+                                                                                                       'See '
+                                                                                                       "`list_distinct_values('filter')`.",
                                                                                         'title': 'Filter'},
                                                                              'camera': {'anyOf': [{'type': 'string'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Exact '
+                                                                                                       'camera '
+                                                                                                       'name. '
+                                                                                                       'See '
+                                                                                                       "`list_distinct_values('camera')`.",
                                                                                         'title': 'Camera'},
                                                                              'telescope': {'anyOf': [{'type': 'string'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Substring '
+                                                                                                          'match '
+                                                                                                          'on '
+                                                                                                          'the '
+                                                                                                          'telescope '
+                                                                                                          'name. '
+                                                                                                          'See '
+                                                                                                          "`list_distinct_values('telescope')`.",
                                                                                            'title': 'Telescope'},
                                                                              'object_name': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
+                                                                                             'description': 'Substring '
+                                                                                                            'match '
+                                                                                                            'on '
+                                                                                                            'the '
+                                                                                                            'OBJECT '
+                                                                                                            'name '
+                                                                                                            'recorded '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            'header, '
+                                                                                                            'e.g. '
+                                                                                                            '"M '
+                                                                                                            '31". '
+                                                                                                            'Spelling '
+                                                                                                            'varies '
+                                                                                                            'per '
+                                                                                                            'capture '
+                                                                                                            'program; '
+                                                                                                            'check '
+                                                                                                            "`list_distinct_values('object_name')`, "
+                                                                                                            'or '
+                                                                                                            'use '
+                                                                                                            'a '
+                                                                                                            'coordinate '
+                                                                                                            'search '
+                                                                                                            'to '
+                                                                                                            'catch '
+                                                                                                            'every '
+                                                                                                            'spelling.',
                                                                                              'title': 'Object '
                                                                                                       'Name'},
                                                                              'file_name': {'anyOf': [{'type': 'string'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Substring '
+                                                                                                          'match '
+                                                                                                          'on '
+                                                                                                          'the '
+                                                                                                          'file '
+                                                                                                          'name '
+                                                                                                          '(not '
+                                                                                                          'the '
+                                                                                                          'directory).',
                                                                                            'title': 'File '
                                                                                                     'Name'},
                                                                              'exposure': {'anyOf': [{'type': 'string'},
@@ -1362,7 +2458,9 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                           'description': 'Exposure '
                                                                                                          'time '
                                                                                                          'in '
-                                                                                                         'seconds.',
+                                                                                                         'seconds, '
+                                                                                                         'e.g. '
+                                                                                                         '"300".',
                                                                                           'title': 'Exposure'},
                                                                              'exposure_tolerance': {'anyOf': [{'type': 'number'},
                                                                                                               {'type': 'null'}],
@@ -1382,18 +2480,37 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'binning': {'anyOf': [{'type': 'string'},
                                                                                                    {'type': 'null'}],
                                                                                          'default': None,
+                                                                                         'description': 'Binning '
+                                                                                                        'factor, '
+                                                                                                        'e.g. '
+                                                                                                        '"2" '
+                                                                                                        'for '
+                                                                                                        '2x2.',
                                                                                          'title': 'Binning'},
                                                                              'gain': {'anyOf': [{'type': 'string'},
                                                                                                 {'type': 'null'}],
                                                                                       'default': None,
+                                                                                      'description': 'Camera '
+                                                                                                     'gain, '
+                                                                                                     'e.g. '
+                                                                                                     '"100".',
                                                                                       'title': 'Gain'},
                                                                              'offset': {'anyOf': [{'type': 'integer'},
                                                                                                   {'type': 'null'}],
                                                                                         'default': None,
+                                                                                        'description': 'Camera '
+                                                                                                       'offset.',
                                                                                         'title': 'Offset'},
                                                                              'temperature': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
+                                                                                             'description': 'Sensor '
+                                                                                                            'cooling '
+                                                                                                            'set-point '
+                                                                                                            'in '
+                                                                                                            '°C, '
+                                                                                                            'e.g. '
+                                                                                                            '"-10".',
                                                                                              'title': 'Temperature'},
                                                                              'temperature_tolerance': {'anyOf': [{'type': 'number'},
                                                                                                                  {'type': 'null'}],
@@ -1416,7 +2533,30 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                           'description': 'Right '
                                                                                                          'Ascension '
                                                                                                          'in '
-                                                                                                         'hours.',
+                                                                                                         'hours, '
+                                                                                                         'decimal '
+                                                                                                         '("0.712") '
+                                                                                                         'or '
+                                                                                                         'sexagesimal '
+                                                                                                         '("00:42:44"). '
+                                                                                                         'Requires '
+                                                                                                         '`coord_dec`. '
+                                                                                                         'Use '
+                                                                                                         '`lookup_object` '
+                                                                                                         'to '
+                                                                                                         'get '
+                                                                                                         'an '
+                                                                                                         "object's "
+                                                                                                         'coordinates '
+                                                                                                         '(note '
+                                                                                                         'it '
+                                                                                                         'returns '
+                                                                                                         'RA '
+                                                                                                         'in '
+                                                                                                         'degrees: '
+                                                                                                         'divide '
+                                                                                                         'by '
+                                                                                                         '15).',
                                                                                           'title': 'Coord '
                                                                                                    'Ra'},
                                                                              'coord_dec': {'anyOf': [{'type': 'string'},
@@ -1424,7 +2564,14 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                            'default': None,
                                                                                            'description': 'Declination '
                                                                                                           'in '
-                                                                                                          'degrees.',
+                                                                                                          'degrees, '
+                                                                                                          'decimal '
+                                                                                                          '("41.27") '
+                                                                                                          'or '
+                                                                                                          'sexagesimal '
+                                                                                                          '("+41:16:09"). '
+                                                                                                          'Requires '
+                                                                                                          '`coord_ra`.',
                                                                                            'title': 'Coord '
                                                                                                     'Dec'},
                                                                              'coord_radius': {'anyOf': [{'type': 'number'},
@@ -1438,36 +2585,89 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                              'degrees '
                                                                                                              '(used '
                                                                                                              'with '
-                                                                                                             '`coord_ra`/`coord_dec`).',
+                                                                                                             '`coord_ra`/`coord_dec`); '
+                                                                                                             'defaults '
+                                                                                                             'to '
+                                                                                                             '0.5.',
                                                                                               'title': 'Coord '
                                                                                                        'Radius'},
                                                                              'start_datetime': {'anyOf': [{'format': 'date-time',
                                                                                                            'type': 'string'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Only '
+                                                                                                               'images '
+                                                                                                               'observed '
+                                                                                                               'at '
+                                                                                                               'or '
+                                                                                                               'after '
+                                                                                                               'this '
+                                                                                                               'time '
+                                                                                                               '(ISO '
+                                                                                                               '8601, '
+                                                                                                               'compared '
+                                                                                                               'with '
+                                                                                                               'the '
+                                                                                                               "header's "
+                                                                                                               'DATE-OBS, '
+                                                                                                               'normally '
+                                                                                                               'UTC).',
                                                                                                 'title': 'Start '
                                                                                                          'Datetime'},
                                                                              'end_datetime': {'anyOf': [{'format': 'date-time',
                                                                                                          'type': 'string'},
                                                                                                         {'type': 'null'}],
                                                                                               'default': None,
+                                                                                              'description': 'Only '
+                                                                                                             'images '
+                                                                                                             'observed '
+                                                                                                             'at '
+                                                                                                             'or '
+                                                                                                             'before '
+                                                                                                             'this '
+                                                                                                             'time '
+                                                                                                             '(ISO '
+                                                                                                             '8601, '
+                                                                                                             'compared '
+                                                                                                             'with '
+                                                                                                             'the '
+                                                                                                             "header's "
+                                                                                                             'DATE-OBS, '
+                                                                                                             'normally '
+                                                                                                             'UTC).',
                                                                                               'title': 'End '
                                                                                                        'Datetime'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
-                                                                                             'description': 'Free '
-                                                                                                            'text '
-                                                                                                            'or '
-                                                                                                            'a '
-                                                                                                            '"KEYWORD=value"/"KEYWORD<value" '
-                                                                                                            'style '
-                                                                                                            'FITS '
+                                                                                             'description': 'FITS '
                                                                                                             'header '
-                                                                                                            'match, '
+                                                                                                            'match: '
+                                                                                                            '"KEYWORD=value", '
+                                                                                                            '"KEYWORD<value" '
+                                                                                                            'or '
+                                                                                                            '"KEYWORD>value" '
+                                                                                                            'compares '
+                                                                                                            'one '
+                                                                                                            'keyword '
+                                                                                                            'numerically, '
                                                                                                             'e.g. '
-                                                                                                            '"GAIN=100", '
-                                                                                                            '"FOCTEMP<0".',
+                                                                                                            '"FOCTEMP<0"; '
+                                                                                                            'anything '
+                                                                                                            'else '
+                                                                                                            '(including '
+                                                                                                            'a '
+                                                                                                            'non-numeric '
+                                                                                                            'value) '
+                                                                                                            'is '
+                                                                                                            'a '
+                                                                                                            'substring '
+                                                                                                            'search '
+                                                                                                            'over '
+                                                                                                            'the '
+                                                                                                            'whole '
+                                                                                                            'header '
+                                                                                                            'text.',
                                                                                              'title': 'Header '
                                                                                                       'Text'},
                                                                              'plate_solved': {'anyOf': [{'type': 'boolean'},
@@ -1510,18 +2710,33 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                  {'type': 'null'}],
                                                                                        'default': None,
                                                                                        'description': 'Restrict '
-                                                                                                      'the '
-                                                                                                      'search '
                                                                                                       'to '
                                                                                                       'one '
                                                                                                       'or '
                                                                                                       'more '
                                                                                                       'library '
-                                                                                                      'roots.',
+                                                                                                      'roots '
+                                                                                                      '(optionally '
+                                                                                                      'a '
+                                                                                                      'subdirectory '
+                                                                                                      'of '
+                                                                                                      'each), '
+                                                                                                      'e.g. '
+                                                                                                      '[{"root_id": '
+                                                                                                      '2}]. '
+                                                                                                      'Get '
+                                                                                                      '`root_id`s '
+                                                                                                      'from '
+                                                                                                      '`list_library_roots`.',
                                                                                        'title': 'Paths'},
                                                                              'width_min': {'anyOf': [{'type': 'integer'},
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
+                                                                                           'description': 'Image '
+                                                                                                          'width '
+                                                                                                          'in '
+                                                                                                          'pixels, '
+                                                                                                          'inclusive.',
                                                                                            'title': 'Width '
                                                                                                     'Min'},
                                                                              'width_max': {'anyOf': [{'type': 'integer'},
@@ -1532,6 +2747,11 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'height_min': {'anyOf': [{'type': 'integer'},
                                                                                                       {'type': 'null'}],
                                                                                             'default': None,
+                                                                                            'description': 'Image '
+                                                                                                           'height '
+                                                                                                           'in '
+                                                                                                           'pixels, '
+                                                                                                           'inclusive.',
                                                                                             'title': 'Height '
                                                                                                      'Min'},
                                                                              'height_max': {'anyOf': [{'type': 'integer'},
@@ -1543,8 +2763,16 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                      {'type': 'null'}],
                                                                                            'default': None,
                                                                                            'description': 'Plate '
-                                                                                                          'scale, '
-                                                                                                          'arcsec/pixel.',
+                                                                                                          'scale '
+                                                                                                          'in '
+                                                                                                          'arcsec/pixel, '
+                                                                                                          'inclusive. '
+                                                                                                          'Only '
+                                                                                                          'plate-solved '
+                                                                                                          'images '
+                                                                                                          'have '
+                                                                                                          'a '
+                                                                                                          'scale.',
                                                                                            'title': 'Scale '
                                                                                                     'Min'},
                                                                              'scale_max': {'anyOf': [{'type': 'number'},
@@ -1555,6 +2783,35 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'star_count_min': {'anyOf': [{'type': 'integer'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Detected '
+                                                                                                               'star '
+                                                                                                               'count, '
+                                                                                                               'inclusive. '
+                                                                                                               'Like '
+                                                                                                               'all '
+                                                                                                               'the '
+                                                                                                               'image-quality '
+                                                                                                               'filters '
+                                                                                                               '(star_count, '
+                                                                                                               'fwhm, '
+                                                                                                               'background, '
+                                                                                                               'background_rms, '
+                                                                                                               'elongation), '
+                                                                                                               'this '
+                                                                                                               'only '
+                                                                                                               'matches '
+                                                                                                               'images '
+                                                                                                               'that '
+                                                                                                               'have '
+                                                                                                               'been '
+                                                                                                               'analysed '
+                                                                                                               'in '
+                                                                                                               'PhotonFinder '
+                                                                                                               '-- '
+                                                                                                               'unanalysed '
+                                                                                                               'images '
+                                                                                                               'are '
+                                                                                                               'excluded.',
                                                                                                 'title': 'Star '
                                                                                                          'Count '
                                                                                                          'Min'},
@@ -1567,6 +2824,15 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'fwhm_min': {'anyOf': [{'type': 'number'},
                                                                                                     {'type': 'null'}],
                                                                                           'default': None,
+                                                                                          'description': 'Median '
+                                                                                                         'star '
+                                                                                                         'FWHM '
+                                                                                                         'in '
+                                                                                                         'pixels, '
+                                                                                                         'inclusive. '
+                                                                                                         'Lower '
+                                                                                                         'is '
+                                                                                                         'sharper.',
                                                                                           'title': 'Fwhm '
                                                                                                    'Min'},
                                                                              'fwhm_max': {'anyOf': [{'type': 'number'},
@@ -1577,6 +2843,33 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'background_min': {'anyOf': [{'type': 'number'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Median '
+                                                                                                               'sky '
+                                                                                                               'background '
+                                                                                                               'level, '
+                                                                                                               'inclusive, '
+                                                                                                               'in '
+                                                                                                               'the '
+                                                                                                               "image's "
+                                                                                                               'own '
+                                                                                                               'pixel '
+                                                                                                               'units '
+                                                                                                               '(ADU '
+                                                                                                               'for '
+                                                                                                               'integer '
+                                                                                                               'data, '
+                                                                                                               '0-1 '
+                                                                                                               'for '
+                                                                                                               'normalised '
+                                                                                                               'float '
+                                                                                                               'data) '
+                                                                                                               '-- '
+                                                                                                               'so '
+                                                                                                               'only '
+                                                                                                               'comparable '
+                                                                                                               'across '
+                                                                                                               'similar '
+                                                                                                               'files.',
                                                                                                 'title': 'Background '
                                                                                                          'Min'},
                                                                              'background_max': {'anyOf': [{'type': 'number'},
@@ -1587,6 +2880,18 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'background_rms_min': {'anyOf': [{'type': 'number'},
                                                                                                               {'type': 'null'}],
                                                                                                     'default': None,
+                                                                                                    'description': 'Sky '
+                                                                                                                   'background '
+                                                                                                                   'noise '
+                                                                                                                   '(RMS), '
+                                                                                                                   'inclusive, '
+                                                                                                                   'in '
+                                                                                                                   'the '
+                                                                                                                   'same '
+                                                                                                                   'pixel '
+                                                                                                                   'units '
+                                                                                                                   'as '
+                                                                                                                   '`background_min`.',
                                                                                                     'title': 'Background '
                                                                                                              'Rms '
                                                                                                              'Min'},
@@ -1599,6 +2904,20 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                              'elongation_min': {'anyOf': [{'type': 'number'},
                                                                                                           {'type': 'null'}],
                                                                                                 'default': None,
+                                                                                                'description': 'Median '
+                                                                                                               'star '
+                                                                                                               'elongation '
+                                                                                                               '(major/minor '
+                                                                                                               'axis '
+                                                                                                               'ratio), '
+                                                                                                               'inclusive; '
+                                                                                                               '1.0 '
+                                                                                                               'is '
+                                                                                                               'perfectly '
+                                                                                                               'round, '
+                                                                                                               'higher '
+                                                                                                               'suggests '
+                                                                                                               'trailing.',
                                                                                                 'title': 'Elongation '
                                                                                                          'Min'},
                                                                              'elongation_max': {'anyOf': [{'type': 'number'},
@@ -1717,13 +3036,44 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                       'type': 'array'},
                                            'criteria': {'anyOf': [{'$ref': '#/$defs/SearchCriteriaInput'},
                                                                   {'type': 'null'}],
-                                                        'default': None},
+                                                        'default': None,
+                                                        'description': 'Optional filters '
+                                                                       'restricting which files '
+                                                                       'are read. The same '
+                                                                       'SearchCriteria object '
+                                                                       '`search_files` takes -- '
+                                                                       'every field works here '
+                                                                       'too. Omit a field to leave '
+                                                                       'it unconstrained; omit '
+                                                                       '`criteria` for the whole '
+                                                                       'library. Example: '
+                                                                       '{"object_name": "M 31", '
+                                                                       '"filter": "Ha", "type": '
+                                                                       '"LIGHT", "start_datetime": '
+                                                                       '"2025-01-01T00:00:00"}.'},
                                            'page': {'default': 0,
                                                     'title': 'Page',
                                                     'type': 'integer'},
                                            'page_size': {'default': 100,
                                                          'title': 'Page Size',
-                                                         'type': 'integer'}},
+                                                         'type': 'integer'},
+                                           'format': {'default': 'json',
+                                                      'description': '"json" (default) returns '
+                                                                     '`results` as a list of '
+                                                                     'objects. "csv" returns '
+                                                                     '`results` as one CSV string '
+                                                                     'with a header row -- the '
+                                                                     'same rows at a fraction of '
+                                                                     'the size, so prefer it for '
+                                                                     'large summaries. Nested '
+                                                                     'lists (`paths`, `files`) are '
+                                                                     'omitted in CSV; empty cells '
+                                                                     'are nulls. Totals and paging '
+                                                                     'fields stay in the JSON '
+                                                                     'wrapper either way.',
+                                                      'enum': ['json', 'csv'],
+                                                      'title': 'Format',
+                                                      'type': 'string'}},
                             'required': ['fields'],
                             'title': 'get_header_valuesArguments',
                             'type': 'object'},
@@ -1743,13 +3093,6 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
             'inputSchema': {'properties': {},
                             'title': 'list_library_rootsArguments',
                             'type': 'object'},
-            'outputSchema': {'properties': {'result': {'items': {'additionalProperties': True,
-                                                                 'type': 'object'},
-                                                       'title': 'Result',
-                                                       'type': 'array'}},
-                             'required': ['result'],
-                             'title': 'list_library_rootsOutput',
-                             'type': 'object'},
             'annotations': {'title': 'List library roots',
                             'readOnlyHint': True,
                             'openWorldHint': False}},
@@ -1763,13 +3106,6 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            'files, or with\n'
                            '`get_project_details` for the same summary for a single project.',
             'inputSchema': {'properties': {}, 'title': 'list_projectsArguments', 'type': 'object'},
-            'outputSchema': {'properties': {'result': {'items': {'additionalProperties': True,
-                                                                 'type': 'object'},
-                                                       'title': 'Result',
-                                                       'type': 'array'}},
-                             'required': ['result'],
-                             'title': 'list_projectsOutput',
-                             'type': 'object'},
             'annotations': {'title': 'List projects',
                             'readOnlyHint': True,
                             'openWorldHint': False}},
@@ -1814,12 +3150,6 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            'performs no\n'
                            'online lookups.',
             'inputSchema': {'properties': {}, 'title': 'list_catalogsArguments', 'type': 'object'},
-            'outputSchema': {'properties': {'result': {'items': {'type': 'string'},
-                                                       'title': 'Result',
-                                                       'type': 'array'}},
-                             'required': ['result'],
-                             'title': 'list_catalogsOutput',
-                             'type': 'object'},
             'annotations': {'title': 'List catalogs',
                             'readOnlyHint': True,
                             'openWorldHint': False}},
