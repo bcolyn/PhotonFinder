@@ -32,6 +32,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from photonfinder.version import get_version
+
 CONNECT_TIMEOUT = 5
 REQUEST_TIMEOUT = 300  # plate solving can legitimately take minutes
 STARTUP_TIMEOUT = 90  # cold-starting the application, including its splash and DB open
@@ -347,7 +349,7 @@ def initialize_result(request_id, params: dict) -> str:
     payload = {
         "protocolVersion": params.get("protocolVersion") or PROTOCOL_VERSION,
         "capabilities": {"tools": {"listChanged": False}},
-        "serverInfo": {"name": "PhotonFinder", "version": "1.0.0"},
+        "serverInfo": {"name": "PhotonFinder", "version": get_version()},
         "instructions": instructions,
     }
     return result(request_id, payload)

@@ -4,7 +4,18 @@ from PyInstaller.utils.hooks import copy_metadata
 from PyInstaller.utils.hooks import collect_data_files
 from PyInstaller.utils.hooks import collect_submodules
 
-datas = [('icon.png', '.'), ('data/catalog.db', '.')]
+import os
+from datetime import date
+
+# Build date stamp, in the same YYYYMMDD form as the release tags; shown in the
+# About dialog (see photonfinder/version.py).
+os.makedirs('build', exist_ok=True)
+build_date_file = os.path.join('build', 'build_date.txt')
+with open(build_date_file, 'w', encoding='utf-8') as f:
+    f.write(date.today().strftime('%Y%m%d'))
+
+datas = [('icon.png', '.'), ('data/catalog.db', '.'), ('pyproject.toml', '.'),
+         (build_date_file, '.')]
 datas += copy_metadata('xisf')
 datas += copy_metadata('mcp')
 datas += collect_data_files('astroquery')

@@ -30,7 +30,7 @@
    <item>
     <widget class="QLabel" name="versionLabel">
      <property name="text">
-      <string>Version: 1.0.0</string>
+      <string>Version: (set at runtime)</string>
      </property>
      <property name="alignment">
       <set>Qt::AlignCenter</set>

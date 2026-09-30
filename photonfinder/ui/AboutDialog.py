@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import QDialog
 
 from photonfinder.ui.generated.AboutDialog_ui import Ui_AboutDialog
+from photonfinder.version import get_build_date, get_version
 
 
 class AboutDialog(QDialog, Ui_AboutDialog):
@@ -10,10 +11,5 @@ class AboutDialog(QDialog, Ui_AboutDialog):
     def __init__(self, parent=None):
         super(AboutDialog, self).__init__(parent)
         self.setupUi(self)
-        
-        # The UI file already contains all the necessary information from pyproject.toml:
-        # - Project name: "PhotonFinder"
-        # - Version: "1.0.0"
-        # - Description: "Desktop application for managing astronomical files"
-        # - License: "MIT"
-        # - Authors: "benny" with email "benny.colyn@gmail.com"
+        build_date = get_build_date() or "development"
+        self.versionLabel.setText(f"Version: {get_version()} (build {build_date})")
