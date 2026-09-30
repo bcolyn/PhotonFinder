@@ -18,6 +18,7 @@ datas = [('icon.png', '.'), ('data/catalog.db', '.'), ('pyproject.toml', '.'),
          (build_date_file, '.')]
 datas += copy_metadata('xisf')
 datas += copy_metadata('mcp')
+datas += copy_metadata('photutils')  # read at import time to discover optional deps
 datas += collect_data_files('astroquery')
 datas += collect_data_files('photutils')
 datas += collect_data_files('timezonefinder')
@@ -27,6 +28,9 @@ datas += collect_data_files('tzdata')
 # dynamically, which PyInstaller cannot detect by static analysis. These are for the
 # application; the stub below deliberately takes none of them.
 hiddenimports = collect_submodules('uvicorn') + collect_submodules('mcp')
+# photutils' Cython extensions import each other (e.g. geometry.core), which static
+# analysis of compiled modules cannot see.
+hiddenimports += collect_submodules('photutils', filter=lambda name: '.tests' not in name)
 
 excludes = [
     'pytest',
@@ -37,10 +41,11 @@ excludes = [
     'pluggy',
     'py',
     'coverage',
-    'unittest',
     'doctest',
     'matplotlib'
 ]
+# Not excludable from the app: photutils -> astropy.nddata -> scipy's array_api_compat
+# does `from numpy import *`, which imports numpy.testing, which imports unittest.
 
 block_cipher = None
 
@@ -74,7 +79,7 @@ a_mcp = Analysis(['photonfinder\\mcp_stub.py'],
              runtime_hooks=[],
              # Nothing from the application's dependency tree belongs in the stub. Listing
              # them keeps an accidental import from quietly inflating it back to ~27 MB.
-             excludes=excludes + ['PySide6', 'peewee', 'astropy', 'numpy', 'mcp', 'uvicorn',
+             excludes=excludes + ['unittest', 'PySide6', 'peewee', 'astropy', 'numpy', 'mcp', 'uvicorn',
                                   'photutils', 'astroquery', 'cv2', 'PIL', 'sep'],
              win_no_prefer_redirects=False,
              win_private_assemblies=False,

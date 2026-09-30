@@ -663,6 +663,11 @@ class ImageViewerWindow(QMainWindow):
         if not filename:
             return
         self._current_file = file
+        # has_wcs is only present on search-query rows; plain File instances (e.g. from
+        # the project editor) need it looked up, or the Annotate button stays hidden.
+        if not hasattr(file, 'has_wcs') and self._context is not None:
+            from photonfinder.models import FileWCS
+            file.has_wcs = FileWCS.select().where(FileWCS.file == file).exists()
         self._update_solve_buttons()
         self._filename = filename
         self._is_fits = Importer.is_fits_by_name(filename)
