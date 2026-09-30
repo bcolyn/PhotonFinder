@@ -387,6 +387,7 @@ class Settings:
         ("astap_path", "astap_path", "", str),
         ("astrometry_net_api_key", "astrometry_net_api_key", "", str),
         ("astrometry_net_force_image_upload", "astrometry_net_force_image_upload", False, bool),
+        ("telescopius_api_key", "telescopius_api_key", "", str),
         ("solve_field_path", "solve_field_path", "", str),
         ("solve_field_wsl_distro", "solve_field_wsl_distro", "", str),
         ("solve_field_timeout", "wsl_solver_timeout", 300, int),

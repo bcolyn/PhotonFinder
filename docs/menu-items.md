@@ -73,7 +73,7 @@ The Report menu provides various reporting and analysis tools.
 - **Catalog Report** - Which catalog objects your plate-solved images cover
 
 ### External Integration
-- **Telescopius Target List** - Generates a target list compatible with Telescopius
+- **Telescopius Target List** - Compares one of your Telescopius observing lists with the current search and shows which targets have already been imaged. Requires a Telescopius API key (Settings > Telescopius)
 
 The Target Report, the Catalog Report and the Metadata Report's field extraction are also
 available to AI agents over MCP — see [mcp.md](mcp.md).

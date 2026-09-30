@@ -1722,6 +1722,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         report_dialog.show()
 
     def report_telescopius_list(self):
+        if not self.context.settings.get_telescopius_api_key():
+            QMessageBox.information(
+                self, "Telescopius API Key Required",
+                "Comparing with a Telescopius list uses the Telescopius API, which requires a personal API key.\n\n"
+                "Request a key at https://telescopius.com/settings/api-keys and enter it under Settings > Telescopius.")
+            return
         selected_files = self.get_selected_files()
         from .TelescopiusCompareDialog import TelescopiusCompareDialog
         report_dialog = TelescopiusCompareDialog(context=self.context, search_criteria=self.search_criteria,

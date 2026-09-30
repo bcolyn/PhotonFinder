@@ -25,7 +25,7 @@ A versatile desktop application for managing and organizing astronomical image f
 - **Calibration Frame Matching** - Find matching calibration files (darks, flats) for your light frames
 - **Data Export** - Export LIGHT files with calibration data for easy import into stacking programs
 - **File Management** - Find files used in processing and identify unprocessed data
-- **Telescopius Integration** - Check Telescopius lists for objects that have already been imaged
+- **Telescopius Integration** - Check your Telescopius observing lists for objects that have already been imaged (requires a Telescopius API key, set under Settings)
 - **AI Agent Access (MCP)** - Let Claude Code, Claude Desktop or any other MCP client search your library and read file metadata
 
 ### Database & Library Management

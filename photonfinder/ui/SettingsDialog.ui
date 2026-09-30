@@ -284,6 +284,49 @@
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="telescopius_group">
+     <property name="title">
+      <string>Telescopius</string>
+     </property>
+     <layout class="QVBoxLayout" name="telescopius_layout">
+      <item>
+       <layout class="QHBoxLayout" name="telescopius_key_layout">
+        <item>
+         <widget class="QLabel" name="telescopius_key_label">
+          <property name="text">
+           <string>API Key:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="telescopius_api_key_edit">
+          <property name="toolTip">
+           <string>API key for the Telescopius API, used to fetch your observing lists</string>
+          </property>
+          <property name="echoMode">
+           <enum>QLineEdit::EchoMode::PasswordEchoOnEdit</enum>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="telescopius_hint_label">
+        <property name="text">
+         <string>Request an API key from Telescopius at &lt;a href=&quot;https://telescopius.com/settings/api-keys&quot;&gt;telescopius.com/settings/api-keys&lt;/a&gt;.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="openExternalLinks">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="mcp_group">
      <property name="title">
       <string>MCP Server (AI agent access)</string>

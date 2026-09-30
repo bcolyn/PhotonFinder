@@ -9,3 +9,4 @@ local.env
 mcp.log*
 *.zip
 data/catalog.db
+*secret.txt

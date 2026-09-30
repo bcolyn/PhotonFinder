@@ -27,6 +27,8 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
 
         self.obs_timezone_edit.setText(self.context.settings.get_obs_timezone())
 
+        self.telescopius_api_key_edit.setText(self.context.settings.get_telescopius_api_key())
+
         self.mcp_allow_plate_solve_check.setChecked(self.context.settings.get_mcp_allow_plate_solve())
 
         self.astap_browse_button.clicked.connect(self.browse_astap_executable)
@@ -72,6 +74,8 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.context.settings.set_use_internal_viewer(self.internal_viewer_check.isChecked())
 
         self.context.settings.set_obs_timezone(self.obs_timezone_edit.text().strip())
+
+        self.context.settings.set_telescopius_api_key(self.telescopius_api_key_edit.text().strip())
 
         self.context.settings.set_mcp_allow_plate_solve(self.mcp_allow_plate_solve_check.isChecked())
 

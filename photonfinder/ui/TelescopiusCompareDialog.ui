@@ -42,17 +42,20 @@ Note that only images with coordinate information (either from the aquisition so
        <item row="0" column="0">
         <widget class="QLabel" name="label_2">
          <property name="text">
-          <string>Telescopius list URL</string>
+          <string>Telescopius list</string>
          </property>
         </widget>
        </item>
        <item row="0" column="1">
-        <widget class="QLineEdit" name="url_edit">
-         <property name="text">
-          <string/>
+        <widget class="QComboBox" name="list_combo">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+           <horstretch>1</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
          </property>
          <property name="placeholderText">
-          <string>https://telescopius.com/observing-lists/xxxxxxxx</string>
+          <string>Loading your lists...</string>
          </property>
         </widget>
        </item>
@@ -134,6 +137,53 @@ Note that only images with coordinate information (either from the aquisition so
       </widget>
      </item>
      <item>
+      <layout class="QHBoxLayout" name="show_filter_layout">
+       <item>
+        <widget class="QRadioButton" name="show_both_radio">
+         <property name="text">
+          <string>Show both</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="show_matching_radio">
+         <property name="toolTip">
+          <string>Only show targets for which matching images were found</string>
+         </property>
+         <property name="text">
+          <string>Show matching</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="show_missing_radio">
+         <property name="toolTip">
+          <string>Only show targets for which no matching images were found</string>
+         </property>
+         <property name="text">
+          <string>Show missing</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="show_filter_spacer">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </item>
+     <item>
       <layout class="QHBoxLayout" name="horizontalLayout_2">
        <item>
         <widget class="QLabel" name="filters_label">
@@ -158,6 +208,16 @@ Note that only images with coordinate information (either from the aquisition so
         <widget class="QProgressBar" name="progressBar">
          <property name="value">
           <number>0</number>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="copy_names_button">
+         <property name="toolTip">
+          <string>Copy the names of the visible targets to the clipboard, one per line</string>
+         </property>
+         <property name="text">
+          <string>Copy Names</string>
          </property>
         </widget>
        </item>
