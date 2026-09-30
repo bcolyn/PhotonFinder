@@ -193,67 +193,68 @@ class LibraryTreeModel(QAbstractItemModel):
         if not library_root_node:
             return
 
-        # Create a model index for the library root node
-        library_index = self.createIndex(library_root_node.row(), 0, library_root_node)
-
-        # Begin inserting rows
-        self.beginInsertRows(library_index, 0, len(paths) - 1)
-
-        # Build a tree structure from the paths
+        # Build a nested {segment: {segment: ...}} tree from the paths
         path_tree = {}
-
         for path in paths:
-            segments = path.split('/')
-            current_path = ""
-            parent_path = ""
-
-            for segment in segments:
+            subtree = path_tree
+            for segment in path.split('/'):
                 if segment:  # Skip empty segments
-                    if current_path:
-                        parent_path = current_path
-                        current_path += f"/{segment}"
-                    else:
-                        current_path = segment
+                    subtree = subtree.setdefault(segment, {})
 
-                    if current_path not in path_tree:
-                        path_tree[current_path] = {
-                            'segment': segment,
-                            'parent': parent_path,
-                            'children': []
-                        }
-
-                    if parent_path and parent_path in path_tree:
-                        if current_path not in path_tree[parent_path]['children']:
-                            path_tree[parent_path]['children'].append(current_path)
-
-        # Create nodes for the top-level paths (those with no parent)
-        for path, info in path_tree.items():
-            if not info['parent']:
-                node = PathNode(library_root_node, info['segment'], path)
-                library_root_node.children.append(node)
-
-                # Recursively add child paths
-                self._add_child_paths(node, path, path_tree)
+        # Merge into the existing nodes, so a refresh after a rescan only inserts/removes
+        # the directories that changed and keeps the view's expansion and selection intact.
+        library_index = self.createIndex(library_root_node.row(), 0, library_root_node)
+        self._merge_children(library_root_node, library_index, path_tree, "")
 
         # Mark as loaded
         library_root_node.loaded = True
         self.loaded_library_roots.add(library_root.rowid)
 
-        # End inserting rows
-        self.endInsertRows()
+    def refresh_loaded_paths(self):
+        """Reload the paths of all library roots whose paths were already loaded (e.g. after a rescan)."""
+        all_libraries_node = self.root_node.child(0)
+        for node in all_libraries_node.children:
+            if isinstance(node, LibraryRootNode) and node.library_root.rowid in self.loaded_library_roots:
+                self.file_paths_loader.load_paths_for_library(node.library_root)
 
-    def _add_child_paths(self, parent_node, parent_path, path_tree):
-        """Recursively add child paths to a parent node."""
-        if parent_path not in path_tree:
-            return
+    @staticmethod
+    def _sort_key(segment: str):
+        return segment.lower(), segment
 
-        for child_path in path_tree[parent_path]['children']:
-            info = path_tree[child_path]
-            node = PathNode(parent_node, info['segment'], child_path)
+    def _merge_children(self, parent_node, parent_index, subtree: dict, parent_path: str):
+        """Make parent_node's children match subtree, emitting row insert/remove signals for changes."""
+        # Remove directories that no longer exist
+        for row in reversed(range(len(parent_node.children))):
+            if parent_node.children[row].path_segment not in subtree:
+                self.beginRemoveRows(parent_index, row, row)
+                del parent_node.children[row]
+                self.endRemoveRows()
+
+        existing = {child.path_segment: child for child in parent_node.children}
+        for segment in sorted(subtree, key=self._sort_key):
+            full_path = f"{parent_path}/{segment}" if parent_path else segment
+            child = existing.get(segment)
+            if child is None:
+                # New directory: build its whole subtree before it becomes visible to the view
+                child = PathNode(parent_node, segment, full_path)
+                self._build_children(child, subtree[segment], full_path)
+                key = self._sort_key(segment)
+                row = next((i for i, c in enumerate(parent_node.children)
+                            if self._sort_key(c.path_segment) > key), len(parent_node.children))
+                self.beginInsertRows(parent_index, row, row)
+                parent_node.children.insert(row, child)
+                self.endInsertRows()
+            else:
+                child_index = self.createIndex(child.row(), 0, child)
+                self._merge_children(child, child_index, subtree[segment], full_path)
+
+    def _build_children(self, parent_node, subtree: dict, parent_path: str):
+        """Recursively create child nodes for a node that is not yet part of the model."""
+        for segment in sorted(subtree, key=self._sort_key):
+            full_path = f"{parent_path}/{segment}" if parent_path else segment
+            node = PathNode(parent_node, segment, full_path)
             parent_node.children.append(node)
-
-            # Recursively add child paths
-            self._add_child_paths(node, child_path, path_tree)
+            self._build_children(node, subtree[segment], full_path)
 
     def index(self, row, column, parent=QModelIndex()):
         """Create a model index for the given row, column, and parent."""

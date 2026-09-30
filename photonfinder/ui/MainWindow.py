@@ -351,6 +351,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.scan_worker.deleteLater()
             self.scan_worker = None
 
+        for panel in self.get_search_panels():
+            panel.library_tree_model.refresh_loaded_paths()
         self.get_current_search_panel().update_search_criteria()
 
     def reload_library_roots_in_all_panels(self):
