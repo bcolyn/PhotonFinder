@@ -161,6 +161,17 @@ Development:
 Claude Desktop does not inherit your shell's `PATH`, so give `uv` as an absolute path
 (`where uv` will tell you where it lives). Backslashes must be escaped in JSON.
 
+### Other clients (HTTP)
+
+Clients that speak MCP over HTTP can connect to the running application directly, without
+the stub, at `http://127.0.0.1:8765/mcp`. The port is set in **Settings → MCP Server →
+HTTP port**. PhotonFinder has to be running already; see
+[docs/mcp.md](docs/mcp.md#connecting-over-http).
+
+```bash
+claude mcp add --transport http photonfinder http://127.0.0.1:8765/mcp
+```
+
 ### Testing it by hand
 
 `scripts/mcp_client.py` drives the server the way a real client does, using the MCP SDK,

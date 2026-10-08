@@ -92,11 +92,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         Loopback-only and always on: the `photonfinder-mcp` stub an agent's client spawns
         has nothing to talk to otherwise, and starting it is what lets that stub avoid
-        launching a second copy of the application.
+        launching a second copy of the application. The configured port only matters to
+        clients that connect over HTTP directly; the stub finds whichever port was bound.
         """
         try:
             from photonfinder.mcp_server import McpServerController
-            self.mcp_controller = McpServerController(self.context)
+            self.mcp_controller = McpServerController(
+                self.context, requested_port=self.context.settings.get_mcp_port())
             self.mcp_controller.start()
         except Exception as e:
             logging.error(f"Failed to start MCP server: {e}", exc_info=True)

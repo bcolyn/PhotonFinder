@@ -602,6 +602,52 @@ def test_controller_starts_without_a_stdout(monkeypatch, tmp_path):
     assert not port_file.exists()
 
 
+def _free_port() -> int:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_controller_binds_the_requested_port(monkeypatch, tmp_path, context):
+    from photonfinder.mcp_server import McpServerController
+
+    port_file = tmp_path / "mcp_port.txt"
+    monkeypatch.setattr("photonfinder.mcp_server.mcp_port_file", lambda: port_file)
+    wanted = _free_port()
+
+    controller = McpServerController(context, requested_port=wanted)
+    try:
+        controller.start()
+        assert controller.port == wanted
+        assert port_file.read_text(encoding="utf-8") == str(wanted)
+    finally:
+        controller.stop()
+
+
+def test_controller_falls_back_when_the_requested_port_is_taken(monkeypatch, tmp_path, context):
+    """A taken port must not cost the stub its server: it reads the port file anyway."""
+    import socket
+    from photonfinder.mcp_server import McpServerController
+
+    port_file = tmp_path / "mcp_port.txt"
+    monkeypatch.setattr("photonfinder.mcp_server.mcp_port_file", lambda: port_file)
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as blocker:
+        blocker.bind(("127.0.0.1", 0))
+        blocker.listen(1)
+        taken = blocker.getsockname()[1]
+
+        controller = McpServerController(context, requested_port=taken)
+        try:
+            controller.start()
+            assert controller.running
+            assert controller.port != taken
+            assert port_file.read_text(encoding="utf-8") == str(controller.port)
+        finally:
+            controller.stop()
+
+
 # --- Plate-solve lock (still cross-process: GUI vs. anything else) -------------------
 
 def test_solve_lock_is_held_against_another_process(tmp_path):

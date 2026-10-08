@@ -343,6 +343,50 @@
        </widget>
       </item>
       <item>
+       <layout class="QHBoxLayout" name="mcp_port_layout">
+        <item>
+         <widget class="QLabel" name="mcp_port_label">
+          <property name="text">
+           <string>HTTP port:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="mcp_port_spin">
+          <property name="toolTip">
+           <string>TCP port the MCP server listens on (loopback only)</string>
+          </property>
+          <property name="minimum">
+           <number>1024</number>
+          </property>
+          <property name="maximum">
+           <number>65535</number>
+          </property>
+          <property name="value">
+           <number>8765</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="mcp_port_hint_label">
+        <property name="text">
+         <string>MCP clients that connect over HTTP can use http://127.0.0.1:&lt;port&gt;/mcp directly while PhotonFinder is running. If the port is in use, an automatic one is chosen instead (see the log); photonfinder-mcp is not affected. Changes apply after restarting the application.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="Line" name="line_mcp">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QCheckBox" name="mcp_allow_plate_solve_check">
         <property name="text">
          <string>Allow AI agents to trigger plate solving</string>

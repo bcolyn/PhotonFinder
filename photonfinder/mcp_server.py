@@ -1038,13 +1038,20 @@ class McpServerController:
     sandbox would read default settings instead of the user's, and would hand the same
     broken environment to ASTAP and solve-field. The application runs outside it.
 
-    The port is chosen by the OS and published to ``core.mcp_port_file()`` for the stub
-    to find; a fixed port would need configuring in two places and could be taken.
+    Clients that speak HTTP themselves can skip the stub and connect to
+    ``http://127.0.0.1:<port>/mcp`` directly, which is what ``requested_port`` (the
+    ``mcp_port`` setting) is for: an address they can be configured with once. The stub
+    never relies on it -- the port actually bound is published to
+    ``core.mcp_port_file()`` -- so when the requested port is taken (a second copy of the
+    application, say) the server falls back to one chosen by the OS and the stub keeps
+    working. ``requested_port=0`` asks for an OS-chosen port outright.
     """
 
-    def __init__(self, context: ApplicationContext, host: str = "127.0.0.1"):
+    def __init__(self, context: ApplicationContext, host: str = "127.0.0.1",
+                 requested_port: int = 0):
         self.context = context
         self.host = host
+        self.requested_port = requested_port
         self.port: Optional[int] = None
         self._thread: Optional[threading.Thread] = None
         self._server = None
@@ -1063,7 +1070,17 @@ class McpServerController:
         # over avoids the race of picking a free port and hoping it is still free.
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            sock.bind((self.host, 0))
+            try:
+                sock.bind((self.host, self.requested_port))
+            except OSError as e:
+                if not self.requested_port:
+                    raise
+                # Better a server on the wrong port than none: the stub finds it through
+                # the port file either way, and only direct HTTP clients are affected.
+                logger.warning("MCP port %d is unavailable (%s); using an automatically "
+                               "chosen port instead. Clients configured with the fixed "
+                               "HTTP address will not connect.", self.requested_port, e)
+                sock.bind((self.host, 0))
         except OSError:
             sock.close()
             raise

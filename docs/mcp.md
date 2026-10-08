@@ -56,6 +56,27 @@ claude mcp add photonfinder -- "C:\Program Files\PhotonFinder\photonfinder-mcp.e
 Per-client configuration — Claude Code and Claude Desktop, running from a release or from
 a source checkout — is in the [project README](../Readme.md#-ai-agent-access-mcp).
 
+### Connecting over HTTP
+
+A client that speaks MCP over HTTP (streamable HTTP) does not need the stub. While
+PhotonFinder is running it serves the same tools at
+
+```
+http://127.0.0.1:8765/mcp
+```
+
+The port is **Settings → MCP Server → HTTP port** (default 8765); a change takes effect
+the next time PhotonFinder starts. The server only listens on the loopback interface, so
+it is reachable from this machine alone.
+
+What you give up by skipping the stub: there is no `start_photonfinder` tool, and a closed
+application is a plain connection failure — start PhotonFinder first.
+
+If the configured port is already in use when PhotonFinder starts — by another program, or
+by a second copy of PhotonFinder — it logs a warning and listens on an automatically chosen
+port instead. `photonfinder-mcp` follows along by itself; an HTTP client configured with
+the fixed address will not connect until the port is free again or you pick another one.
+
 ## Which database it uses
 
 Whichever one PhotonFinder has open — there is nothing to configure. The agent sees
@@ -64,9 +85,10 @@ exactly the library you see, including a database you switch to mid-session.
 If the application is not running and you approve `start_photonfinder`, it opens the
 database it last used, exactly as it would had you launched it yourself.
 
-The running application publishes its port to `%LOCALAPPDATA%\photonfinder\mcp_port.txt`,
-which the stub reads from your user profile — the one path a sandboxed client cannot
-redirect. That is the only state passed between them. A port left behind by a crash is
+The running application publishes the port it actually bound to
+`%LOCALAPPDATA%\photonfinder\mcp_port.txt`, which the stub reads from your user profile —
+the one path a sandboxed client cannot redirect — rather than from the port setting, which
+it could not see from inside a sandbox. That is the only state passed between them. A port left behind by a crash is
 harmless: the stub checks that something is actually answering before trusting it.
 
 The tool list is not passed at runtime at all. It is the same for every run, so it is
@@ -187,6 +209,7 @@ running.
 
 Earlier versions exposed `http://127.0.0.1:8765/mcp` directly and were typically reached
 through `mcp_proxy`. Remove that entry and point your client at `photonfinder-mcp`
-instead: the same endpoint underneath, but on a port chosen automatically, and a closed
-application gives you an offer to start it rather than a connection failure. The
-`mcp_enabled` and `mcp_port` settings are gone.
+instead: the same endpoint underneath, and a closed application gives you an offer to
+start it rather than a connection failure. The `mcp_enabled` setting is gone — the server
+is always on while PhotonFinder runs. The HTTP endpoint itself is still there for clients
+that prefer it; see [Connecting over HTTP](#connecting-over-http).

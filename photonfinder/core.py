@@ -397,6 +397,7 @@ class Settings:
         ("plate_solve_hint_dec", "plate_solve_hint_dec", "", str),
         ("plate_solve_hint_scale", "plate_solve_hint_scale", 0.0, float),
         ("plate_solve_hint_mode", "plate_solve_hint_mode", "fallback", str),
+        ("mcp_port", "mcp_port", 8765, int),
         ("mcp_allow_plate_solve", "mcp_allow_plate_solve", False, bool),
         ("last_export_xisf_as_fits", "last_export_xisf_as_fits", False, bool),
         ("last_export_override_platesolve", "last_export_override_platesolve", False, bool),
