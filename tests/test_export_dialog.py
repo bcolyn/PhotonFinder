@@ -16,6 +16,7 @@ from photonfinder.ui.ExportDialog import (
     collect_calibration_files,
     collect_calibration_entries,
     build_file_headers_map,
+    resolve_output_path,
 )
 from .sample_models import *
 
@@ -401,3 +402,97 @@ class TestCollectCalibrationEntries:
         cand = _candidate([f])
         result = collect_calibration_entries([key], {0: {"DARK": cand}}, use_master=False)
         assert result == [ExportEntry(file=f, session_date=None)]
+
+
+class TestTemplateSanitizing:
+    def test_invalid_windows_characters_replaced(self, light1, settings):
+        light1.image.object_name = 'Sh2-129: Flying "Bat"?'
+        result = template_filename(light1, string.Template("$object_name/$filename"), settings)
+        assert result == "Sh2-129_ Flying _Bat__/test_file1.fits"
+
+    def test_slash_in_value_does_not_create_subfolder(self, light1, settings):
+        light1.image.filter = "Ha/OIII"
+        result = template_filename(light1, string.Template("$filter/$filename"), settings)
+        assert result == "Ha_OIII/test_file1.fits"
+
+    def test_date_obs_is_path_safe(self, light1, settings):
+        result = template_filename(light1, string.Template("$date_obs/$filename"), settings)
+        assert result == "2023-01-01T12_00_00/test_file1.fits"
+
+    def test_lib_path_keeps_separators(self, light1, settings):
+        light1.path = "2023/lights/"
+        result = template_filename(light1, string.Template("${lib_path}$filename"), settings)
+        assert result == "2023/lights/test_file1.fits"
+
+
+class TestResolveOutputPath:
+    def test_leading_separator_stays_under_root(self, tmp_path):
+        assert resolve_output_path(str(tmp_path), "/a/b.fits") == str(tmp_path / "a" / "b.fits")
+
+    def test_escaping_root_is_rejected(self, tmp_path):
+        with pytest.raises(ValueError):
+            resolve_output_path(str(tmp_path), "../outside.fits")
+
+
+class TestExportWorkerWrites:
+    @pytest.fixture
+    def worker(self, app_context, tmp_path):
+        worker = ExportWorker(app_context)
+        worker.output_path = str(tmp_path / "out")
+        worker.pattern = string.Template("$filename")
+        worker.total_files = 10
+        return worker
+
+    @staticmethod
+    def _source(tmp_path, rowid, subdir, content):
+        directory = tmp_path / "lib" / subdir
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "light.fits").write_bytes(content)
+        root = LibraryRoot(name="r", path=str(tmp_path / "lib"))
+        f = File(root=root, path=subdir, name="light.fits", size=len(content), mtime_millis=0)
+        f.rowid = rowid
+        return f
+
+    def test_different_sources_with_same_output_name_are_reported(self, worker, tmp_path):
+        first = self._source(tmp_path, 1, "night1", b"first")
+        second = self._source(tmp_path, 2, "night2", b"second")
+
+        worker._process_entry(ExportEntry(first, None), 0)
+        worker._process_entry(ExportEntry(second, None), 1)
+
+        assert (tmp_path / "out" / "light.fits").read_bytes() == b"first"
+        assert len(worker.collisions) == 1
+        assert "night2" in worker.collisions[0]
+
+    def test_same_file_twice_is_not_a_collision(self, worker, tmp_path):
+        f = self._source(tmp_path, 1, "night1", b"data")
+
+        worker._process_entry(ExportEntry(f, None), 0)
+        worker._process_entry(ExportEntry(f, None), 1)
+
+        assert worker.collisions == []
+
+    def test_interrupted_copy_leaves_nothing_behind(self, worker, tmp_path, mocker):
+        f = self._source(tmp_path, 1, "night1", b"data")
+
+        def partial_copy(src, dst):
+            with open(dst, "wb") as out:
+                out.write(b"da")
+            raise OSError("disk full")
+
+        mocker.patch("photonfinder.ui.ExportDialog.shutil.copy2", side_effect=partial_copy)
+
+        with pytest.raises(OSError):
+            worker._process_entry(ExportEntry(f, None), 0)
+
+        assert list((tmp_path / "out").iterdir()) == []
+
+    def test_existing_file_from_earlier_export_is_kept(self, worker, tmp_path):
+        f = self._source(tmp_path, 1, "night1", b"new")
+        (tmp_path / "out").mkdir()
+        (tmp_path / "out" / "light.fits").write_bytes(b"earlier")
+
+        worker._process_entry(ExportEntry(f, None), 0)
+
+        assert (tmp_path / "out" / "light.fits").read_bytes() == b"earlier"
+        assert worker.collisions == []

@@ -29,6 +29,15 @@ from photonfinder.ui.generated.ExportDialog_ui import Ui_ExportDialog
 
 
 _SESS_DATE_RE = re.compile(r'\$\{sess_date\}|\$sess_date\b')
+_INVALID_PATH_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+# Template variables that are themselves paths and must keep their separators.
+_PATH_VARIABLES = {'lib_path', 'last_light_path'}
+
+
+def _sanitize_path_component(value) -> str:
+    """Make a header-derived value safe to use inside a single path component on Windows."""
+    return _INVALID_PATH_CHARS_RE.sub('_', str(value)).rstrip(' .')
 
 
 def _make_shared_template_str(template_str: str) -> str:
@@ -98,6 +107,11 @@ def template_filename(file: File, template: string.Template, settings: Settings,
     mapping['last_light_path'] = settings.get_last_light_path()
     mapping['filename_no_ext'] = os.path.splitext(file_name)[0]
     mapping['ext'] = os.path.splitext(file_name)[1].lstrip('.')
+
+    # Values like "Sh2-129: Flying Bat" or an ISO timestamp would otherwise produce
+    # invalid Windows paths or unintended sub-folders.
+    mapping = {k: v if k in _PATH_VARIABLES else _sanitize_path_component(v)
+               for k, v in mapping.items()}
 
     result = template.safe_substitute(mapping)
     if not result:
@@ -240,6 +254,16 @@ def _candidate_label(candidate: CalibrationCandidate, calib_type: str) -> str:
     return "  ".join(parts)
 
 
+def resolve_output_path(output_root: str, output_filename: str) -> str:
+    """Join a templated relative filename onto the export root, refusing to escape it."""
+    root = os.path.abspath(output_root)
+    # A pattern starting with a separator would otherwise make os.path.join discard the root.
+    full = os.path.abspath(os.path.join(root, output_filename.lstrip('/\\')))
+    if os.path.commonpath([root, full]) != root:
+        raise ValueError(f"Export path {output_filename!r} resolves outside the output folder {output_root!r}")
+    return full
+
+
 class ExportWorker(BackgroundLoaderBase):
     """Worker class for exporting files in a background thread."""
     progress = Signal(int)
@@ -264,6 +288,8 @@ class ExportWorker(BackgroundLoaderBase):
         self.shared_pattern = None
         self.project = None
         self.project_file_ids = set()  # file rowids to add to the project (lights only)
+        self._written = {}  # normcased output path → rowid of the file written there this run
+        self.collisions: list[str] = []  # skipped name clashes, reported when the export ends
 
     def export_files(self, search_criteria: SearchCriteria,
                      entries: List[ExportEntry], output_path: str, decompress: bool,
@@ -286,6 +312,8 @@ class ExportWorker(BackgroundLoaderBase):
         self.shared_pattern = string.Template(_make_shared_template_str(pattern)) if self.shared_file_ids else None
         self.project = project
         self.project_file_ids = project_file_ids or set()
+        self._written = {}
+        self.collisions = []
         self.run_in_thread(self._export_files_task)
 
     def _export_files_task(self):
@@ -314,20 +342,46 @@ class ExportWorker(BackgroundLoaderBase):
         output_filename = template_filename_with_ref(file, ref_file, active_pattern,
                                                      self.context.settings, self.decompress, self.export_xisf_as_fits,
                                                      sess_date=sess_date)
-        output_file_path = os.path.join(self.output_path, output_filename)
+        output_file_path = resolve_output_path(self.output_path, output_filename)
 
-        os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-        if Path(output_file_path).exists():
+        key = os.path.normcase(output_file_path)
+        previous = self._written.get(key)
+        if previous is not None:
+            if previous != file.rowid:
+                # Two different sources template to the same name: don't let the second
+                # one silently disappear.
+                logging.warning(f"Export name collision: {source_path} also maps to {output_file_path}, skipped")
+                self.collisions.append(f"{source_path}  →  {output_file_path}")
+            # else: the same file selected again (e.g. a shared calibration frame), already written
+        elif Path(output_file_path).exists():
+            # Left over from an earlier export; writes are atomic, so it is complete.
             logging.info(f"File {output_file_path} already exists, skipping")
+            self._written[key] = file.rowid
         else:
             logging.info(f"Copying {source_path} to {output_file_path}")
-            self.copy_file(source_path, output_file_path, file, custom_headers)
+            os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+            self._copy_atomically(source_path, output_file_path, file, custom_headers)
+            self._written[key] = file.rowid
 
         if self.project and file.rowid in self.project_file_ids:
             link = ProjectFile(project=self.project, file=file)
             link.save()
 
         self.progress.emit(int((index + 1) / self.total_files * 100))
+
+    def _copy_atomically(self, source_path: str, output_file_path: str, file: File, custom_headers: dict):
+        """Copy to a temporary name and rename into place, so an interrupted export never
+        leaves a truncated file that a later run would skip as 'already exists'."""
+        directory, name = os.path.split(output_file_path)
+        # Prefix rather than suffix: astropy picks gzip output from the file extension.
+        tmp_path = os.path.join(directory, f".partial-{name}")
+        try:
+            self.copy_file(source_path, tmp_path, file, custom_headers)
+            os.replace(tmp_path, output_file_path)
+        except BaseException:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
 
     def copy_file(self, source_path: str, output_file_path: str, file: File, custom_headers: dict = None):
         custom_headers = custom_headers or {}
@@ -422,19 +476,22 @@ class CalibrationGridLoader(BackgroundLoaderBase):
         self.run_in_thread(self._load_task, session_keys, sessions, matcher)
 
     def _load_task(self, session_keys, sessions, matcher):
-        for row, key in enumerate(session_keys):
-            lights = sessions[key]
-            candidates = {
-                "DARK": matcher.dark_candidates(lights),
-                "FLAT": matcher.flat_candidates(lights),
-                "BIAS": matcher.bias_candidates(lights),
-                "DARKFLAT": [],  # populated reactively when a flat is selected
-            }
-            for cands in candidates.values():
-                for cand in cands:
-                    matcher.add_best_master(cand)
-            self.row_ready.emit(row, candidates)
-        self.all_done.emit()
+        try:
+            for row, key in enumerate(session_keys):
+                lights = sessions[key]
+                candidates = {
+                    "DARK": matcher.dark_candidates(lights),
+                    "FLAT": matcher.flat_candidates(lights),
+                    "BIAS": matcher.bias_candidates(lights),
+                    "DARKFLAT": [],  # populated reactively when a flat is selected
+                }
+                for cands in candidates.values():
+                    for cand in cands:
+                        matcher.add_best_master(cand)
+                self.row_ready.emit(row, candidates)
+        finally:
+            # The dialog keeps Export disabled until this fires.
+            self.all_done.emit()
 
 
 # Column layout: 0=Session, 1-4=calibration types, 5=Headers button
@@ -514,7 +571,9 @@ class ExportDialog(QDialog, Ui_ExportDialog):
 
         self._grid_loader = CalibrationGridLoader(context)
         self._grid_loader.row_ready.connect(self._on_row_candidates_ready)
-        self._grid_loader.all_done.connect(self.calibrationTable.resizeColumnsToContents)
+        self._grid_loaded = False
+        self._exporting = False
+        self._grid_loader.all_done.connect(self._on_grid_loaded)
         self._grid_loader.load(self._session_keys, self.sessions, self.matcher)
 
         if not self.light_files:
@@ -551,6 +610,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
 
         if self.first_file:
             self.update_preview(self.patternComboBox.currentText())
+        self._update_export_enabled()
 
     def _materialize_files(self, files: Optional[List[File]]) -> List[File]:
         if files:
@@ -905,6 +965,10 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         settings.set_last_export_patterns(patterns[:10])
 
     def export_files(self):
+        output_path = self.outputPathEdit.text().strip()
+        if not output_path or not os.path.isabs(output_path):
+            QMessageBox.warning(self, "Export", "Please choose an absolute output folder.")
+            return
         self.save_settings()
         self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
 
@@ -921,10 +985,11 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         shared_file_ids = self._build_shared_file_ids()
         all_entries = self._build_all_entries(shared_file_ids)
 
+        self._exporting = True
         self.export_worker.export_files(
             self.search_criteria,
             all_entries,
-            self.outputPathEdit.text(),
+            output_path,
             self.decompressCheckBox.isChecked(),
             self.patternComboBox.currentText(),
             len(all_entries),
@@ -935,8 +1000,6 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             shared_file_ids,
             {f.rowid for f in self.light_files}
         )
-
-        self.buttonBox.rejected.connect(self.cancel_export)
 
     def dry_run(self):
         output_path = self.outputPathEdit.text()
@@ -959,7 +1022,10 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             output_filename = template_filename_with_ref(
                 entry.file, ref_file, active_tpl, self.context.settings,
                 decompress, export_xisf_as_fits, sess_date=entry.session_date)
-            dest_path = os.path.join(output_path, output_filename)
+            try:
+                dest_path = resolve_output_path(output_path, output_filename)
+            except ValueError as e:
+                dest_path = f"ERROR: {e}"
             lines.append(f"{source_path}  →  {dest_path}")
 
         if not lines:
@@ -976,24 +1042,60 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         if directory:
             self.outputPathEdit.setText(directory)
 
-    def cancel_export(self):
-        if self.export_worker:
+    def reject(self):
+        # Cancel button, Esc and the window close button all land here.
+        if self._exporting:
             self.export_worker.cancel()
-        self.reject()
+            self._export_ended()
+        super().reject()
 
-    def on_export_finished(self):
+    def _export_ended(self):
+        """Runs once per export, however it ends. A cancelled or failed export keeps its
+        project with the files linked so far, so the Projects window must still hear about it."""
+        if not self._exporting:
+            return
+        self._exporting = False
         if self.created_project:
             self.context.signal_bus.projects_changed.emit([self.created_project], Change.CREATE_OR_UPDATE)
+
+    def on_export_finished(self):
+        if not self._exporting:
+            return  # cancelled; the dialog is already closed
+        self._export_ended()
+        collisions = self.export_worker.collisions
+        if collisions:
+            shown = "\n".join(collisions[:20])
+            more = f"\n… and {len(collisions) - 20} more" if len(collisions) > 20 else ""
+            QMessageBox.warning(
+                self, "Export name collisions",
+                f"{len(collisions)} file(s) were not exported because another file already "
+                f"used the same output name. Add e.g. $lib_path or $filename to the pattern.\n\n"
+                f"{shown}{more}")
         self.accept()
 
     def on_export_error(self, error_message):
+        if not self._exporting:
+            return
+        self._export_ended()
         QMessageBox.critical(self, "Export Error", error_message)
-        self.reject()
+        super().reject()
+
+    def _on_grid_loaded(self):
+        self.calibrationTable.resizeColumnsToContents()
+        self._grid_loaded = True
+        self._update_export_enabled()
+
+    def _update_export_enabled(self):
+        # Until every calibration row has loaded, its selections are still empty and an
+        # export would silently leave out darks/flats/bias.
+        tpl = string.Template(template=self.patternComboBox.currentText())
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
+            tpl.is_valid() and self._grid_loaded and not self._exporting)
 
     def update_preview(self, ignored):
         text = self.patternComboBox.currentText()
         tpl = string.Template(template=text)
-        self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(tpl.is_valid())
+        self._update_export_enabled()
         if not self.first_file:
             return
         ref = self.search_criteria.reference_file if self.useRefCheckBox.isChecked() else None
