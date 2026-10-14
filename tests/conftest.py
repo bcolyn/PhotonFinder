@@ -266,6 +266,32 @@ def global_test_data_dir() -> Path:
     return data_dir
 
 
+class FakeClipboard:
+    """In-memory stand-in for QClipboard's text API."""
+
+    def __init__(self):
+        self._text = ""
+
+    def text(self, *args):
+        return self._text
+
+    def setText(self, text, *args):
+        self._text = text
+
+    def clear(self, *args):
+        self._text = ""
+
+
+@pytest.fixture(autouse=True)
+def fake_clipboard(monkeypatch) -> FakeClipboard:
+    """Keep every test away from the user's real system clipboard, which may hold
+    something they care about (and makes clipboard tests flaky when another app holds it)."""
+    from PySide6.QtGui import QGuiApplication
+    clipboard = FakeClipboard()
+    monkeypatch.setattr(QGuiApplication, "clipboard", staticmethod(lambda: clipboard))
+    return clipboard
+
+
 @pytest.fixture(autouse=True)
 def inject_class_fixtures(request):
     """
