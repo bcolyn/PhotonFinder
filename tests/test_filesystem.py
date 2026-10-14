@@ -14,7 +14,7 @@ from astropy.io.fits import Header
 from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_xisf_dict, \
     compress_file
 from photonfinder.models import LibraryRoot, File, Image, FitsHeader, FileWCS, ImageStats
-from photonfinder.filesystem import update_fits_header_cache, check_missing_header_cache
+from photonfinder.filesystem import update_fits_header_cache, check_missing_header_cache, parse_FITS_header
 from photonfinder.fits_handlers import normalize_fits_header, NINAHandler, _normalize_image_type
 from tests.utils import fix_embedded_header
 
@@ -376,3 +376,50 @@ class TestCompressFile:
             _, sizes[level] = compress_file(str(src), ".bz2", verify=False, level=level)
 
         assert sizes[9] <= sizes[1]
+
+
+def test_read_xisf_header_without_fits_keywords(tmp_path, mocker):
+    xisf = mocker.patch("photonfinder.filesystem.XISF")
+    xisf.return_value.get_images_metadata.return_value = [{"geometry": (4, 4, 1)}]
+
+    assert read_xisf_header(tmp_path / "no_keywords.xisf") == (None, None)
+
+
+class TestHeaderCacheResilience:
+    def _files(self, database, tmp_path, count=3):
+        root = LibraryRoot.create(name="r", path=str(tmp_path).replace("\\", "/") + "/")
+        files = []
+        for i in range(count):
+            (tmp_path / f"f{i}.fits").write_bytes(b"")
+            files.append(File.create(root=root, path="", name=f"f{i}.fits", size=0, mtime_millis=0))
+        return files
+
+    def test_failing_file_does_not_abort_the_rest(self, database, app_context, tmp_path, mocker):
+        from .sample_headers import header_apt
+        files = self._files(database, tmp_path)
+        good = fix_embedded_header(header_apt)
+        bad_name = files[0].full_filename()
+        mocker.patch("photonfinder.filesystem.read_fits_header",
+                     side_effect=lambda path, *_: b"BAD" if path == bad_name else good)
+        real_parse = parse_FITS_header
+
+        def parse(header_bytes):
+            if header_bytes == b"BAD":
+                raise ValueError("corrupt header")
+            return real_parse(header_bytes)
+        mocker.patch("photonfinder.filesystem.parse_FITS_header", side_effect=parse)
+
+        update_fits_header_cache(ChangeList(new_files=files), app_context.status_reporter, app_context.settings)
+
+        assert sorted(i.file.name for i in Image.select()) == ["f1.fits", "f2.fits"]
+
+    def test_unusable_wcs_keeps_image(self, database, app_context, tmp_path, mocker):
+        from .sample_headers import header_apt
+        files = self._files(database, tmp_path, count=1)
+        mocker.patch("photonfinder.filesystem.read_fits_header", return_value=fix_embedded_header(header_apt))
+        mocker.patch("photonfinder.filesystem.build_wcs_from_header", side_effect=ValueError("bad WCS"))
+
+        update_fits_header_cache(ChangeList(new_files=files), app_context.status_reporter, app_context.settings)
+
+        assert Image.select().count() == 1
+        assert FitsHeader.select().count() == 1

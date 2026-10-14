@@ -17,15 +17,28 @@ def _upper(value: str):
     return None if value is None else value.upper()
 
 
+# A garbage value (GAIN='N/A', EXPTIME='') becomes None for that field only, rather than
+# failing normalization and leaving the file without an Image row.
+
 def _int(value):
+    if value is None:
+        return None
     try:
-        return None if value is None else int(value)
-    except ValueError:  # try it as a float, and round
-        return int(float(value))
+        return int(value)
+    except (TypeError, ValueError):
+        try:  # try it as a float, and round
+            return int(float(value))
+        except (TypeError, ValueError):
+            return None
 
 
 def _float(value):
-    return None if value is None else float(value)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _normalize_image_type(value):

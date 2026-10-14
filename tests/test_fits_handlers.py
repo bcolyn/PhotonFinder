@@ -231,3 +231,17 @@ END                                                                             
         assert image.coord_ra == pytest.approx(15 * 11.1756, abs=0.2)  # 24hr -> 360deg
         assert image.coord_dec == pytest.approx(28.5973, abs=0.2)
         assert has_been_plate_solved(header), "Image is pre-solved"
+
+
+def test_garbage_numeric_value_only_nulls_that_field():
+    header = Header.fromstring(fix_embedded_header(header_nina).decode("ascii"))
+    header["GAIN"] = "N/A"
+    header["EXPOSURE"] = ""
+    header["EXPTIME"] = ""
+
+    image = normalize_fits_header(TestNormalizeFitsHeader.create_test_file(), header)
+
+    assert image is not None
+    assert image.gain is None
+    assert image.exposure is None
+    assert image.image_type == "LIGHT"

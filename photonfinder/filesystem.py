@@ -129,7 +129,7 @@ def read_xisf_header(file: str | Path, status_reporter: StatusReporter = None) -
                 return json.dumps(fits_keywords).encode(), fits_keywords
     except Exception as e:
         log(WARN, f"Error reading XISF header from {file}: {str(e)}")
-        return None, None
+    return None, None
 
 
 def update_fits_header_cache(change_list, status_reporter, settings):
@@ -146,7 +146,7 @@ def update_fits_header_cache(change_list, status_reporter, settings):
 
     # Process new files
     for file in [*change_list.new_files, *change_list.changed_files]:
-        _handle_file_metadata(file, status_reporter, settings)
+        _handle_file_metadata_safely(file, status_reporter, settings)
 
     # Process removed files
     for file in change_list.removed_files:
@@ -160,6 +160,16 @@ def update_fits_header_cache(change_list, status_reporter, settings):
 
     if status_reporter:
         status_reporter.update_status("FITS header cache updated.")
+
+
+def _handle_file_metadata_safely(file, status_reporter, settings):
+    """One unreadable file must not abort header processing for the rest of the scan."""
+    try:
+        _handle_file_metadata(file, status_reporter, settings)
+    except Exception as e:
+        log(WARN, f"Error processing header of {file.name}: {e}", exc_info=True)
+        if status_reporter:
+            status_reporter.update_status(f"Error processing header of {file.name}: {e}")
 
 
 def _handle_file_metadata(file, status_reporter, settings):
@@ -180,7 +190,13 @@ def _handle_file_metadata(file, status_reporter, settings):
         image = normalize_fits_header(file, header, status_reporter)
         if image is not None:
             Image.insert(image.__data__).on_conflict_replace().execute()
-        file_wcs = build_wcs_from_header(file, header)
+        try:
+            file_wcs = build_wcs_from_header(file, header)
+        except Exception as e:
+            # Header and Image are already stored; a malformed embedded solution only
+            # means the file is treated as unsolved.
+            log(WARN, f"Ignoring unusable WCS in header of {file.name}: {e}")
+            file_wcs = None
         if file_wcs is not None:
             FileWCS.insert(file_wcs.__data__).on_conflict_ignore().execute()
 
@@ -299,7 +315,7 @@ def check_missing_header_cache(status_reporter, settings):
 
     # Process these files as new files
     for file in missing_header_files:
-        _handle_file_metadata(file, status_reporter, settings)
+        _handle_file_metadata_safely(file, status_reporter, settings)
 
     if status_reporter:
         status_reporter.update_status("FITS header cache updated.")
