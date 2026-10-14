@@ -189,17 +189,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def restore_session(self):
         try:
             sessions = self.session_manager.load_sessions()
-            for session in sessions:
+        except Exception as e:
+            logging.error(e, exc_info=True)
+            sessions = []
+        for session in sessions:
+            try:
                 panel = self.new_search_tab(session.criteria, hidden_columns=session.hidden_columns)
                 if session.title_is_custom:
                     panel.set_custom_title(session.title)
                 else:
                     panel.set_title(session.title)
-        except Exception as e:
-            logging.error(e, exc_info=True)
-        finally:
-            if len(self.get_search_panels()) == 0:
-                self.new_search_tab()
+            except Exception as e:
+                logging.error(f"Could not restore tab {session.title!r}: {e}", exc_info=True)
+        if len(self.get_search_panels()) == 0:
+            self.new_search_tab()
 
     def save_session(self):
         sessions = [Session(
