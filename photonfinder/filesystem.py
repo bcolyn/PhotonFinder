@@ -20,7 +20,7 @@ from xisf import XISF
 
 from photonfinder.core import StatusReporter, compress, decompress
 from photonfinder.fits_handlers import normalize_fits_header
-from photonfinder.models import File, LibraryRoot, FitsHeader, Image, norm_db_path, FileWCS
+from photonfinder.models import File, LibraryRoot, FitsHeader, Image, norm_db_path, FileWCS, ImageStats
 
 compressed_exts = {
     ".xz": lzma.open,
@@ -306,7 +306,10 @@ def check_missing_header_cache(status_reporter, settings):
 
 
 class ChangeList:
-    def __init__(self, new_files=None, removed_files=None, changed_ids=None, changed_files=None):
+    def __init__(self, new_files=None, removed_files=None, changed_ids=None, changed_files=None,
+                 recompressed_files=None):
+        if recompressed_files is None:
+            recompressed_files = list()
         if changed_files is None:
             changed_files = list()
         if changed_ids is None:
@@ -319,12 +322,16 @@ class ChangeList:
         self.removed_files = removed_files
         self.changed_ids = changed_ids
         self.changed_files = changed_files
+        # Files only renamed to another compression variant (same mtime): content is
+        # unchanged, so their header, image, plate solution and stats are kept.
+        self.recompressed_files = recompressed_files
 
     def merge(self, other: 'ChangeList'):
         self.new_files += other.new_files
         self.changed_files += other.changed_files
         self.changed_ids += other.changed_ids
         self.removed_files += other.removed_files
+        self.recompressed_files += other.recompressed_files
 
     def apply_all(self):
         with File._meta.database.atomic():
@@ -339,6 +346,9 @@ class ChangeList:
                 Image.delete().where(Image.file == file).execute()
                 FitsHeader.delete().where(FitsHeader.file == file).execute()
                 FileWCS.delete().where(FileWCS.file == file).execute()
+                ImageStats.delete().where(ImageStats.file == file).execute()
+            for file in self.recompressed_files:
+                file.save()
 
 
 def possible_compressed_variants(filename: str):
@@ -540,7 +550,12 @@ class Importer:
             return file.name
         else:
             oldname = db_file.name
-            if db_file.mtime_millis != mtime_millis or db_file.size != file.size:
+            if db_file.name != file.name and db_file.mtime_millis == mtime_millis:
+                # Compressed or decompressed with mtime preserved: same content, new name.
+                db_file.name = file.name
+                db_file.size = file.size
+                changelist.recompressed_files.append(db_file)
+            elif db_file.mtime_millis != mtime_millis or db_file.size != file.size:
                 db_file.name = file.name
                 db_file.size = file.size
                 db_file.mtime_millis = mtime_millis

@@ -13,7 +13,7 @@ from astropy.io.fits import Header
 
 from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_xisf_dict, \
     compress_file
-from photonfinder.models import LibraryRoot, File, Image, FitsHeader
+from photonfinder.models import LibraryRoot, File, Image, FitsHeader, FileWCS, ImageStats
 from photonfinder.filesystem import update_fits_header_cache, check_missing_header_cache
 from photonfinder.fits_handlers import normalize_fits_header, NINAHandler, _normalize_image_type
 from tests.utils import fix_embedded_header
@@ -108,6 +108,51 @@ class TestImporter:
         assert File.select().count() == NUM_FILES
         db_file = File.get_by_id(rowid)
         assert db_file.name == "image06.fits.xz"
+
+    def _attach_derived_rows(self, file):
+        Image.create(file=file)
+        FitsHeader.create(file=file, header=b"hdr")
+        FileWCS.create(file=file, wcs=b"wcs")
+        ImageStats.create(file=file, star_count=42)
+
+    def _derived_row_counts(self, file):
+        return [model.select().where(model.file == file).count()
+                for model in (Image, FitsHeader, FileWCS, ImageStats)]
+
+    def test_compressed_file_with_preserved_mtime_keeps_derived_data(self, filesystem, database, app_context):
+        self.initial_import(app_context)
+        file = File.select().where(File.name == "image06.fits").get()
+        self._attach_derived_rows(file)
+        src = "test/2021-12-26/Darks/image06.fits"
+        mtime = filesystem.getinfo(src, namespaces=["details"]).modified
+        filesystem.remove(src)
+        filesystem.writebytes(src + ".xz", b"XZ")
+        filesystem.setinfo(src + ".xz", {"details": {"modified": mtime.timestamp()}})
+
+        change_list = self.importer.import_files_from(filesystem, self.root)
+        assert len(change_list.changed_files) == 0
+        assert len(change_list.new_files) == 0
+        assert len(change_list.removed_files) == 0
+        assert [f.rowid for f in change_list.recompressed_files] == [file.rowid]
+        change_list.apply_all()
+
+        db_file = File.get_by_id(file.rowid)
+        assert db_file.name == "image06.fits.xz"
+        assert db_file.size == 2
+        assert self._derived_row_counts(file) == [1, 1, 1, 1]
+
+    def test_changed_file_drops_derived_data(self, filesystem, database, app_context):
+        self.initial_import(app_context)
+        file = File.select().where(File.name == "image06.fits").get()
+        self._attach_derived_rows(file)
+        filesystem.touch("test/2021-12-26/Darks/image06.fits")
+
+        change_list = self.importer.import_files_from(filesystem, self.root)
+        assert len(change_list.changed_files) == 1
+        assert len(change_list.recompressed_files) == 0
+        change_list.apply_all()
+
+        assert self._derived_row_counts(file) == [0, 0, 0, 0]
 
     def test_decompressed_file(self, filesystem, database, app_context):
         self.initial_import(app_context)
