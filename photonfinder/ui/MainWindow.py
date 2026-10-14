@@ -252,15 +252,39 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.close_search_tab(self.tabWidget.currentIndex())
 
     def close_search_tab(self, index):
+        self._remove_search_tab(index)
+        if self.tabWidget.count() == 0:
+            self.new_search_tab()
+        else:
+            self.tabs_changed.emit(self.get_search_panels())
+
+    def _remove_search_tab(self, index):
         widget = self.tabWidget.widget(index)
         assert isinstance(widget, SearchPanel)
         self.tabWidget.removeTab(index)
         widget.destroy()
         widget.deleteLater()
-        if self.tabWidget.count() == 0:
+
+    def _switch_database(self, file_path):
+        """Close every tab, switch to *file_path* and open one fresh tab on it.
+
+        Tabs are removed without close_search_tab's "never leave zero tabs" rule, which
+        would otherwise start a new panel (and its queries) on the database being closed.
+        If the new database can't be opened, the previous one is reopened before re-raising.
+        """
+        previous_path = self.context.database_path
+        while self.tabWidget.count() > 0:
+            self._remove_search_tab(0)
+        try:
+            self.context.switch_database(file_path)
+        except Exception:
+            logging.error(f"Could not open {file_path}, reopening {previous_path}", exc_info=True)
+            self.context.switch_database(previous_path)
+            raise
+        finally:
+            self.setWindowTitle(f"PhotonFinder - {self.context.database_path}")
             self.new_search_tab()
-        else:
-            self.tabs_changed.emit(self.get_search_panels())
+            self.reload_library_roots_in_all_panels()
 
     def manage_library_roots(self):
         """
@@ -486,14 +510,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return  # User cancelled
 
         try:
-            # close all tabs
-            for i in range(self.tabWidget.count()):
-                self.close_search_tab(i)
-            self.context.switch_database(file_path)
-            # open new tab
-            self.new_search_tab()
+            self._switch_database(file_path)
             self.context.status_reporter.update_status(f"Database created and opened at {file_path}")
-            self.reload_library_roots_in_all_panels()
 
         except Exception as e:
             error_msg = f"Failed to create database: {str(e)}"
@@ -518,15 +536,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return  # User cancelled
 
         try:
-            # close all tabs
-            for i in range(self.tabWidget.count()):
-                self.close_search_tab(i)
-            self.context.switch_database(file_path)
-            # open new tab
-            self.new_search_tab()
-
+            self._switch_database(file_path)
             self.context.status_reporter.update_status(f"Database opened at {file_path}")
-            self.reload_library_roots_in_all_panels()
         except Exception as e:
             error_msg = f"Failed to open database: {str(e)}"
             logging.error(error_msg)
