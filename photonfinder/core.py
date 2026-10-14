@@ -91,24 +91,40 @@ class StatusReporter:
 
 
 def register_udfs(db: SqliteDatabase):
+    # These run once per row inside queries: an exception would abort the whole query, so
+    # a missing header (LEFT OUTER JOIN) or an unparsable one must yield NULL instead.
+
     @db.func("decompress", 1)
     def db_decompress(value):
+        if value is None:
+            return None
         return decompress(value)
 
     @db.func("decompress_header_value", 2)
     def db_decompress_header_value(value, header_key: str):
         import json
-        raw = decompress(value)
-        if raw.startswith(b'{'):
-            entries = json.loads(raw).get(header_key)
-            if not entries:
-                return None
-            val = entries[0].get('value')
+        if value is None:
+            return None
+        try:
+            raw = decompress(value)
+            if raw.startswith(b'{'):
+                entries = json.loads(raw).get(header_key)
+                if not entries:
+                    return None
+                val = entries[0].get('value')
+                try:
+                    return float(val)
+                except (TypeError, ValueError):
+                    return val
             try:
-                return float(val)
-            except (TypeError, ValueError):
-                return val
-        return Header.fromstring(raw).get(header_key, None)
+                return Header.fromstring(raw).get(header_key, None)
+            except Exception:
+                # Slow path for tabs/bad cards; imported here because filesystem imports core.
+                from photonfinder.filesystem import parse_FITS_header
+                return parse_FITS_header(raw).get(header_key, None)
+        except Exception as e:
+            logging.debug(f"decompress_header_value({header_key!r}) failed: {e}")
+            return None
 
     @db.func("sky_distance", 4)
     def db_sky_distance(ra1, dec1, ra2, dec2):

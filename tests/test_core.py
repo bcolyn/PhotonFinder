@@ -69,3 +69,35 @@ def test_library_root_description_added_to_existing_database(tmp_path):
             root.description = "Main imaging archive"
             root.save()
             assert LibraryRoot.get_by_id(root.rowid).description == "Main imaging archive"
+
+
+def _raw_header(*cards: str) -> bytes:
+    return "".join(c.ljust(80) for c in (*cards, "END")).encode("ascii")
+
+
+def _header_value(context, raw, key):
+    from photonfinder.core import compress
+    blob = compress(raw) if raw is not None else None
+    return context.database.execute_sql("SELECT decompress_header_value(?, ?)", (blob, key)).fetchone()[0]
+
+
+class TestHeaderUdfs:
+    def test_null_header_gives_null(self, context):
+        assert _header_value(context, None, "GAIN") is None
+        assert context.database.execute_sql("SELECT decompress(NULL)").fetchone()[0] is None
+
+    def test_card_with_tab_falls_back_to_repairing_parser(self, context):
+        assert _header_value(context, _raw_header("OBJECT  = 'M\t31'"), "OBJECT") == "M 31"
+
+    def test_malformed_value_is_repaired_instead_of_failing(self, context):
+        assert _header_value(context, _raw_header("EXPTIME = 1.0.0", "GAIN    = 100"), "EXPTIME") == "1.0.0"
+
+    def test_header_search_with_files_lacking_headers(self, sample):
+        from photonfinder.models import SearchCriteria, search_files
+        _, objs = sample  # the DARK has no FitsHeader row
+
+        rows, total, _ = search_files(SearchCriteria(header_text="GAIN=100"))
+        assert [r.rowid for r in rows] == [objs["light"].rowid]
+
+        rows, total, _ = search_files(SearchCriteria(header_text="M31"))
+        assert [r.rowid for r in rows] == [objs["light"].rowid]
