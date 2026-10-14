@@ -862,8 +862,8 @@ class ImageViewerWindow(QMainWindow):
         if file is None:
             return
 
-        if not self._nav_panel.mark_file_as_bad(file, model_row):
-            return  # error dialog already shown by mark_file_as_bad
+        if not self._nav_panel.mark_file_as_bad(file, model_row, dialog_parent=self):
+            return  # declined, or error dialog already shown by mark_file_as_bad
 
         # Update restricted navlist: remove entry and shift indices above model_row
         if self._nav_rows is not None:

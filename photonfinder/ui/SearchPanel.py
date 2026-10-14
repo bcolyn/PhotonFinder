@@ -841,9 +841,20 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         with self.context.database.bind_ctx(CORE_MODELS):
             return self.dataView.model().data(name_index, ROWID_ROLE)
 
-    def mark_file_as_bad(self, file: File, model_row: int) -> bool:
-        """Rename the file with BAD_ prefix and remove it from the database and grid."""
+    def mark_file_as_bad(self, file: File, row: int, dialog_parent: QWidget | None = None) -> bool:
+        """After confirmation, rename the file with BAD_ prefix and remove it from the database and grid.
+
+        *row* is a row of the (sorted) view, not of the underlying data model.
+        *dialog_parent* lets the image viewer show the prompt over itself.
+        Returns False if the user declined or the rename failed."""
         import fnmatch
+        answer = QMessageBox.question(
+            dialog_parent or self, "Mark as Bad",
+            f"Rename {file.name} to BAD_{file.name} and remove it from the library?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes)  # Del, Enter keeps culling in the viewer quick
+        if answer != QMessageBox.StandardButton.Yes:
+            return False
         new_name = "BAD_" + file.name
         old_path = file.full_filename()
         new_path = os.path.join(os.path.dirname(old_path), new_name)
@@ -863,7 +874,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             )
         with self.context.database.bind_ctx(CORE_MODELS):
             file.delete_instance()
-        self.data_model.removeRow(model_row)
+        self.data_model.removeRow(self.proxy_model.mapToSource(self.proxy_model.index(row, 0)).row())
         self.total_files -= 1
         if self.search_criteria.is_empty():
             self.set_title(f"{self.total_files} files (All)")
