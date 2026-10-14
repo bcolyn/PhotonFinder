@@ -356,35 +356,49 @@ def is_compressible(name: str) -> bool:
     return Importer.is_fits_by_name(name) and not is_compressed(name)
 
 
-def compress_file(src_path: str, ext: str, verify: bool, level: int = 9) -> tuple[str, int]:
+def compress_file(src_path: str, ext: str, verify: bool, level: int = 9,
+                  keep_source: bool = False) -> tuple[str, int]:
     """Compress *src_path* in-place using the compression format identified by *ext*.
 
-    Writes <src_path>+ext, optionally verifies the round-trip byte count,
-    preserves mtime, deletes the original, and returns (dest_path, compressed_size).
-    Raises ValueError on verification failure (compressed file is cleaned up).
+    Writes to a temporary <src_path>+ext+'.part', optionally verifies the round-trip
+    byte count, preserves mtime and only then renames it to <src_path>+ext, so a
+    failure never leaves a partial archive that a rescan would pick up.
+    Deletes the original unless *keep_source* is set, and returns (dest_path, compressed_size).
+    Raises FileExistsError if <src_path>+ext already exists, ValueError on verification failure.
+    The original is untouched whenever an exception is raised.
     """
     open_fn = compressed_exts[ext]
     dest_path = src_path + ext
+    if os.path.exists(dest_path):
+        raise FileExistsError(f"{dest_path} already exists")
+    tmp_path = dest_path + '.part'
     write_kwargs = {'preset': level} if ext == '.xz' else {'compresslevel': level}
 
-    with open(src_path, 'rb') as src, open_fn(dest_path, 'wb', **write_kwargs) as dst:
-        shutil.copyfileobj(src, dst)
+    try:
+        with open(src_path, 'rb') as src, open_fn(tmp_path, 'wb', **write_kwargs) as dst:
+            shutil.copyfileobj(src, dst)
 
-    if verify:
-        original_size = os.path.getsize(src_path)
-        read_back = 0
-        with open_fn(dest_path, 'rb') as f:
-            while chunk := f.read(65536):
-                read_back += len(chunk)
-        if read_back != original_size:
-            os.unlink(dest_path)
-            raise ValueError(
-                f"Verification failed: decompressed {read_back} bytes, "
-                f"expected {original_size}")
+        if verify:
+            original_size = os.path.getsize(src_path)
+            read_back = 0
+            with open_fn(tmp_path, 'rb') as f:
+                while chunk := f.read(65536):
+                    read_back += len(chunk)
+            if read_back != original_size:
+                raise ValueError(
+                    f"Verification failed: decompressed {read_back} bytes, "
+                    f"expected {original_size}")
 
-    shutil.copystat(src_path, dest_path)
+        shutil.copystat(src_path, tmp_path)
+        os.rename(tmp_path, dest_path)  # fails rather than overwrites if dest appeared meanwhile
+    except BaseException:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
+
     new_size = os.path.getsize(dest_path)
-    os.unlink(src_path)
+    if not keep_source:
+        os.unlink(src_path)
     return dest_path, new_size
 
 

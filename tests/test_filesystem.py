@@ -274,6 +274,38 @@ class TestCompressFile:
         assert not os.path.exists(dest_path)  # partial output cleaned up
         assert src.exists()                   # original untouched
 
+    def test_existing_destination_is_not_overwritten(self, tmp_path):
+        src = tmp_path / "test.fits"
+        src.write_bytes(b"\x00" * 512)
+        existing = tmp_path / "test.fits.gz"
+        existing.write_bytes(b"precious")
+
+        with pytest.raises(FileExistsError):
+            compress_file(str(src), ".gz", verify=False)
+
+        assert existing.read_bytes() == b"precious"
+        assert src.exists()
+
+    def test_write_failure_leaves_no_partial_output(self, tmp_path):
+        src = tmp_path / "test.fits"
+        src.write_bytes(b"\x00" * 512)
+
+        with patch("photonfinder.filesystem.shutil.copyfileobj", side_effect=OSError("disk full")):
+            with pytest.raises(OSError, match="disk full"):
+                compress_file(str(src), ".gz", verify=False)
+
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["test.fits"]
+
+    def test_keep_source(self, tmp_path):
+        src = tmp_path / "test.fits"
+        src.write_bytes(b"\x00" * 512)
+
+        dest_path, _ = compress_file(str(src), ".gz", verify=True, keep_source=True)
+
+        assert src.exists()
+        assert os.path.exists(dest_path)
+        assert not os.path.exists(dest_path + ".part")
+
     @pytest.mark.parametrize("level", [1, 9])
     def test_level_affects_output_size(self, tmp_path, level):
         # Compressible data where level makes a measurable difference.
