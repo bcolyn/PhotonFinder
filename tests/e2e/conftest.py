@@ -10,8 +10,10 @@ whole session.
 Every test in this folder is marked ``e2e`` and so excluded from a default run; select
 them with ``pytest -m e2e``.
 """
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
 from photonfinder.core import ApplicationContext, MCP_PORT_FILENAME, user_app_data_dir
 from photonfinder.main import sandbox_settings, default_data_dir
 from photonfinder.ui.MainWindow import MainWindow
+from tests.e2e.synthetic_library import SyntheticLibraries, build_libraries
 
 _E2E_DIR = Path(__file__).parent
 _REGISTRY_KEY = r"Software\AstroFileManager\AstroFileManager"
@@ -175,3 +178,19 @@ def sandbox(tmp_path, qapp, qtbot, boundary) -> Sandbox:
 def app(sandbox) -> MainWindow:
     """A running app on a fresh, empty sandbox."""
     return sandbox.start()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def libraries() -> SyntheticLibraries:
+    """Three library roots of tiny generated FITS/XISF files; see ``synthetic_library``.
+
+    Generated once, before the first e2e test, and removed after the last one, pass or
+    fail. It lives in its own temp folder rather than under ``tmp_path``, which pytest keeps
+    around for the last few runs. Shared by every test, so a test must not rename, delete
+    or mark files bad in it.
+    """
+    base = Path(tempfile.mkdtemp(prefix="photonfinder-e2e-libraries-"))
+    try:
+        yield build_libraries(base)
+    finally:
+        shutil.rmtree(base)
