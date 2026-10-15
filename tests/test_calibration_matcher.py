@@ -51,6 +51,11 @@ class TestDmsToDeg:
     def test_garbage_returns_none(self):
         assert _dms_to_deg("not a coordinate") is None
 
+    def test_numeric(self):
+        assert _dms_to_deg(51.05) == pytest.approx(51.05)
+        assert _dms_to_deg(-34) == pytest.approx(-34.0)
+        assert _dms_to_deg(0.0) == 0.0
+
 
 class TestSessionInfoFromHeader:
     def _make_header(self, **kwargs):
@@ -65,6 +70,13 @@ class TestSessionInfoFromHeader:
         _, lat, lon = _session_info_from_header(hdr)
         assert lat == pytest.approx(51.05)
         assert lon == pytest.approx(3 + 43/60)
+
+    def test_numeric_sitelat_sitelong_parsed(self):
+        # N.I.N.A. writes these as numeric cards, not strings
+        hdr = self._make_header(SITELAT=51.05, SITELONG=3.72)
+        _, lat, lon = _session_info_from_header(hdr)
+        assert lat == pytest.approx(51.05)
+        assert lon == pytest.approx(3.72)
 
     def test_obsgeo_fallback_when_no_sitelat(self):
         hdr = self._make_header(OBSGEO_B="51.05", OBSGEO_L="3.716667")

@@ -21,6 +21,8 @@ def _dms_to_deg(s: Optional[str]) -> Optional[float]:
     Handles decimal degrees, space/colon-separated DMS, d/m/s markers,
     and N/S/E/W sign prefixes. Returns None on any parse failure.
     """
+    if isinstance(s, (int, float)):  # N.I.N.A. writes SITELAT/SITELONG as numbers
+        return float(s)
     if not s:
         return None
     try:
