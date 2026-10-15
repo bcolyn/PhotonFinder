@@ -1,8 +1,10 @@
+import argparse
 import logging
 import os.path
 from logging.handlers import TimedRotatingFileHandler
 import sys
 import sqlite3
+from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths, Qt, QThreadPool
 from PySide6.QtWidgets import QApplication, QStyleFactory
@@ -13,7 +15,11 @@ from photonfinder.ui.MainWindow import MainWindow
 
 LEVEL=logging.INFO
 
-def init_logging(path: str = None):
+DATA_DIR_ENV = "PHOTONFINDER_DATA_DIR"
+SANDBOX_SETTINGS_FILENAME = "settings.ini"
+
+
+def init_logging(path: str = None) -> list[logging.Handler]:
     logger = logging.getLogger()
     logger.setLevel(LEVEL)
 
@@ -32,12 +38,39 @@ def init_logging(path: str = None):
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
+        return [file_handler, console_handler]
+    return [file_handler]
+
+
+def default_data_dir() -> str:
+    return os.path.join(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation), "photonfinder")
+
+
+def parse_args(argv: list[str]) -> tuple[str | None, list[str]]:
+    """Split off our own options; whatever is left (Qt's -style and friends) goes to QApplication.
+
+    ``--data-dir`` (or the PHOTONFINDER_DATA_DIR environment variable) runs a sandboxed
+    instance: database, session, log and settings all live in that folder, nothing touches
+    the user's registry settings or app-data folder, and no MCP server is started -- the
+    user's agents must keep reaching their real library, not a sandbox.
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--data-dir")
+    args, rest = parser.parse_known_args(argv[1:])
+    return args.data_dir or os.environ.get(DATA_DIR_ENV) or None, argv[:1] + rest
+
+
+def sandbox_settings(data_dir: str | Path) -> Settings:
+    return Settings(path=Path(data_dir) / SANDBOX_SETTINGS_FILENAME)
 
 
 def main():
-    app_data_path = os.path.join(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation), "photonfinder")
+    sandbox_dir, qt_argv = parse_args(sys.argv)
+    app_data_path = os.path.abspath(sandbox_dir) if sandbox_dir else default_data_dir()
     os.makedirs(app_data_path, exist_ok=True)
     init_logging(app_data_path)
+    if sandbox_dir:
+        logging.info(f"Running sandboxed in {app_data_path}")
 
     logging.info(f"SQLite library version: %s", sqlite3.sqlite_version)
 
@@ -45,7 +78,7 @@ def main():
         QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
     # Create the Qt application
-    app = QApplication(sys.argv)
+    app = QApplication(qt_argv)
 
     # Log available styles for reference
     available_styles = QStyleFactory.keys()
@@ -64,12 +97,12 @@ def main():
     # Log the maximum thread count
     thread_pool = QThreadPool.globalInstance()
     logging.info(f"Maximum thread count: {thread_pool.maxThreadCount()}")
-    settings = Settings()
+    settings = sandbox_settings(app_data_path) if sandbox_dir else Settings()
 
     context = ApplicationContext.create_in_app_data(app_data_path, settings)
 
     with context:
-        main_window = MainWindow(app, context)
+        main_window = MainWindow(app, context, enable_mcp=not sandbox_dir)
         main_window.show()
 
         # Run the Qt event loop

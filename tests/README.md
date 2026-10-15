@@ -15,6 +15,7 @@ Tests are written with pytest and organised by component.
 | `test_platesolver.py` | Plate-solver helpers |
 | `test_session.py` | Session state persistence |
 | `ui/` | Qt GUI tests (pytest-qt) |
+| `e2e/` | End-to-end tests: the real main window on a sandboxed data folder (`sandbox`/`app` fixtures in `e2e/conftest.py`). Not run by default |
 
 ## Prerequisites
 
@@ -30,6 +31,9 @@ uv run pytest tests/
 
 # Include slow tests
 uv run pytest tests/ -m ""
+
+# End-to-end GUI tests only
+uv run pytest tests/ -m e2e
 
 # Single file
 uv run pytest tests/test_models.py

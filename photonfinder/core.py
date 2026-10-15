@@ -431,8 +431,14 @@ class Settings:
         ("annotation_mag_limit", "annotation_mag_limit", 19.0, float),
     ]
 
-    def __init__(self, organization_name="AstroFileManager", application_name="AstroFileManager"):
-        self.settings = QSettings(organization_name, application_name)
+    def __init__(self, organization_name="AstroFileManager", application_name="AstroFileManager",
+                 path: str | Path | None = None):
+        """Settings live in the registry (HKCU) unless *path* names an INI file to use instead,
+        which keeps a sandboxed instance -- a test, a ``--data-dir`` run -- off the user's own."""
+        if path is not None:
+            self.settings = QSettings(str(path), QSettings.Format.IniFormat)
+        else:
+            self.settings = QSettings(organization_name, application_name)
         self._initialize_defaults()
         self.known_fits_keywords = set()
         stored_keywords = str(self.settings.value("known_fits_keywords", "", str))
