@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter, QPen, QAction, QColor
@@ -27,6 +27,17 @@ def _format_date(value: datetime):
     except Exception as ex:
         logging.exception(f"Error formatting date {ex}", exc_info=ex)
         return None
+
+
+def _utc_to_local(value: datetime) -> datetime:
+    """A naive UTC time, as stored in ``Image.date_obs`` and ``SearchCriteria``, as naive local
+    wall-clock time: what the grid shows and what the user types into a date dialog."""
+    return value.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
+
+
+def _local_to_utc(value: datetime) -> datetime:
+    """The inverse of ``_utc_to_local``: naive local wall-clock time to naive UTC."""
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def _format_ra(ra_deg: float):

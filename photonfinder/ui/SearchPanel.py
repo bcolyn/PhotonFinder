@@ -23,7 +23,7 @@ from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .MetadataReportDialog import MetadataReportDialog
 from .PlateSolveDialog import PlateSolveDialog
 from .ProgressDialog import ProgressDialog
-from .common import _format_ra, _format_dec, _format_date, _format_file_size, _format_timestamp, ensure_header_widths, \
+from .common import _format_ra, _format_dec, _format_date, _utc_to_local, _local_to_utc, _format_file_size, _format_timestamp, ensure_header_widths, \
     ColumnVisibilityController
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
@@ -1385,18 +1385,18 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def add_datetime_filter(self):
         dialog = DateRangeDialog(self.context)
 
+        # The dialog works in local time, like the grid; the criteria are UTC, like date_obs.
         # Check if there's a selected image with a date_obs value
         selected_image = self.get_selected_image()
         if selected_image and selected_image.date_obs is not None:
             # Use the selected image's date_obs as the default
-            utctime = selected_image.date_obs.replace(tzinfo=timezone.utc)
-            localtime = utctime.astimezone(tz=None)
+            localtime = _utc_to_local(selected_image.date_obs)
             dialog.set_start_date(localtime)
             dialog.set_end_date(localtime)
         elif self.search_criteria.start_datetime is not None:
-            dialog.set_start_date(self.search_criteria.start_datetime)
+            dialog.set_start_date(_utc_to_local(self.search_criteria.start_datetime))
             if self.search_criteria.end_datetime is not None:
-                dialog.set_end_date(self.search_criteria.end_datetime)
+                dialog.set_end_date(_utc_to_local(self.search_criteria.end_datetime))
 
         if dialog.exec():
             (start_datetime, end_datetime) = dialog.get_datetime_range()
@@ -1404,8 +1404,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button = FilterButton(self, text, AdvancedFilter.DATETIME)
             filter_button.on_remove_filter.connect(self.reset_date_criteria)
             self.add_filter_button_control(filter_button)
-            self.search_criteria.start_datetime = start_datetime
-            self.search_criteria.end_datetime = end_datetime
+            self.search_criteria.start_datetime = _local_to_utc(start_datetime)
+            self.search_criteria.end_datetime = _local_to_utc(end_datetime)
             self.update_search_criteria()
 
     def export_data(self):
@@ -1549,7 +1549,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.add_filter_button_control(filter_button)
 
         if criteria.start_datetime and criteria.end_datetime:
-            text = f"Date {_format_date(criteria.start_datetime)} - {_format_date(criteria.end_datetime)}"
+            text = f"Date {_format_date(_utc_to_local(criteria.start_datetime))} - "                    f"{_format_date(_utc_to_local(criteria.end_datetime))}"
             filter_button = FilterButton(self, text, AdvancedFilter.DATETIME)
             filter_button.on_remove_filter.connect(self.reset_date_criteria)
             self.add_filter_button_control(filter_button)

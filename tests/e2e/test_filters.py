@@ -124,11 +124,10 @@ def test_coordinates_typed_in(sandbox, app, modals, libraries, grid):
     assert shown(grid) == matching(libraries, lambda f: f.object_name == "NGC 7000")
 
 
-@pytest.mark.xfail(datetime(2026, 10, 14).astimezone().utcoffset() != timedelta(0), strict=True,
-                   reason="known bug: the date filter compares the dialog's local times with UTC date_obs")
 def test_date_range_from_the_selected_row(sandbox, app, modals, libraries, grid):
-    """The grid shows observation times in the computer's local time, and the date dialog
-    is prefilled with the selected row's time in that same local time."""
+    """The grid and the date dialog show the computer's local time, while date_obs and the
+    search criteria are UTC. Only a computer whose clock is not on UTC can tell the two
+    apart, so on a UTC machine (like the CI runner) this test proves less."""
     first_ha = min((f for f in libraries.files.values()
                     if f.object_name == "NGC 7000" and f.filter == "Ha" and f.camera != OSC),
                    key=lambda f: f.date_obs)
@@ -145,7 +144,25 @@ def test_date_range_from_the_selected_row(sandbox, app, modals, libraries, grid)
 
     start_utc = first_ha.date_obs - timedelta(minutes=1)
     end_utc = first_ha.date_obs + timedelta(minutes=30)
-    assert shown(grid) == matching(libraries, lambda f: start_utc <= f.date_obs <= end_utc)
+    expected = matching(libraries, lambda f: start_utc <= f.date_obs <= end_utc)
+    assert shown(grid) == expected
+    label = filter_button(grid, AdvancedFilter.DATETIME).text()
+    assert label == f"Date {local - timedelta(minutes=1):%Y-%m-%d %H:%M:%S} - "                     f"{local + timedelta(minutes=30):%Y-%m-%d %H:%M:%S}"
+
+    def unchanged(dialog: DateRangeDialog):
+        start, end = dialog.get_datetime_range()  # reopens in local time, not UTC
+        assert abs(start - (local - timedelta(minutes=1))) < timedelta(seconds=1), start
+        assert abs(end - (local + timedelta(minutes=30))) < timedelta(seconds=1), end
+
+    with modals.handle(DateRangeDialog, unchanged):
+        filter_button(grid, AdvancedFilter.DATETIME).click()
+    sandbox.wait_idle()
+    assert shown(grid) == expected
+
+    app = sandbox.restart()  # the filter comes back from the session file
+    grid = sandbox.grid(app.get_search_panels()[-1])
+    assert filter_button(grid, AdvancedFilter.DATETIME).text() == label
+    assert shown(grid) == expected
 
 
 def test_plate_solved_and_unsolved(sandbox, app, modals, boundary, libraries, grid):
