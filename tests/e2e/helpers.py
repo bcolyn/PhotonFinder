@@ -1,13 +1,19 @@
-"""Helpers for driving the running app from an e2e test: modal dialogs and the search grid."""
+"""Helpers for driving the running app from an e2e test: modal dialogs, the search grid and
+library setup."""
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
+from pathlib import Path
 from typing import Callable, Iterator
 
 from PySide6.QtCore import Qt, QTimer
 from pytestqt.exceptions import TimeoutError
-from PySide6.QtWidgets import QApplication, QDialog, QWidget
+from PySide6.QtWidgets import QApplication, QDialog, QWidget, QMessageBox
 
+from photonfinder.ui.LibraryRootDialog import LibraryRootDialog
+from photonfinder.ui.LibraryRootEditDialog import LibraryRootEditDialog
 from photonfinder.ui.SearchPanel import SearchPanel
+
+YES, NO = QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No
 
 _POLL_MS = 50
 
@@ -162,8 +168,56 @@ class Grid:
         col = self.headers().index(name)
         return [self.model.index(row, col).data() for row in range(self.model.rowCount())]
 
+    def select(self, column: str, value: str):
+        """Select the first row showing ``value`` in ``column``, as a click on it would."""
+        values = self.column(column)
+        assert value in values, f"no row with {column} = {value!r}"
+        self.panel.dataView.selectRow(values.index(value))
+
     def rows(self) -> list[dict[str, str]]:
         self.load_all()
         headers = self.headers()
         return [{h: self.model.index(row, col).data() for col, h in enumerate(headers)}
                 for row in range(self.model.rowCount())]
+
+
+def fill_in(name: str, path: Path, description: str = ""):
+    def fill(edit: LibraryRootEditDialog):
+        edit.nameLineEdit.setText(name)
+        edit.pathLineEdit.setText(str(path))
+        edit.descriptionTextEdit.setPlainText(description)
+    return fill
+
+
+def table_names(dialog: LibraryRootDialog) -> list[str]:
+    return [dialog.libraryTable.item(r, 0).text() for r in range(dialog.libraryTable.rowCount())]
+
+
+def add_libraries(sandbox, modals, boundary, roots: dict[str, Path], scan: bool):
+    """Add ``roots`` in one Manage Libraries session, then answer the scan question."""
+    boundary.answer("question", YES if scan else NO)
+
+    def add_all(dialog: LibraryRootDialog):
+        for _ in roots:
+            dialog.addButton.click()
+        assert table_names(dialog) == sorted(roots)
+
+    with ExitStack() as stack:
+        stack.enter_context(modals.handle(LibraryRootDialog, add_all))
+        for name, path in roots.items():
+            stack.enter_context(modals.handle(LibraryRootEditDialog, fill_in(name, path)))
+        sandbox.window.action_Manage_Libraries.trigger()
+    wait_for_scan(sandbox)
+
+
+def wait_for_scan(sandbox):
+    sandbox.qtbot.waitUntil(lambda: sandbox.window.scan_worker is None, timeout=30_000)
+    sandbox.wait_idle()  # the search started when the scan finished
+
+
+def choose(sandbox, combo, text: str):
+    index = combo.findText(text)
+    assert index >= 0, f"{text!r} not offered in {combo.objectName()}: " \
+                       f"{[combo.itemText(i) for i in range(combo.count())]}"
+    combo.setCurrentIndex(index)
+    sandbox.wait_idle()

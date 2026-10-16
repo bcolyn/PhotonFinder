@@ -13,7 +13,8 @@ tests. Within a series the header values vary the way real subs do (DATE-OBS adv
 CCD-TEMP wobbles around SET-TEMP), while camera, gain, offset, binning, SET-TEMP, exposure
 and filter stay exact, so frames group up as they would in a real library. Formats and
 compression vary (plain, .gz, .bz2, .xz, XISF), and a few files sit under a ``bad*`` name
-or folder, which a scan skips.
+or folder, which a scan skips. The two cameras write different frame sizes, and one series
+carries a plate solution in its header, as if solved in the capture software.
 
 Everything is generated from a fixed seed, so the same call yields the same files.
 """
@@ -39,7 +40,9 @@ SWCREATE = "N.I.N.A. 3.1.2.9001"
 
 MONO = "ZWO ASI2600MM Pro"
 OSC = "ZWO ASI294MC Pro"
-CAMERA_SETTINGS = {MONO: dict(gain=100, offset=50), OSC: dict(gain=120, offset=30)}
+CAMERA_SETTINGS = {MONO: dict(gain=100, offset=50, width=32, height=24),
+                   OSC: dict(gain=120, offset=30, width=28, height=20)}
+PIXEL_SIZE = 3.76  # um, both cameras
 TELESCOPES = {MONO: ("Esprit 100ED", 550), OSC: ("RedCat 51", 250)}
 TARGETS = {  # RA, Dec in degrees
     "NGC 7000": (314.75, 44.53),
@@ -71,6 +74,7 @@ class Frame:
     width: int = 32
     height: int = 24
     sequence: int = 1
+    solved: bool = False  # header carries a plate solution centred on coord_ra/coord_dec
 
     @property
     def date_loc(self) -> datetime:
@@ -117,8 +121,8 @@ def nina_header(f: Frame) -> fits.Header:
     h["YBINNING"] = (f.binning, "Y axis binning factor")
     h["GAIN"] = (f.gain, "Sensor gain")
     h["OFFSET"] = (f.offset, "Sensor gain offset")
-    h["XPIXSZ"] = (3.76, "[um] Pixel X axis size")
-    h["YPIXSZ"] = (3.76, "[um] Pixel Y axis size")
+    h["XPIXSZ"] = (PIXEL_SIZE, "[um] Pixel X axis size")
+    h["YPIXSZ"] = (PIXEL_SIZE, "[um] Pixel Y axis size")
     h["INSTRUME"] = (f.camera, "Imaging instrument name")
     h["SET-TEMP"] = (f.set_temp, "[degC] CCD temperature setpoint")
     h["CCD-TEMP"] = (f.ccd_temp, "[degC] CCD temperature")
@@ -140,6 +144,12 @@ def nina_header(f: Frame) -> fits.Header:
         h["RA"] = (f.coord_ra, "[deg] RA of telescope")
         h["DEC"] = (f.coord_dec, "[deg] Declination of telescope")
     h["EQUINOX"] = (2000.0, "Equinox of celestial coordinate system")
+    if f.solved:
+        scale = PIXEL_SIZE / TELESCOPES[f.camera][1] * 206.265 / 3600  # deg/px
+        h["CTYPE1"], h["CTYPE2"] = "RA---TAN", "DEC--TAN"
+        h["CRVAL1"], h["CRVAL2"] = f.coord_ra, f.coord_dec
+        h["CRPIX1"], h["CRPIX2"] = (f.width + 1) / 2, (f.height + 1) / 2
+        h["CD1_1"], h["CD1_2"], h["CD2_1"], h["CD2_2"] = -scale, 0.0, 0.0, scale
     h["SWCREATE"] = (SWCREATE, "Software that created this file")
     return h
 
@@ -245,7 +255,7 @@ def build_libraries(base: Path, seed: int = 20261015) -> SyntheticLibraries:
     night1 = rig / MONO / "2026-10-14"
     # crosses local midnight: every frame still belongs to the 2026-10-14 session
     add(night1 / "LIGHT" / "NGC 7000", XZ, 6, "2026-10-14T23:30:00", image_type="LIGHT", camera=MONO,
-        exposure=300.0, set_temp=-10.0, filter="Ha", object_name="NGC 7000")
+        exposure=300.0, set_temp=-10.0, filter="Ha", object_name="NGC 7000", solved=True)
     add(night1 / "LIGHT" / "NGC 7000", XZ, 6, "2026-10-15T00:05:00", image_type="LIGHT", camera=MONO,
         exposure=300.0, set_temp=-10.0, filter="OIII", object_name="NGC 7000")
     # flats shot the next morning, still the 2026-10-14 session

@@ -7,56 +7,17 @@ from PySide6.QtWidgets import QMessageBox
 
 from photonfinder.ui.LibraryRootDialog import LibraryRootDialog
 from photonfinder.ui.LibraryRootEditDialog import LibraryRootEditDialog
-
-YES, NO = QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No
+from tests.e2e.helpers import YES, NO, add_libraries, fill_in, table_names, wait_for_scan, choose
 
 
 def names_under(paths, root: Path) -> list[str]:
     return sorted(p.name for p in paths if root in p.parents)
 
 
-def fill_in(name: str, path: Path, description: str = ""):
-    def fill(edit: LibraryRootEditDialog):
-        edit.nameLineEdit.setText(name)
-        edit.pathLineEdit.setText(str(path))
-        edit.descriptionTextEdit.setPlainText(description)
-    return fill
-
-
 def select_root(dialog: LibraryRootDialog, name: str):
     rows = [r for r in range(dialog.libraryTable.rowCount()) if dialog.libraryTable.item(r, 0).text() == name]
     assert rows, f"no library root named {name!r} in the dialog"
     dialog.libraryTable.selectRow(rows[0])
-
-
-def table_names(dialog: LibraryRootDialog) -> list[str]:
-    return [dialog.libraryTable.item(r, 0).text() for r in range(dialog.libraryTable.rowCount())]
-
-
-def add_libraries(sandbox, modals, boundary, roots: dict[str, Path], scan: bool):
-    """Add ``roots`` in one Manage Libraries session, then answer the scan question."""
-    boundary.answer("question", YES if scan else NO)
-    edits = [modals.handle(LibraryRootEditDialog, fill_in(name, path)) for name, path in roots.items()]
-
-    def add_all(dialog: LibraryRootDialog):
-        for _ in roots:
-            dialog.addButton.click()
-        assert table_names(dialog) == sorted(roots)
-
-    with modals.handle(LibraryRootDialog, add_all):
-        for edit in edits:
-            edit.__enter__()
-        try:
-            sandbox.window.action_Manage_Libraries.trigger()
-        finally:
-            for edit in reversed(edits):
-                edit.__exit__(None, None, None)
-    wait_for_scan(sandbox)
-
-
-def wait_for_scan(sandbox):
-    sandbox.qtbot.waitUntil(lambda: sandbox.window.scan_worker is None, timeout=30_000)
-    sandbox.wait_idle()  # the search started when the scan finished
 
 
 def tree_roots(panel) -> list[tuple[str, str]]:
@@ -66,14 +27,6 @@ def tree_roots(panel) -> list[tuple[str, str]]:
     assert all_libraries.data() == "All libraries"
     return [(model.index(r, 0, all_libraries).data(), model.index(r, 0, all_libraries).data(Qt.ItemDataRole.ToolTipRole))
             for r in range(model.rowCount(all_libraries))]
-
-
-def choose(sandbox, combo, text: str):
-    index = combo.findText(text)
-    assert index >= 0, f"{text!r} not offered in {combo.objectName()}: " \
-                       f"{[combo.itemText(i) for i in range(combo.count())]}"
-    combo.setCurrentIndex(index)
-    sandbox.wait_idle()
 
 
 def test_add_library_by_browsing_and_scan_it(sandbox, app, modals, boundary, libraries):
