@@ -24,6 +24,8 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox, QInputDialog
 from photonfinder.core import ApplicationContext, MCP_PORT_FILENAME, user_app_data_dir
 from photonfinder.main import sandbox_settings, default_data_dir
 from photonfinder.ui.MainWindow import MainWindow
+from photonfinder.ui.SearchPanel import SearchPanel
+from tests.e2e.helpers import Grid, Modals
 from tests.e2e.synthetic_library import SyntheticLibraries, build_libraries
 
 _E2E_DIR = Path(__file__).parent
@@ -143,9 +145,18 @@ class Sandbox:
         return self.window
 
     def wait_idle(self):
-        """Let background loaders finish and deliver their results to the UI."""
-        QThreadPool.globalInstance().waitForDone()
-        self.qapp.processEvents()
+        """Let background loaders finish and deliver their results to the UI, including
+        loaders started by handling those results."""
+        pool = QThreadPool.globalInstance()
+        while True:
+            pool.waitForDone()
+            self.qapp.processEvents()
+            if pool.activeThreadCount() == 0:
+                return
+
+    def grid(self, panel: SearchPanel | None = None) -> Grid:
+        """The result grid of ``panel``, by default the current tab's."""
+        return Grid(panel or self.window.get_current_search_panel(), self.wait_idle)
 
     def stop(self):
         """Close the window the way the user would, then the database."""
@@ -166,7 +177,17 @@ class Sandbox:
 
 
 @pytest.fixture
-def sandbox(tmp_path, qapp, qtbot, boundary) -> Sandbox:
+def modals(qtbot) -> Modals:
+    """Handles ``exec()`` dialogs with ``modals.handle(...)``; any other modal is closed by
+    a watchdog after a few seconds, failing the test instead of hanging it."""
+    m = Modals(qtbot)
+    yield m
+    m.stop()
+    assert not m.unhandled, f"Modal dialogs nobody handled were closed by the watchdog: {m.unhandled}"
+
+
+@pytest.fixture
+def sandbox(tmp_path, qapp, qtbot, boundary, modals) -> Sandbox:
     data_dir = tmp_path / "appdata"
     data_dir.mkdir()
     sb = Sandbox(data_dir, qapp, qtbot)
