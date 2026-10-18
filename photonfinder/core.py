@@ -134,19 +134,19 @@ def register_udfs(db: SqliteDatabase):
         return retval
 
 
-class SolveLock:
-    """Non-reentrant mutex guarding plate-solve batches, held across processes.
+class DatabaseLock:
+    """Non-reentrant mutex guarding one kind of batch job on a library, held across processes.
 
-    Within one process the GUI dialog and the MCP server share a thread lock. The file
+    Within one process callers (e.g. the GUI and the MCP server) share a thread lock. The file
     lock covers what that cannot: a second copy of PhotonFinder opened on the same
     library, whether started by the user or by the MCP stub when it could not tell the
-    first one was alive. Two solvers writing one file is worth preventing either way.
-    This combines:
+    first one was alive. Each kind of job gets its own *suffix*, so plate solving and
+    library writes (scans, compression) are guarded independently. This combines:
 
     * ``threading.Lock`` -- serialises threads *within* one process. Needed on its own
       because repeated OS lock calls on the same file descriptor from a single process do
       not behave as a mutex.
-    * OS advisory file lock on ``<database_path>.solve.lock`` -- serialises *between*
+    * OS advisory file lock on ``<database_path><suffix>`` -- serialises *between*
       processes. The kernel drops it when the holding process exits, so a crash cannot
       leave a stale lock behind.
 
@@ -158,7 +158,8 @@ class SolveLock:
     in-memory database there is no file to lock and the thread lock alone is used.
     """
 
-    def __init__(self, database_path: str | Path) -> None:
+    def __init__(self, database_path: str | Path, suffix: str = '.solve.lock') -> None:
+        self._suffix = suffix
         self._thread_lock = threading.Lock()
         self._path: str | None = None
         self._fd: int | None = None
@@ -167,11 +168,11 @@ class SolveLock:
     def set_database_path(self, database_path: str | Path) -> None:
         """Re-point the lock file after the context switches databases."""
         path = str(database_path)
-        self._path = None if path == ':memory:' else path + '.solve.lock'
+        self._path = None if path == ':memory:' else path + self._suffix
 
     def acquire(self, blocking: bool = False) -> bool:
         if blocking:
-            raise ValueError("SolveLock only supports non-blocking acquisition")
+            raise ValueError("DatabaseLock only supports non-blocking acquisition")
         if not self._thread_lock.acquire(blocking=False):
             return False
         if self._path is None:
@@ -182,8 +183,8 @@ class SolveLock:
                 return False
         except Exception:
             # A lock file we cannot create or lock (read-only media, exotic filesystem)
-            # must not make plate solving unavailable; fall back to in-process guarding.
-            logging.warning("Could not take the cross-process solve lock at %s; "
+            # must not make the job unavailable; fall back to in-process guarding.
+            logging.warning("Could not take the cross-process lock at %s; "
                             "falling back to in-process locking only", self._path,
                             exc_info=True)
         return True
@@ -221,7 +222,7 @@ class SolveLock:
                 import fcntl
                 fcntl.flock(fd, fcntl.LOCK_UN)
         except OSError:
-            logging.warning("Failed to release the solve lock file", exc_info=True)
+            logging.warning("Failed to release the lock file %s", self._path, exc_info=True)
         finally:
             os.close(fd)
 
@@ -249,7 +250,10 @@ class ApplicationContext:
         self.signal_bus = SignalBus()
         # Prevents overlapping plate-solve batches: between the GUI dialog and the MCP
         # server in this process, and between two copies of the application on one library.
-        self.solve_lock = SolveLock(database_path)
+        self.solve_lock = DatabaseLock(database_path, '.solve.lock')
+        # Single writer for batch jobs that change library files and their rows (library
+        # scans, Compress Files); readers never take it.
+        self.library_write_lock = DatabaseLock(database_path, '.write.lock')
 
     def __enter__(self):
         self.open_database()
@@ -341,6 +345,7 @@ class ApplicationContext:
         self.close_database()
         self.database_path = database_path
         self.solve_lock.set_database_path(database_path)
+        self.library_write_lock.set_database_path(database_path)
         self.open_database()
 
     def get_known_fits_keywords(self) -> list[str]:

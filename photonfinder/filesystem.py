@@ -514,8 +514,10 @@ class Importer:
             current_dir: str = dir_queue.pop()
             self.status.update_status(f"Scanning directory: {root.name}/{current_dir}", bulk=True)
             filtered_files = set()
+            entries = list(root_fs.scandir(current_dir, namespaces=['details']))
+            names_on_disk = {e.name for e in entries if e.is_file}
             entry: Info
-            for entry in root_fs.scandir(current_dir, namespaces=['details']):
+            for entry in entries:
                 if entry.is_dir:
                     if self._dir_filter(entry):
                         dir_path = fs.path.join(current_dir, entry.name)
@@ -526,7 +528,7 @@ class Importer:
                                                   bulk=False)
                 if entry.is_file:
                     if self._file_filter(entry):
-                        name = self._import_file(entry, current_dir, root, result)
+                        name = self._import_file(entry, current_dir, root, result, names_on_disk)
                         filtered_files.add(name)
                     else:
                         # only log this if it was a file that the user could expect us to handle anyway
@@ -551,7 +553,10 @@ class Importer:
 
         return result
 
-    def _import_file(self, file: Info, rel_path, root, changelist) -> str:
+    def _import_file(self, file: Info, rel_path, root, changelist,
+                     names_on_disk: typing.Collection[str]) -> str:
+        """Record *file* in *changelist*. *names_on_disk* are the names of all files in its
+        directory, used to tell a recompressed file from a compressed copy beside it."""
         log(DEBUG, "[root %s] record file stats: %s/%s", root.name, rel_path, file.name)
 
         rel_path = norm_db_path(rel_path)
@@ -563,12 +568,12 @@ class Importer:
             (File.root == root) & (File.path == rel_path) & (File.name.in_(possible_file_names, ))))
 
         results = list(query.execute())
-        db_file = None
-        if len(results) == 1:
-            db_file = results[0]
-        elif len(results) > 1:
-            exact_match = list(filter(lambda x: x.name == file.name, results))
-            db_file = (exact_match + results)[0]
+        db_file = next((r for r in results if r.name == file.name), None)
+        if db_file is None:
+            # A row under another compressed variant of this name is this file renamed by
+            # (de)compression -- unless that other copy is still on disk, in which case the
+            # two are separate files.
+            db_file = next((r for r in results if r.name not in names_on_disk), None)
 
         if db_file is None:
             model = File(name=file.name, path=rel_path, root=root, size=file.size, mtime_millis=mtime_millis)
@@ -602,7 +607,8 @@ class Importer:
                 changes.merge(root_changes)
             elif file_info.is_file:
                 rel_path_parent = str(Path(rel_path).parent)
-                self._import_file(file_info, rel_path_parent, root, changes)
+                names_on_disk = {e.name for e in root_fs.scandir(rel_path_parent) if e.is_file}
+                self._import_file(file_info, rel_path_parent, root, changes, names_on_disk)
             else:
                 logging.error(f"Unknow type {file} of type {file_info.type}");
                 self.status.update_status(f"Unknow type {file} of type {file_info.type}")

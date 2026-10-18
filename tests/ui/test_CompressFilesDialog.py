@@ -78,3 +78,42 @@ def test_dialog_does_not_offer_upper_case_compressed_files(qtbot, context, tmp_p
 
     offered = [dialog.file_list.item(i).text() for i in range(dialog.file_list.count())]
     assert offered == ["Main/IMG.FITS"]
+
+
+@pytest.fixture
+def file_context(tmp_path):
+    """A context on a database file: the compression worker's threads can't see :memory:."""
+    from photonfinder.core import ApplicationContext, Settings, StatusReporter
+    ctx = ApplicationContext(str(tmp_path / "library.db"), Settings(path=tmp_path / "settings.ini"))
+    ctx.set_status_reporter(StatusReporter())
+    with ctx:
+        yield ctx
+
+
+def test_compression_does_not_start_while_a_scan_holds_the_library(qtbot, file_context, tmp_path, monkeypatch):
+    """Ticket 28: one library writer at a time. Start is refused while a scan holds the write
+    lock, and a finished compression run releases it."""
+    from photonfinder.ui import CompressFilesDialog as dialog_module
+    context = file_context
+    root = LibraryRoot.create(name="Main", path=str(tmp_path).replace("\\", "/") + "/")
+    src = tmp_path / "light.fits"
+    src.write_bytes(b"SIMPLE  =                    T" + b"\x00" * 2000)
+    file = File.create(root=root, path="", name="light.fits", size=src.stat().st_size, mtime_millis=1)
+    shown = []
+    monkeypatch.setattr(dialog_module.QMessageBox, "information", lambda *args: shown.append(args[1]))
+    dialog = dialog_module.CompressFilesDialog(context, files=[file], search_criteria=None)
+    qtbot.addWidget(dialog)
+
+    assert context.library_write_lock.acquire(blocking=False)  # a scan is running
+    dialog.start_button.click()
+    assert shown == ["Library Busy"]
+    assert sorted(p.name for p in tmp_path.glob("light.fits*")) == ["light.fits"]
+    context.library_write_lock.release()
+
+    with qtbot.waitSignal(dialog.compression_complete, timeout=10_000):
+        dialog.start_button.click()
+    archive_name = File.get_by_id(file.rowid).name
+    assert archive_name.startswith("light.fits.") and (tmp_path / archive_name).exists()
+    assert not src.exists()
+    assert context.library_write_lock.acquire(blocking=False)  # released when compression finished
+    context.library_write_lock.release()

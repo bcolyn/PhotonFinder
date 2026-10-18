@@ -163,3 +163,28 @@ def test_rescan_picks_up_added_removed_and_bad_marked_files(sandbox, app, modals
     # the copy has the same name as its original, in another folder
     expected = sorted([*(before - {m27[0].name, m27[1].name}), m27[2].name])
     assert sorted(sandbox.grid().column("File name")) == expected
+
+
+def test_scan_does_not_start_while_compression_holds_the_library(sandbox, app, modals, boundary, libraries):
+    """Ticket 28: one library writer at a time. Another window compressing this library holds
+    its write lock, so a scan is refused until it is released."""
+    from photonfinder.core import DatabaseLock
+    root = libraries.roots["simple"]
+    add_libraries(sandbox, modals, boundary, {"simple": root}, scan=False)
+
+    other_window = DatabaseLock(sandbox.database_path, ".write.lock")
+    assert other_window.acquire(blocking=False)
+    try:
+        app.action_Scan_Libraries.trigger()
+        assert app.scan_worker is None
+        sandbox.wait_idle()
+        assert sandbox.grid().row_count() == 0
+    finally:
+        other_window.release()
+
+    app.action_Scan_Libraries.trigger()
+    wait_for_scan(sandbox)
+    assert sorted(sandbox.grid().column("File name")) == names_under(libraries.files, root)
+    # the finished scan released the lock
+    assert other_window.acquire(blocking=False)
+    other_window.release()

@@ -157,6 +157,48 @@ class TestImporter:
         change_list.apply_all()
         assert File.get_by_id(file.rowid).name == "image06.fits.GZ"
 
+    @pytest.mark.parametrize("same_mtime", [True, False])
+    def test_compressed_copy_beside_original_is_a_separate_file(self, filesystem, database, app_context,
+                                                                same_mtime):
+        """Ticket 28: x.fits and x.fits.xz both on disk are two files whose names stay put."""
+        self.initial_import(app_context)
+        original = File.select().where(File.name == "image06.fits").get()
+        self._attach_derived_rows(original)
+        src = "test/2021-12-26/Darks/image06.fits"
+        filesystem.writebytes(src + ".xz", b"XZ")
+        if same_mtime:
+            mtime = filesystem.getinfo(src, namespaces=["details"]).modified
+            filesystem.setinfo(src + ".xz", {"details": {"modified": mtime.timestamp()}})
+
+        for _ in range(3):
+            change_list = self.importer.import_files_from(filesystem, self.root)
+            change_list.apply_all()
+
+        names = sorted(f.name for f in File.select().where(File.name.startswith("image06.fits")))
+        assert names == ["image06.fits", "image06.fits.xz"]
+        assert File.get_by_id(original.rowid).name == "image06.fits"
+        assert self._derived_row_counts(original) == [1, 1, 1, 1]
+
+        change_list = self.importer.import_files_from(filesystem, self.root)
+        assert (change_list.new_files, change_list.changed_files, change_list.recompressed_files,
+                change_list.removed_files) == ([], [], [], [])
+
+    def test_deleting_one_copy_removes_only_its_row(self, filesystem, database, app_context):
+        self.initial_import(app_context)
+        original = File.select().where(File.name == "image06.fits").get()
+        src = "test/2021-12-26/Darks/image06.fits"
+        filesystem.writebytes(src + ".xz", b"XZ")
+        self.importer.import_files_from(filesystem, self.root).apply_all()
+        archive = File.select().where(File.name == "image06.fits.xz").get()
+
+        filesystem.remove(src)
+        change_list = self.importer.import_files_from(filesystem, self.root)
+        assert [f.rowid for f in change_list.removed_files] == [original.rowid]
+        change_list.apply_all()
+
+        assert File.get_or_none(File.rowid == original.rowid) is None
+        assert File.get_by_id(archive.rowid).name == "image06.fits.xz"
+
     def test_changed_file_drops_derived_data(self, filesystem, database, app_context):
         self.initial_import(app_context)
         file = File.select().where(File.name == "image06.fits").get()

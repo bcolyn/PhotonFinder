@@ -182,10 +182,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if self.scan_worker is not None:
                 logging.warning("Filesystem Scanner is busy, aborting.")
                 return
-
-            self.scan_worker = LibraryScanWorker(self.context, file_paths)
-            self.scan_worker.finished.connect(self._scan_finished)
-            self.scan_worker.start()
+            self._start_scan(lambda: LibraryScanWorker(self.context, file_paths))
         else:
             event.ignore()
 
@@ -365,17 +362,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             elif isinstance(tree_node, LibraryRootNode):
                 roots.append(tree_node.library_root)
 
-        # Create a worker thread
-        self.scan_worker = LibraryScanWorker(self.context, roots=roots)
+        self._start_scan(lambda: LibraryScanWorker(self.context, roots=roots))
 
-        # Connect signals
+    def _start_scan(self, create_worker) -> bool:
+        """Start a library scan unless another library writer (Compress Files, here or in
+        another PhotonFinder window) holds the write lock. The lock is held until the scan
+        finishes."""
+        if not self.context.library_write_lock.acquire(blocking=False):
+            self.context.status_reporter.update_status(
+                "Library scan not started: compression is running on this library.")
+            return False
+        try:
+            self.scan_worker = create_worker()
+        except Exception:
+            self.context.library_write_lock.release()
+            raise
         self.scan_worker.finished.connect(self._scan_finished)
-
-        # Start the worker thread
         self.scan_worker.start()
+        return True
 
     def _scan_finished(self):
         """Called when the scan is finished."""
+        self.context.library_write_lock.release()
         self.context.status_reporter.update_status("Library scan complete.")
 
         # Clean up the worker thread

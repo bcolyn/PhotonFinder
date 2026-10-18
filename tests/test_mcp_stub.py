@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from photonfinder.core import SolveLock, mcp_port_file, user_app_data_dir
+from photonfinder.core import DatabaseLock, mcp_port_file, user_app_data_dir
 from photonfinder import mcp_stub
 
 # Captured before the autouse fixture redirects it, so the drift check below compares the
@@ -652,7 +652,7 @@ def test_controller_falls_back_when_the_requested_port_is_taken(monkeypatch, tmp
 
 def test_solve_lock_is_held_against_another_process(tmp_path):
     db = tmp_path / "library.db"
-    first, second = SolveLock(db), SolveLock(db)
+    first, second = DatabaseLock(db), DatabaseLock(db)
 
     assert first.acquire(blocking=False)
     try:
@@ -665,7 +665,7 @@ def test_solve_lock_is_held_against_another_process(tmp_path):
 
 
 def test_solve_lock_without_a_database_file():
-    lock = SolveLock(":memory:")
+    lock = DatabaseLock(":memory:")
     assert lock.acquire(blocking=False)
     assert not lock.acquire(blocking=False)
     lock.release()
@@ -675,12 +675,25 @@ def test_solve_lock_without_a_database_file():
 
 def test_solve_lock_follows_a_database_switch(tmp_path):
     first, second = tmp_path / "first.db", tmp_path / "second.db"
-    lock = SolveLock(first)
+    lock = DatabaseLock(first)
     lock.set_database_path(second)
 
     assert lock.acquire(blocking=False)
     try:
-        assert SolveLock(first).acquire(blocking=False)
-        assert not SolveLock(second).acquire(blocking=False)
+        assert DatabaseLock(first).acquire(blocking=False)
+        assert not DatabaseLock(second).acquire(blocking=False)
     finally:
         lock.release()
+
+
+def test_solve_and_library_write_locks_are_independent(tmp_path):
+    db = tmp_path / "library.db"
+    solve, write = DatabaseLock(db, ".solve.lock"), DatabaseLock(db, ".write.lock")
+
+    assert solve.acquire(blocking=False)
+    try:
+        assert write.acquire(blocking=False)
+        assert not DatabaseLock(db, ".write.lock").acquire(blocking=False)
+        write.release()
+    finally:
+        solve.release()

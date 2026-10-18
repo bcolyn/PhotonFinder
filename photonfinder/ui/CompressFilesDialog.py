@@ -115,6 +115,7 @@ class CompressFilesDialog(QDialog, Ui_CompressFilesDialog):
         self.file_list.installEventFilter(self)
 
         self._running = False
+        self._holds_write_lock = False
         self.progress_group.setVisible(False)
         self.start_button.clicked.connect(self._start)
         self.close_button.clicked.connect(self._on_close_clicked)
@@ -158,6 +159,14 @@ class CompressFilesDialog(QDialog, Ui_CompressFilesDialog):
     # ------------------------------------------------------------------
 
     def _start(self):
+        # One library writer at a time: a scan running alongside would see both the archive
+        # and the original and register them as two files.
+        if not self.context.library_write_lock.acquire(blocking=False):
+            QMessageBox.information(self, "Library Busy",
+                                    "A library scan is running (here or in another PhotonFinder window). "
+                                    "Start compression again once it has finished.")
+            return
+        self._holds_write_lock = True
         files = [self.file_list.item(i).data(Qt.ItemDataRole.UserRole)
                  for i in range(self.file_list.count())]
         ext         = COMPRESSION_ALGORITHMS[self.algorithm_combo.currentText()]
@@ -179,6 +188,9 @@ class CompressFilesDialog(QDialog, Ui_CompressFilesDialog):
 
     def _on_finished(self):
         self._running = False
+        if self._holds_write_lock:
+            self._holds_write_lock = False
+            self.context.library_write_lock.release()
         self.close_button.setText("Close")
         self.compression_complete.emit()
 
