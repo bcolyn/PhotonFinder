@@ -563,22 +563,24 @@ class Image(Model):
                 logging.error(f"Error applying coordinates filter: {str(e)}")
 
         if criteria.header_text:
-            query = query.join_from(File, FitsHeader, JOIN.LEFT_OUTER)
             try:
                 if '=' in criteria.header_text:
                     key, value = criteria.header_text.split('=')
-                    conditions.append(
-                        fn.decompress_header_value(FitsHeader.header, key.strip()) == float(value.strip()))
+                    header_condition = fn.decompress_header_value(FitsHeader.header, key.strip()) == float(value.strip())
                 elif '<' in criteria.header_text:
                     key, value = criteria.header_text.split('<')
-                    conditions.append(fn.decompress_header_value(FitsHeader.header, key.strip()) < float(value.strip()))
+                    header_condition = fn.decompress_header_value(FitsHeader.header, key.strip()) < float(value.strip())
                 elif '>' in criteria.header_text:
                     key, value = criteria.header_text.split('>')
-                    conditions.append(fn.decompress_header_value(FitsHeader.header, key.strip()) > float(value.strip()))
+                    header_condition = fn.decompress_header_value(FitsHeader.header, key.strip()) > float(value.strip())
                 else:
-                    conditions.append(fn.decompress(FitsHeader.header).contains(criteria.header_text))
+                    header_condition = fn.decompress(FitsHeader.header).contains(criteria.header_text)
             except ValueError:
-                conditions.append(fn.decompress(FitsHeader.header).contains(criteria.header_text))
+                header_condition = fn.decompress(FitsHeader.header).contains(criteria.header_text)
+            # A correlated subquery rather than a join, so callers that already join
+            # FitsHeader (e.g. to read header values) don't end up with it joined twice.
+            conditions.append(fn.EXISTS(
+                FitsHeader.select(SQL('1')).where((FitsHeader.file == File.rowid) & header_condition)))
 
         if criteria.width_min is not None:
             conditions.append(Image.width >= criteria.width_min)

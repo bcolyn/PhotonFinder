@@ -209,3 +209,17 @@ def test_header_values_query_joins_only_what_is_asked_for(sample):
     assert "filewcs" not in sql.lower()
     sql, _ = reports.header_values_query(SearchCriteria(), {"fits"}).sql()
     assert "fitsheader" in sql.lower()
+
+
+def test_header_values_query_with_header_text_criterion(sample):
+    """The report joins FitsHeader to read values; a header_text criterion must not join it again."""
+    _, data = sample
+    for header_text in ("M31", "GAIN=100"):
+        files = list(reports.header_values_query(SearchCriteria(header_text=header_text), {"fits"}))
+        assert [f.rowid for f in files] == [data["light"].rowid]
+        assert reports.extract_field_value(files[0], "OBJECT", "fits") == "M31"
+
+
+def test_header_values_query_header_text_excludes_non_matching(sample):
+    files = list(reports.header_values_query(SearchCriteria(header_text="GAIN=200"), {"fits"}))
+    assert files == []
