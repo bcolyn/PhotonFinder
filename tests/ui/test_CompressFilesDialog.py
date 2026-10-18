@@ -63,3 +63,18 @@ def test_process_refuses_to_overwrite_existing_archive(library):
     assert existing.read_bytes() == b"precious"
     assert src.exists()
     assert File.get_by_id(file.rowid).name == "light.fits"
+
+
+def test_dialog_does_not_offer_upper_case_compressed_files(qtbot, context, tmp_path):
+    from photonfinder.core import Settings
+    from photonfinder.ui.CompressFilesDialog import CompressFilesDialog
+    context.settings = Settings(path=tmp_path / "settings.ini")
+    root =LibraryRoot.create(name="Main", path=str(tmp_path).replace("\\", "/") + "/")
+    plain = File.create(root=root, path="", name="IMG.FITS", size=1, mtime_millis=1)
+    archived = File.create(root=root, path="", name="IMG2.FITS.GZ", size=1, mtime_millis=1)
+
+    dialog = CompressFilesDialog(context, files=[plain, archived], search_criteria=None)
+    qtbot.addWidget(dialog)
+
+    offered = [dialog.file_list.item(i).text() for i in range(dialog.file_list.count())]
+    assert offered == ["Main/IMG.FITS"]

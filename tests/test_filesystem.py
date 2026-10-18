@@ -12,7 +12,7 @@ import pytest
 from astropy.io.fits import Header
 
 from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_xisf_dict, \
-    compress_file
+    compress_file, fopen, is_compressed, is_compressible, possible_compressed_variants
 from photonfinder.models import LibraryRoot, File, Image, FitsHeader, FileWCS, ImageStats
 from photonfinder.filesystem import update_fits_header_cache, check_missing_header_cache, parse_FITS_header
 from photonfinder.fits_handlers import normalize_fits_header, NINAHandler, _normalize_image_type
@@ -140,6 +140,22 @@ class TestImporter:
         assert db_file.name == "image06.fits.xz"
         assert db_file.size == 2
         assert self._derived_row_counts(file) == [1, 1, 1, 1]
+
+    def test_recompressed_to_upper_case_extension_keeps_row(self, filesystem, database, app_context):
+        self.initial_import(app_context)
+        file = File.select().where(File.name == "image06.fits").get()
+        src = "test/2021-12-26/Darks/image06.fits"
+        mtime = filesystem.getinfo(src, namespaces=["details"]).modified
+        filesystem.remove(src)
+        filesystem.writebytes(src + ".GZ", b"GZ")
+        filesystem.setinfo(src + ".GZ", {"details": {"modified": mtime.timestamp()}})
+
+        change_list = self.importer.import_files_from(filesystem, self.root)
+        assert len(change_list.new_files) == 0
+        assert len(change_list.removed_files) == 0
+        assert [f.rowid for f in change_list.recompressed_files] == [file.rowid]
+        change_list.apply_all()
+        assert File.get_by_id(file.rowid).name == "image06.fits.GZ"
 
     def test_changed_file_drops_derived_data(self, filesystem, database, app_context):
         self.initial_import(app_context)
@@ -423,3 +439,49 @@ class TestHeaderCacheResilience:
 
         assert Image.select().count() == 1
         assert FitsHeader.select().count() == 1
+
+
+class TestCompressionExtensionCase:
+    """Compression extensions are recognised regardless of case (ticket 27)."""
+
+    FITS_BYTES = Header({"SIMPLE": True, "BITPIX": 8, "NAXIS": 0, "OBJECT": "M31"}).tostring().encode("ascii")
+
+    @pytest.mark.parametrize("name", ["IMG.FITS.GZ", "img.fits.Gz", "IMG.FITS.XZ", "IMG.FITS.BZ2"])
+    def test_upper_case_extension_is_compressed(self, name):
+        assert is_compressed(name)
+        assert not is_compressible(name)
+
+    def test_uncompressed_upper_case_fits_is_compressible(self):
+        assert not is_compressed("IMG.FITS")
+        assert is_compressible("IMG.FITS")
+
+    @pytest.mark.parametrize("ext,open_fn", [(".GZ", gzip.open), (".XZ", lzma.open), (".BZ2", bz2.open)])
+    def test_fopen_and_header_read_decompress_upper_case(self, tmp_path, ext, open_fn):
+        path = tmp_path / ("IMG.FITS" + ext)
+        with open_fn(path, "wb") as f:
+            f.write(self.FITS_BYTES)
+
+        with fopen(path) as f:
+            assert f.read() == self.FITS_BYTES
+        assert b"M31" in read_fits_header(path)
+
+    def test_variants_of_upper_case_archive(self):
+        variants = set(possible_compressed_variants("IMG.FITS.GZ"))
+        assert "IMG.FITS" in variants
+        assert "IMG.FITS.xz" in variants
+        assert not any(v.startswith("IMG.FITS.GZ.") for v in variants)
+
+    def test_variants_of_plain_file_include_upper_case_archives(self):
+        assert "IMG.FITS.GZ" in possible_compressed_variants("IMG.FITS")
+
+    def test_compress_file_refuses_already_compressed_source(self, tmp_path):
+        src = tmp_path / "IMG.FITS.GZ"
+        with gzip.open(src, "wb") as f:
+            f.write(self.FITS_BYTES)
+        original = src.read_bytes()
+
+        with pytest.raises(ValueError):
+            compress_file(str(src), ".gz", verify=True)
+
+        assert src.read_bytes() == original
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["IMG.FITS.GZ"]

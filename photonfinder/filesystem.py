@@ -36,17 +36,23 @@ def fopen(filename: Path | str):
     Returns:
         A file-like object opened in binary mode
     """
-    file_ext = os.path.splitext(filename)[1]
-    if file_ext in compressed_exts.keys():
+    file_ext = compression_ext(filename)
+    if file_ext is not None:
         fn = compressed_exts[file_ext]
         return fn(filename, mode='rb')
     else:
         return open(filename, mode='rb')
 
 
+def compression_ext(filename) -> typing.Optional[str]:
+    """The key in ``compressed_exts`` for *filename*'s extension, matched case-insensitively
+    (``IMG.FITS.GZ`` -> ``.gz``), or None if it isn't a compressed file."""
+    ext = os.path.splitext(filename)[1].lower()
+    return ext if ext in compressed_exts else None
+
+
 def is_compressed(filename):
-    last_ext = os.path.splitext(filename)[1]
-    return last_ext in compressed_exts.keys()
+    return compression_ext(filename) is not None
 
 
 def read_fits_header(file: str | Path, status_reporter: StatusReporter = None) -> bytes | None:
@@ -374,6 +380,7 @@ def possible_compressed_variants(filename: str):
     variants.add(basename)
     for ext in compressed_exts.keys():
         variants.add(basename + ext)
+        variants.add(basename + ext.upper())
     return list(variants)
 
 
@@ -390,9 +397,12 @@ def compress_file(src_path: str, ext: str, verify: bool, level: int = 9,
     byte count, preserves mtime and only then renames it to <src_path>+ext, so a
     failure never leaves a partial archive that a rescan would pick up.
     Deletes the original unless *keep_source* is set, and returns (dest_path, compressed_size).
-    Raises FileExistsError if <src_path>+ext already exists, ValueError on verification failure.
+    Raises FileExistsError if <src_path>+ext already exists, ValueError if *src_path* is already
+    compressed or on verification failure.
     The original is untouched whenever an exception is raised.
     """
+    if is_compressed(src_path):
+        raise ValueError(f"{src_path} is already compressed")
     open_fn = compressed_exts[ext]
     dest_path = src_path + ext
     if os.path.exists(dest_path):
