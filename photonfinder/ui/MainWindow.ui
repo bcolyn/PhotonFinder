@@ -109,6 +109,7 @@
     <addaction name="actionImageSize"/>
     <addaction name="actionPlateScale"/>
     <addaction name="actionImageQuality"/>
+    <addaction name="actionQualityDiagnosis"/>
     <addaction name="action_filter_no_project"/>
     <addaction name="separator"/>
     <addaction name="actionHeader_Text"/>
@@ -412,6 +413,17 @@
    </property>
    <property name="toolTip">
     <string>Filter by image quality stats (stars, FWHM, background, elongation)</string>
+   </property>
+  </action>
+  <action name="actionQualityDiagnosis">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Quality Diagnosis</string>
+   </property>
+   <property name="toolTip">
+    <string>Hide frames by their diagnosis against peer frames</string>
    </property>
   </action>
   <action name="action_Export_Data">

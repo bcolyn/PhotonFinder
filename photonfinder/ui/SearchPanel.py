@@ -14,7 +14,7 @@ from PySide6.QtWidgets import *
 from photonfinder.core import ApplicationContext, decompress, Change
 from photonfinder.filesystem import is_compressible, parse_FITS_header, decode_header_blob
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
-    FileWCS, ProjectFile, LibraryRoot
+    FileWCS, ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, diagnosis_counts, search_row_stat
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask, ImageAnalysisTask
 from .DateRangeDialog import DateRangeDialog
 from .HeaderDialog import HeaderDialog
@@ -90,7 +90,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.data_model.setHorizontalHeaderLabels([
             "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
             "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved",
-            "Projects", "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation",
+            "Projects", "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation", "Diagnosis",
         ])
         self.proxy_model = _FileDragProxyModel()
         self.proxy_model.setSortRole(SORT_ROLE)
@@ -271,6 +271,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 self.add_plate_scale_filter()
             case AdvancedFilter.IMAGE_QUALITY:
                 self.add_image_quality_filter()
+            case AdvancedFilter.QUALITY_DIAGNOSIS:
+                self.add_diagnosis_filter()
         self.mainWindow.enable_actions_for_current_tab()
 
     def remove_filter_button(self):
@@ -514,17 +516,17 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             # Store the full filename in the name_item's data
             name_item.setData(file, ROWID_ROLE)
 
-            # Columns 19-23: ImageStats (values come from aliased JOIN columns in __data__)
+            # Columns 19-24: ImageStats (values come from aliased JOIN columns)
             bg_median_item = QStandardItem("")
             bg_rms_item = QStandardItem("")
             stars_item = QStandardItem("")
             fwhm_item = QStandardItem("")
             elongation_item = QStandardItem("")
-            bg_median = file.__data__.get('stats_background_median')
-            bg_rms = file.__data__.get('stats_background_rms')
-            star_count = file.__data__.get('stats_star_count')
-            fwhm = file.__data__.get('stats_fwhm_median')
-            elongation = file.__data__.get('stats_elongation_median')
+            bg_median = search_row_stat(file, 'stats_background_median')
+            bg_rms = search_row_stat(file, 'stats_background_rms')
+            star_count = search_row_stat(file, 'stats_star_count')
+            fwhm = search_row_stat(file, 'stats_fwhm_median')
+            elongation = search_row_stat(file, 'stats_elongation_median')
             if bg_median is not None:
                 bg_median_item.setText(f"{bg_median:.1f}")
                 bg_median_item.setData(bg_median, SORT_ROLE)
@@ -540,13 +542,16 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             if elongation is not None:
                 elongation_item.setText(f"{elongation:.3f}")
                 elongation_item.setData(elongation, SORT_ROLE)
+            diagnosis = search_row_stat(file, 'stats_diagnosis') or ""
+            diagnosis_item = QStandardItem(diagnosis)
+            diagnosis_item.setData(diagnosis, SORT_ROLE)
 
             # Add row to model
             self.data_model.appendRow([
                 name_item, type_item, filter_item, exposure_item, gain_item, offset_item,
                 binning_item, set_temp_item, camera_item, telescope_item, object_item, date_obs_item,
                 path_item, size_item, date_item, ra_item, dec_item, solved_item, projects_item,
-                bg_median_item, bg_rms_item, stars_item, fwhm_item, elongation_item,
+                bg_median_item, bg_rms_item, stars_item, fwhm_item, elongation_item, diagnosis_item,
             ])
 
         # Resize columns to content
@@ -1275,6 +1280,30 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                      "background_rms_max", "elongation_min", "elongation_max"]:
             setattr(self.search_criteria, attr, None)
 
+    def add_diagnosis_filter(self):
+        from .RangeFilterDialogs import DiagnosisFilterDialog
+        dialog = DiagnosisFilterDialog(diagnosis_counts(self.search_criteria), self)
+        dialog.set_hidden(self.search_criteria.diagnosis_hidden)
+        if dialog.exec():
+            hidden = dialog.get_hidden()
+            current = self.advanced_options.get(AdvancedFilter.QUALITY_DIAGNOSIS)
+            # The button first: replacing the old one resets the criteria.
+            if hidden:
+                self._add_diagnosis_filter_button(hidden)
+            elif current:  # everything ticked: nothing left to filter on
+                self.remove_filter_button_control(current)
+            self.search_criteria.diagnosis_hidden = hidden
+            self.update_search_criteria()
+
+    def _add_diagnosis_filter_button(self, hidden: list[str]):
+        text = "Diagnosis: hide bad" if set(hidden) == set(DIAGNOSIS_BAD_VALUES) else f"Diagnosis ({len(hidden)} hidden)"
+        filter_button = FilterButton(self, text, AdvancedFilter.QUALITY_DIAGNOSIS)
+        filter_button.on_remove_filter.connect(self.reset_diagnosis_criteria)
+        self.add_filter_button_control(filter_button)
+
+    def reset_diagnosis_criteria(self):
+        self.search_criteria.diagnosis_hidden = []
+
     def add_temperature_filter(self):
         from .TemperatureDialog import TemperatureDialog
         dialog = TemperatureDialog(self.context)
@@ -1607,6 +1636,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button.on_remove_filter.connect(self.reset_image_quality_criteria)
             self.add_filter_button_control(filter_button)
 
+        if criteria.diagnosis_hidden:
+            self._add_diagnosis_filter_button(criteria.diagnosis_hidden)
+
         self.update_search_criteria()
 
     def plate_solve_files(self):
@@ -1666,6 +1698,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 model.setData(model.index(_row, col), text, Qt.DisplayRole)
                 model.setData(model.index(_row, col), val, SORT_ROLE)
 
+            _set(24, "", "")  # re-analysing clears the stored diagnosis
             if r.background_median is not None:
                 _set(19, f"{r.background_median:.1f}", r.background_median)
             if r.background_rms is not None:
@@ -1828,3 +1861,4 @@ class AdvancedFilter(Enum):
     IMAGE_SIZE = 11
     PLATE_SCALE = 12
     IMAGE_QUALITY = 13
+    QUALITY_DIAGNOSIS = 14

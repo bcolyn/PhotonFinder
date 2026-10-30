@@ -11,9 +11,14 @@ from photonfinder.core import ApplicationContext, compress
 from photonfinder.filesystem import decode_header_blob
 from photonfinder.calibration import _session_info_from_header
 from photonfinder.image_analysis import ImageAnalysisResult
-from photonfinder.models import File, FitsHeader, Image, ImageStats, LibraryRoot, SearchCriteria
+from photonfinder.models import (
+    DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED, File, FitsHeader, Image, ImageStats, LibraryRoot, SearchCriteria,
+    diagnosis_counts, search_files, search_row_stat,
+)
+from photonfinder.mcp_server import _criteria_from_dict
+from photonfinder.models import DIAGNOSIS_MISSING_METRICS, DIAGNOSIS_OK
 from photonfinder.quality_diagnosis import (
-    DIAGNOSIS_MISSING_METRICS, DIAGNOSIS_OK, DiagnosisScope, DiagnosisSettings, FrameStats, Metric, MetricRule,
+    DiagnosisScope, DiagnosisSettings, FrameStats, Metric, MetricRule,
     PeerGroup, PeerKey, RuleMode, _session_info_from_blob, diagnose, load_scope, save_diagnoses,
 )
 from tests.conftest import DynamicSettings, McpSettings
@@ -327,3 +332,102 @@ def test_old_database_gains_the_column_with_rows_left_null(tmp_path):
         assert stats.diagnosis is None
         ImageStats.update(diagnosis="OK").where(ImageStats.file == rowid).execute()
         assert ImageStats.get(ImageStats.file == rowid).diagnosis == "OK"
+
+
+# --- The filter ------------------------------------------------------------------------
+
+
+@pytest.fixture
+def diagnosed(library):
+    """One file per interesting diagnosis, plus a light with no stats and a dark."""
+    files = {}
+    for diagnosis in (DIAGNOSIS_OK, "Bad FWHM", "Bad background", "Bad FWHM, Bad background",
+                      DIAGNOSIS_MISSING_METRICS):
+        file = _light(library)
+        ImageStats.update(diagnosis=diagnosis).where(ImageStats.file == file).execute()
+        files[diagnosis] = file
+    files["no stats"] = _light(library, stats=False)
+    files["dark"] = _light(library, stats=False, image_type="DARK")
+    return files
+
+
+def _shown(files, hidden):
+    rows, total, _ = search_files(SearchCriteria(diagnosis_hidden=hidden))
+    assert total == len(rows)
+    by_id = {file.rowid: name for name, file in files.items()}
+    return sorted(by_id[row.rowid] for row in rows)
+
+
+def test_no_filter_shows_everything(diagnosed):
+    assert _shown(diagnosed, []) == sorted(diagnosed)
+
+
+def test_hiding_bad_keeps_ok_not_analysed_and_calibration(diagnosed):
+    assert _shown(diagnosed, list(DIAGNOSIS_BAD_VALUES)) == sorted([DIAGNOSIS_OK, "no stats", "dark"])
+
+
+def test_a_frame_is_hidden_if_any_of_its_values_is_hidden(diagnosed):
+    shown = _shown(diagnosed, ["Bad FWHM"])
+    assert "Bad FWHM, Bad background" not in shown
+    assert "Bad FWHM" not in shown
+    assert "Bad background" in shown
+
+
+def test_hiding_ok_does_not_touch_bad_frames(diagnosed):
+    shown = _shown(diagnosed, [DIAGNOSIS_OK])
+    assert DIAGNOSIS_OK not in shown
+    assert "Bad FWHM" in shown
+
+
+def test_hiding_not_analysed_as_well_gives_a_strict_ok_view(diagnosed):
+    assert _shown(diagnosed, [*DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED]) == [DIAGNOSIS_OK]
+
+
+def test_a_stats_row_with_no_diagnosis_counts_as_not_analysed(library):
+    file = _light(library)  # has stats, never diagnosed
+    assert search_files(SearchCriteria(diagnosis_hidden=[DIAGNOSIS_NOT_ANALYSED]))[1] == 0
+    assert search_files(SearchCriteria(diagnosis_hidden=[DIAGNOSIS_OK]))[0][0].rowid == file.rowid
+
+
+def test_counts_overlap_and_ignore_the_diagnosis_filter(diagnosed):
+    counts = diagnosis_counts(SearchCriteria(diagnosis_hidden=["Bad FWHM"]))
+    assert counts["Bad FWHM"] == 2
+    assert counts["Bad background"] == 2
+    assert counts[DIAGNOSIS_OK] == 1
+    assert counts[DIAGNOSIS_MISSING_METRICS] == 1
+    assert counts[DIAGNOSIS_NOT_ANALYSED] == 2
+
+
+def test_counts_follow_the_rest_of_the_search(diagnosed):
+    counts = diagnosis_counts(SearchCriteria(type="DARK"))
+    assert counts[DIAGNOSIS_NOT_ANALYSED] == 1
+    assert counts[DIAGNOSIS_OK] == 0
+
+
+def test_filter_survives_a_json_round_trip(context):
+    criteria = SearchCriteria(diagnosis_hidden=["Bad FWHM", DIAGNOSIS_NOT_ANALYSED])
+    assert SearchCriteria.from_json(criteria.to_json()) == criteria
+
+
+def test_session_saved_before_this_filter_still_loads(context):
+    assert SearchCriteria.from_json('{"file_name": "a"}').diagnosis_hidden == []
+
+
+def test_column_sorts_in_sql(diagnosed):
+    rows, _, _ = search_files(SearchCriteria(type="LIGHT", sorting_index=24, sorting_desc=True))
+    diagnoses = [search_row_stat(row, "stats_diagnosis") for row in rows]
+    assert diagnoses[0] == DIAGNOSIS_OK  # "O" sorts after "B"
+    assert diagnoses[-1] is None
+
+
+def test_search_rows_carry_their_stats(library):
+    with_stats = _light(library)
+    without_stats = _light(library, stats=False)
+    rows = {row.rowid: row for row in search_files(SearchCriteria())[0]}
+    assert search_row_stat(rows[with_stats.rowid], "stats_star_count") == 500
+    assert search_row_stat(rows[with_stats.rowid], "stats_fwhm_median") == 3.0
+    assert search_row_stat(rows[without_stats.rowid], "stats_star_count") is None
+
+
+def test_mcp_does_not_accept_the_filter(diagnosed):
+    assert _criteria_from_dict({"diagnosis_hidden": ["OK"]}).diagnosis_hidden == []

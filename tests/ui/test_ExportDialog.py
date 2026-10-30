@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 from PySide6.QtWidgets import QDialogButtonBox
 
-from photonfinder.models import SearchCriteria
+from photonfinder.models import DIAGNOSIS_BAD_VALUES, File, Image, ImageStats, SearchCriteria
 from photonfinder.ui.ExportDialog import ExportDialog, CalibrationGridLoader
 from tests.conftest import DynamicSettings
 
@@ -58,3 +58,22 @@ def test_closing_during_export_cancels_worker_and_announces_project(dialog, tmp_
     assert announced == [[dialog.created_project]]
     dialog.on_export_finished()  # the worker's late "finished" must not announce again
     assert len(announced) == 1
+
+
+def test_filtered_search_exports_only_the_frames_it_shows(sample, qtbot):
+    context, objs = sample
+    context.settings = DynamicSettings()
+    for flag in ("decompress", "xisf_as_fits", "override_platesolve", "use_master", "shared_session"):
+        getattr(context.settings, f"set_last_export_{flag}")(False)
+    bad = File.create(root=objs["root"], path="lights/", name="bad.fits", size=1, mtime_millis=1)
+    Image.create(file=bad, image_type="LIGHT")
+    ImageStats.create(file=bad, diagnosis="Bad FWHM")
+
+    with patch.object(CalibrationGridLoader, "load"):
+        everything = ExportDialog(context, SearchCriteria())
+        filtered = ExportDialog(context, SearchCriteria(diagnosis_hidden=list(DIAGNOSIS_BAD_VALUES)))
+    qtbot.addWidget(everything)
+    qtbot.addWidget(filtered)
+
+    assert {f.name for f in everything.light_files} == {"m31.fits", "bad.fits"}
+    assert {f.name for f in filtered.light_files} == {"m31.fits"}

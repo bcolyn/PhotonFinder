@@ -36,6 +36,7 @@ The Filter menu provides various filtering options to narrow down search results
 - **Binning** - Filter files by camera binning settings
 - **Gain** - Filter files by camera gain settings
 - **Temperature** - Filter files by camera temperature
+- **Quality Diagnosis** - Hide frames by their stored diagnosis against peer frames (the same night, target and equipment). Everything except the Bad values is ticked by default. A frame is hidden if any of its values is unticked. Unticking Not analysed gives a strict OK-only view
 
 ### Text Filters
 - **Header Text** - Filter files by searching within FITS header text

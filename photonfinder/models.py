@@ -1,10 +1,12 @@
+import dataclasses
 import json
 import logging
+import operator
 import os
 import typing
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from functools import cmp_to_key
+from functools import cmp_to_key, reduce
 from pathlib import Path
 from typing import Optional
 
@@ -25,6 +27,21 @@ class RootAndPath:
 
     def __str__(self):
         return f"{self.root_label}/{self.path}" if self.path else str(self.root_label)
+
+
+# ImageStats.diagnosis values, written by quality_diagnosis. A frame failing several checks
+# stores them joined by DIAGNOSIS_SEPARATOR. NULL is shown as DIAGNOSIS_NOT_ANALYSED.
+DIAGNOSIS_OK = "OK"
+DIAGNOSIS_BAD_FWHM = "Bad FWHM"
+DIAGNOSIS_BAD_ELONGATION = "Bad elongation"
+DIAGNOSIS_BAD_BACKGROUND = "Bad background"
+DIAGNOSIS_BAD_STAR_COUNT = "Bad star count"
+DIAGNOSIS_MISSING_METRICS = "Bad: missing metrics"
+DIAGNOSIS_NOT_ANALYSED = "Not analysed"
+DIAGNOSIS_SEPARATOR = ", "
+DIAGNOSIS_BAD_VALUES = (DIAGNOSIS_BAD_FWHM, DIAGNOSIS_BAD_ELONGATION, DIAGNOSIS_BAD_BACKGROUND,
+                        DIAGNOSIS_BAD_STAR_COUNT, DIAGNOSIS_MISSING_METRICS)
+DIAGNOSIS_VALUES = (DIAGNOSIS_OK, *DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED)
 
 
 @dataclass
@@ -79,6 +96,8 @@ class SearchCriteria:
     background_rms_max: float | None = None
     elongation_min: float | None = None
     elongation_max: float | None = None
+    # Quality diagnosis values to hide; a frame with any of them is hidden. Empty = no filter.
+    diagnosis_hidden: list[str] = field(default_factory=list)
 
     def is_empty(self):
         return self == SearchCriteria()
@@ -118,6 +137,8 @@ class SearchCriteria:
                                         self.background_min, self.background_max, self.background_rms_min,
                                         self.background_rms_max, self.elongation_min, self.elongation_max]):
             result.append("Image Statistics filter")
+        if self.diagnosis_hidden:
+            result.append("Quality diagnosis filter")
         return ', '.join(result)
 
     @staticmethod
@@ -625,6 +646,9 @@ class Image(Model):
                 stats_subq = stats_subq.where(cond)
             conditions.append(File.rowid.in_(stats_subq))
 
+        if criteria.diagnosis_hidden:
+            conditions.extend(_diagnosis_conditions(criteria.diagnosis_hidden))
+
         if criteria.plate_solved is True:
             conditions.append(File.rowid.in_(FileWCS.select(FileWCS.file)))
         elif criteria.plate_solved is False:
@@ -824,6 +848,38 @@ class ImageStats(Model):
         database = None
 
 
+def _diagnosis_conditions(hidden: list[str]) -> list:
+    """Conditions hiding every file with any of the given diagnosis values."""
+    conditions = []
+    if DIAGNOSIS_NOT_ANALYSED in hidden:
+        conditions.append(File.rowid.in_(ImageStats.select(ImageStats.file).where(ImageStats.diagnosis.is_null(False))))
+    matches = [ImageStats.diagnosis == DIAGNOSIS_OK if value == DIAGNOSIS_OK
+               else ImageStats.diagnosis.contains(value)
+               for value in hidden if value != DIAGNOSIS_NOT_ANALYSED]
+    if matches:
+        hidden_files = ImageStats.select(ImageStats.file).where(reduce(operator.or_, matches))
+        conditions.append(File.rowid.not_in(hidden_files))
+    return conditions
+
+
+def diagnosis_counts(search_criteria: SearchCriteria) -> dict[str, int]:
+    """Files per diagnosis value within a search, ignoring its diagnosis filter.
+
+    A file with several Bad values counts under each of them.
+    """
+    criteria = dataclasses.replace(search_criteria, diagnosis_hidden=[])
+    query = (File
+             .select(ImageStats.diagnosis, fn.COUNT(File.rowid))
+             .join_from(File, Image, JOIN.LEFT_OUTER)
+             .join_from(File, ImageStats, JOIN.LEFT_OUTER))
+    query = Image.apply_search_criteria(query, criteria).group_by(ImageStats.diagnosis)
+    counts = dict.fromkeys(DIAGNOSIS_VALUES, 0)
+    for diagnosis, count in query.tuples():
+        for value in diagnosis.split(DIAGNOSIS_SEPARATOR) if diagnosis else [DIAGNOSIS_NOT_ANALYSED]:
+            counts[value] = counts.get(value, 0) + count
+    return counts
+
+
 CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS, Project, ProjectFile, ImageStats]
 
 
@@ -905,7 +961,8 @@ def _build_search_query(search_criteria: SearchCriteria):
               ImageStats.background_rms.alias('stats_background_rms'),
               ImageStats.star_count.alias('stats_star_count'),
               ImageStats.fwhm_median.alias('stats_fwhm_median'),
-              ImageStats.elongation_median.alias('stats_elongation_median')]
+              ImageStats.elongation_median.alias('stats_elongation_median'),
+              ImageStats.diagnosis.alias('stats_diagnosis')]
     query = (File
              .select(*(fields + [File, Image, LibraryRoot]))
              .join_from(File, LibraryRoot)
@@ -917,6 +974,11 @@ def _build_search_query(search_criteria: SearchCriteria):
              )
     query = Image.apply_search_criteria(query, search_criteria)
     return query, fields
+
+
+def search_row_stat(row: File, alias: str):
+    """An aliased ImageStats column of a search row. Peewee keeps it on the joined model."""
+    return getattr(getattr(row, 'imagestats', None), alias, None)
 
 
 def search_files(search_criteria: SearchCriteria, page: int = 0, page_size: int = 100):

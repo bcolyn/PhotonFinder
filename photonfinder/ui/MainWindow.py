@@ -128,6 +128,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionImageSize.triggered.connect(self.add_image_size_filter)
         self.actionPlateScale.triggered.connect(self.add_plate_scale_filter)
         self.actionImageQuality.triggered.connect(self.add_image_quality_filter)
+        self.actionQualityDiagnosis.triggered.connect(self.add_diagnosis_filter)
         self.action_Create_Backup.triggered.connect(self.create_backup)
         self.action_Create_Database.triggered.connect(self.create_database)
         self.action_Open_Database.triggered.connect(self.open_database)
@@ -462,6 +463,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.get_current_search_panel().add_image_quality_filter()
         self.enable_actions_for_current_tab()
 
+    def add_diagnosis_filter(self):
+        self.get_current_search_panel().add_diagnosis_filter()
+        self.enable_actions_for_current_tab()
+
     def add_header_text_filter(self):
         self.get_current_search_panel().add_header_text_filter()
 
@@ -700,6 +705,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionImageSize.setChecked(AdvancedFilter.IMAGE_SIZE in current_panel.advanced_options)
         self.actionPlateScale.setChecked(AdvancedFilter.PLATE_SCALE in current_panel.advanced_options)
         self.actionImageQuality.setChecked(AdvancedFilter.IMAGE_QUALITY in current_panel.advanced_options)
+        self.actionQualityDiagnosis.setChecked(AdvancedFilter.QUALITY_DIAGNOSIS in current_panel.advanced_options)
 
     def add_selection_to_project(self, project: Project):
         edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)

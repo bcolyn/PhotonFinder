@@ -23,13 +23,12 @@ from peewee import JOIN, chunked, fn
 
 from photonfinder.calibration import CalibrationMatcher, _session_info_from_header, session_date_for
 from photonfinder.core import ApplicationContext, decompress
-from photonfinder.models import CORE_MODELS, File, FitsHeader, Image, ImageStats, SearchCriteria
+from photonfinder.models import (
+    CORE_MODELS, DIAGNOSIS_BAD_BACKGROUND, DIAGNOSIS_BAD_ELONGATION, DIAGNOSIS_BAD_FWHM, DIAGNOSIS_BAD_STAR_COUNT,
+    DIAGNOSIS_MISSING_METRICS, DIAGNOSIS_OK, DIAGNOSIS_SEPARATOR, File, FitsHeader, Image, ImageStats, SearchCriteria,
+)
 
 logger = logging.getLogger(__name__)
-
-DIAGNOSIS_OK = "OK"
-DIAGNOSIS_MISSING_METRICS = "Bad: missing metrics"
-DIAGNOSIS_SEPARATOR = ", "
 
 _BATCH_SIZE = 500
 _CARD_LENGTH = 80
@@ -39,10 +38,10 @@ _SESSION_KEYWORDS_BYTES = frozenset(keyword.encode('ascii') for keyword in _SESS
 
 class Metric(Enum):
     """A judged ImageStats column, in the order its verdicts are listed."""
-    FWHM = ("Bad FWHM", True)
-    ELONGATION = ("Bad elongation", True)
-    BACKGROUND = ("Bad background", True)
-    STAR_COUNT = ("Bad star count", False)
+    FWHM = (DIAGNOSIS_BAD_FWHM, True)
+    ELONGATION = (DIAGNOSIS_BAD_ELONGATION, True)
+    BACKGROUND = (DIAGNOSIS_BAD_BACKGROUND, True)
+    STAR_COUNT = (DIAGNOSIS_BAD_STAR_COUNT, False)
 
     def __init__(self, label: str, high_is_bad: bool):
         self.label = label

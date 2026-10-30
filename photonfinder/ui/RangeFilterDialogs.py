@@ -2,6 +2,8 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGroupBox
                                QHBoxLayout, QCheckBox, QSpinBox, QDoubleSpinBox,
                                QLabel, QVBoxLayout, QWidget)
 
+from photonfinder.models import DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_VALUES
+
 
 def _make_range_row(parent, label: str, is_int: bool, suffix: str = "", decimals: int = 2,
                     min_val: float = 0, max_val: float = 999999, step: float = 1.0):
@@ -151,6 +153,43 @@ class PlateScaleDialog(QDialog):
             self._min_spin.setValue(image.coord_scale)
             self._max_cb.setChecked(True)
             self._max_spin.setValue(image.coord_scale)
+
+
+class DiagnosisFilterDialog(QDialog):
+    """Picks which quality diagnosis values to show, with the current file count of each."""
+
+    def __init__(self, counts: dict[str, int], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Quality Diagnosis Filter")
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(4)
+
+        self.nothing_diagnosed_label = QLabel("No frames diagnosed yet.", self)
+        self.nothing_diagnosed_label.setVisible(
+            not any(counts.get(value, 0) for value in DIAGNOSIS_VALUES if value != DIAGNOSIS_NOT_ANALYSED))
+        layout.addWidget(self.nothing_diagnosed_label)
+
+        self._checkboxes = {}
+        for value in DIAGNOSIS_VALUES:
+            checkbox = QCheckBox(f"{value} ({counts.get(value, 0)})", self)
+            self._checkboxes[value] = checkbox
+            layout.addWidget(checkbox)
+        self.set_hidden([])
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def set_hidden(self, hidden: list[str]):
+        """Tick everything not hidden. With no filter yet, starts from hiding the bad frames."""
+        hidden = hidden or DIAGNOSIS_BAD_VALUES
+        for value, checkbox in self._checkboxes.items():
+            checkbox.setChecked(value not in hidden)
+
+    def get_hidden(self) -> list[str]:
+        return [value for value, checkbox in self._checkboxes.items() if not checkbox.isChecked()]
 
 
 class ImageQualityDialog(QDialog):

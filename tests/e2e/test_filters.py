@@ -14,7 +14,8 @@ from photonfinder.ui.CoordinatesDialog import CoordinatesDialog
 from photonfinder.ui.DateRangeDialog import DateRangeDialog
 from photonfinder.ui.ExposureDialog import ExposureDialog
 from photonfinder.ui.GainDialog import GainDialog
-from photonfinder.ui.RangeFilterDialogs import ImageSizeDialog
+from photonfinder.models import CORE_MODELS, DIAGNOSIS_BAD_VALUES, File, ImageStats, SearchCriteria
+from photonfinder.ui.RangeFilterDialogs import DiagnosisFilterDialog, ImageSizeDialog
 from photonfinder.ui.SearchPanel import AdvancedFilter
 from photonfinder.ui.TelescopeDialog import TelescopeDialog
 from photonfinder.ui.TemperatureDialog import TemperatureDialog
@@ -203,3 +204,55 @@ def test_filters_combine_with_the_type_box_and_come_off_again(sandbox, app, moda
 
     remove_filter(sandbox, grid, AdvancedFilter.EXPOSURE)
     assert shown(grid) == matching(libraries, lambda f: f.image_type == "LIGHT")
+
+
+def test_quality_diagnosis_filter(sandbox, app, modals, libraries, grid):
+    names = shown(grid)
+    bad, both, good = names[0], names[1], names[2]
+    with sandbox.context.database.bind_ctx(CORE_MODELS):
+        for name, diagnosis in ((bad, "Bad FWHM"), (both, "Bad FWHM, Bad background"), (good, "OK")):
+            ImageStats.create(file=File.get(File.name == name), diagnosis=diagnosis, fwhm_median=3.25, star_count=480)
+    grid.panel.update_search_criteria()
+    sandbox.wait_idle()
+    grid.load_all()
+    assert "Diagnosis" in grid.headers()
+    row = next(r for r in grid.rows() if r["File name"] == both)
+    assert row["Diagnosis"] == "Bad FWHM, Bad background"
+    assert (row["FWHM"], row["Stars"]) == ("3.25", "480")  # the numbers sit in their own columns
+
+    def check_default(dialog: DiagnosisFilterDialog):
+        assert not dialog.nothing_diagnosed_label.isVisible()
+        assert dialog.get_hidden() == list(DIAGNOSIS_BAD_VALUES)  # the default hides bad frames
+
+    add_filter(sandbox, modals, app.actionQualityDiagnosis, DiagnosisFilterDialog, check_default)
+    assert filter_button(grid, AdvancedFilter.QUALITY_DIAGNOSIS).text() == "Diagnosis: hide bad"
+    assert app.actionQualityDiagnosis.isChecked()
+    grid.load_all()
+    assert shown(grid) == sorted(set(names) - {bad, both})
+
+    # The filter button edits it, and the dialog reopens with what's hidden now.
+    def hide_only_background(dialog: DiagnosisFilterDialog):
+        assert dialog.get_hidden() == list(DIAGNOSIS_BAD_VALUES)
+        dialog.set_hidden(["Bad background"])
+
+    with modals.handle(DiagnosisFilterDialog, hide_only_background):
+        filter_button(grid, AdvancedFilter.QUALITY_DIAGNOSIS).click()
+    sandbox.wait_idle()
+    grid.load_all()
+    assert shown(grid) == sorted(set(names) - {both})  # one Bad value is enough to hide it
+
+    # Restoring a tab's saved criteria brings back the filter and its button.
+    saved = SearchCriteria.from_json(grid.panel.search_criteria.to_json())
+    remove_filter(sandbox, grid, AdvancedFilter.QUALITY_DIAGNOSIS)
+    assert grid.total == len(libraries.files)
+    grid.panel.apply_search_criteria(saved)
+    sandbox.wait_idle()
+    assert filter_button(grid, AdvancedFilter.QUALITY_DIAGNOSIS).text() == "Diagnosis (1 hidden)"
+    assert grid.total == len(libraries.files) - 1
+
+
+def test_quality_diagnosis_filter_says_when_nothing_is_diagnosed(sandbox, app, modals, grid):
+    def check(dialog: DiagnosisFilterDialog):
+        assert dialog.nothing_diagnosed_label.isVisible()
+
+    add_filter(sandbox, modals, app.actionQualityDiagnosis, DiagnosisFilterDialog, check)

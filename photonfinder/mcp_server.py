@@ -81,7 +81,8 @@ DISTINCT_FIELDS = {
     "object_name": Image.object_name,
 }
 
-_SEARCH_CRITERIA_FIELDS = {f.name for f in dataclasses.fields(SearchCriteria)}
+# The quality diagnosis filter is GUI-only for now.
+_SEARCH_CRITERIA_FIELDS = {f.name for f in dataclasses.fields(SearchCriteria)} - {"diagnosis_hidden"}
 
 
 def _coerce_header_value(value):
