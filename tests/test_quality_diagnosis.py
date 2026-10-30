@@ -19,7 +19,8 @@ from photonfinder.mcp_server import _criteria_from_dict
 from photonfinder.models import DIAGNOSIS_MISSING_METRICS, DIAGNOSIS_OK
 from photonfinder.quality_diagnosis import (
     DiagnosisScope, DiagnosisSettings, FrameStats, Metric, MetricRule,
-    PeerGroup, PeerKey, RuleMode, _session_info_from_blob, diagnose, load_scope, save_diagnoses,
+    PeerGroup, PeerKey, RuleMode, _session_info_from_blob, diagnose, frames_needing_analysis, load_scope,
+    save_diagnoses,
 )
 from tests.conftest import DynamicSettings, McpSettings
 
@@ -156,6 +157,22 @@ def test_unusable_frames_are_left_out_of_medians_and_group_size():
     too_small = PeerGroup(KEY, [*_steady(count=2), *unusable])
     good = too_small.frames[0]
     assert diagnose(DiagnosisScope([too_small]), DiagnosisSettings()).verdicts[good.file_id] is None
+
+
+def test_frames_needing_analysis_skips_small_groups_and_frames_with_stats():
+    no_stats = FrameStats(file_id=1, has_stats=False)
+    failed = FrameStats(file_id=2, values=_values(None, None, None, None))
+    no_stars = FrameStats(file_id=3, values=_values(fwhm=None, elongation=None, stars=0), background_rms=5.0)
+    big = PeerGroup(KEY, [*_steady(count=3), no_stats, failed, no_stars])
+    small = PeerGroup(PeerKey(NIGHT.date(), "M33", "Ha", 300.0, 100, 1, "C", "T"),
+                      [FrameStats(file_id=4, has_stats=False)])
+    undated = PeerGroup(PeerKey(None, "M31", "Ha", 300.0, 100, 1, "C", "T"),
+                        [FrameStats(file_id=i, has_stats=False) for i in range(5, 15)])
+
+    scope = DiagnosisScope([big, small, undated])
+
+    assert frames_needing_analysis(scope, DiagnosisSettings()) == [1, 2]
+    assert frames_needing_analysis(scope, DiagnosisSettings(min_group_size=1)) == [1, 2, 4]
 
 
 def test_counts_add_up():

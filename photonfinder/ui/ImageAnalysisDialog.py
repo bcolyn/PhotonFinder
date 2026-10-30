@@ -18,7 +18,8 @@ class ImageAnalysisDialog(QDialog):
     analysis_complete = Signal(object)  # ImageAnalysisTask
 
     def __init__(self, context: ApplicationContext, files: list[File] | None,
-                 search_criteria: SearchCriteria, parent=None):
+                 search_criteria: SearchCriteria, parent=None,
+                 task: ImageAnalysisTask | None = None, label: str | None = None):
         super().__init__(parent)
         self.setWindowTitle("Analyse Images")
         self.setMinimumSize(500, 350)
@@ -27,7 +28,7 @@ class ImageAnalysisDialog(QDialog):
         layout = QVBoxLayout(self)
         n = len(files) if files else 0
         layout.addWidget(QLabel(
-            f"Analysing {n} file(s)..." if n
+            label if label else f"Analysing {n} file(s)..." if n
             else "Analysing files matching current filter..."
         ))
         self._progress = QProgressBar()
@@ -41,7 +42,8 @@ class ImageAnalysisDialog(QDialog):
         btn_row.addWidget(self._btn)
         layout.addLayout(btn_row)
 
-        self._task = ImageAnalysisTask(
+        self._started = False
+        self._task = task or ImageAnalysisTask(
             context=context, search_criteria=search_criteria, files=files,
         )
         self._task.progress.connect(self._progress.setValue)
@@ -52,10 +54,13 @@ class ImageAnalysisDialog(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
-        if self._task:
+        if self._task and not self._started:  # shown again after being minimised: already running
+            self._started = True
             self._task.start()
 
     def _on_finished(self):
+        if self._task is None:  # cancelled
+            return
         task, self._task = self._task, None
         self._log.appendPlainText(f"\nDone: {len(task.analyzed_files)} file(s) analysed.")
         self._btn.setText("Close")

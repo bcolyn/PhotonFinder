@@ -3,7 +3,7 @@ import copy
 import dataclasses
 import logging
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSpinBox,
     QVBoxLayout,
@@ -12,10 +12,11 @@ from PySide6.QtWidgets import (
 from photonfinder.core import ApplicationContext
 from photonfinder.models import DIAGNOSIS_BAD_VALUES, DIAGNOSIS_MISSING_METRICS, SearchCriteria
 from photonfinder.quality_diagnosis import (
-    DiagnosisResult, DiagnosisScope, DiagnosisSettings, Metric, MetricRule, RuleMode, diagnose, load_scope,
-    save_diagnoses,
+    DiagnosisResult, DiagnosisScope, DiagnosisSettings, Metric, MetricRule, RuleMode, diagnose,
+    frames_needing_analysis, load_scope, save_diagnoses,
 )
-from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
+from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase, MissingFramesAnalysisTask
+from photonfinder.ui.ImageAnalysisDialog import ImageAnalysisDialog
 
 _METRIC_NAMES = {Metric.FWHM: "FWHM", Metric.ELONGATION: "Elongation", Metric.BACKGROUND: "Background",
                  Metric.STAR_COUNT: "Star count"}
@@ -23,6 +24,8 @@ _MODE_NAMES = {RuleMode.OFF: "Off", RuleMode.MAD: "× MAD", RuleMode.PERCENT: "%
 _DEFAULT_LIMITS = {RuleMode.MAD: 3.0, RuleMode.PERCENT: 20.0}
 # Recalculating a very large scope takes most of a second, too slow for every keystroke.
 _PREVIEW_DELAY_MS = 150
+_LIBRARY_BUSY = "another job (a scan, compression or analysis) is writing to this library. " \
+                "Try again when it has finished."
 
 
 def scope_criteria(search_criteria: SearchCriteria) -> SearchCriteria:
@@ -115,6 +118,9 @@ class DiagnoseQualityDialog(QDialog):
         self._watched_panel = None
         self._hide_after_save = False
         self._settings_being_saved: DiagnosisSettings | None = None
+        self._saving = False
+        self._analysing = False
+        self.analysis_dialog: ImageAnalysisDialog | None = None
 
         self._loader = _DiagnosisLoader(context)
         self._loader.scope_loaded.connect(self._on_scope_loaded)
@@ -148,8 +154,15 @@ class DiagnoseQualityDialog(QDialog):
         stale_row.addWidget(self.use_current_button)
         layout.addLayout(stale_row)
 
+        counts_row = QHBoxLayout()
         self.counts_label = QLabel()
-        layout.addWidget(self.counts_label)
+        self.analyse_button = QPushButton("Analyse missing")
+        self.analyse_button.setToolTip("Analyse the frames in this scope that have no statistics, "
+                                       "skipping groups too small to judge")
+        self.analyse_button.clicked.connect(self._analyse_missing)
+        counts_row.addWidget(self.counts_label, 1)
+        counts_row.addWidget(self.analyse_button)
+        layout.addLayout(counts_row)
 
         grid = QGridLayout()
         self.metric_rows = {metric: _MetricRow(metric, grid, row, self._schedule_preview)
@@ -190,13 +203,17 @@ class DiagnoseQualityDialog(QDialog):
         panel = self.main_window.get_current_search_panel()
         self._scope = None
         self._scope_criteria = scope_criteria(panel.search_criteria)
+        self._update_stale_note()
+        self._load_scope()
+
+    def _load_scope(self):
+        self._scope = None
         self.scope_label.setText("Loading…")
         self.counts_label.clear()
         self.rejected_label.clear()
         self.details_label.clear()
         self.status_label.clear()
-        self._set_save_enabled(False)
-        self._update_stale_note()
+        self._set_actions_enabled()
         self._loader.load(self._scope_criteria)
 
     def _on_scope_loaded(self, scope: DiagnosisScope, criteria: SearchCriteria):
@@ -207,7 +224,7 @@ class DiagnoseQualityDialog(QDialog):
         sessions = len({group.key.session_night for group in scope.groups})
         self.scope_label.setText(f"Scope: {_plural(lights, 'light')} in {_plural(sessions, 'session')}"
                                  if lights else "Scope: no lights in this search")
-        self._set_save_enabled(lights > 0)
+        self._set_actions_enabled()
         self._update_preview()
 
     def _on_load_failed(self, message: str):
@@ -260,29 +277,61 @@ class DiagnoseQualityDialog(QDialog):
                                    f"Too few peers: {result.too_few_peers}")
         for metric, row in self.metric_rows.items():
             row.count_label.setText(f"{result.by_label[metric.label]} rejected")
+        self._set_actions_enabled()
+
+    def _set_actions_enabled(self):
+        ready = self._scope is not None and self._scope.frame_count > 0 and not self._analysing
+        self.save_button.setEnabled(ready and not self._saving)
+        self.save_and_hide_button.setEnabled(ready and not self._saving)
+        missing = frames_needing_analysis(self._scope, self.current_settings()) if self._scope else []
+        self.analyse_button.setText(f"Analyse missing ({len(missing)})")
+        self.analyse_button.setEnabled(ready and not self._saving and bool(missing))
+
+    # --- Analysing missing frames --------------------------------------------------------
+
+    def _analyse_missing(self):
+        file_ids = frames_needing_analysis(self._scope, self.current_settings())
+        if not file_ids:
+            return
+        if not self.context.library_write_lock.acquire(blocking=False):
+            QMessageBox.warning(self, "Diagnose Quality", f"Nothing was analysed: {_LIBRARY_BUSY}")
+            return
+        task = MissingFramesAnalysisTask(self.context, file_ids)  # releases the lock when it ends
+        task.ended.connect(self._on_analysis_ended)
+        self._analysing = True
+        self._set_actions_enabled()
+        # Not a child of this dialog: analysis carries on if this one is closed.
+        self.analysis_dialog = ImageAnalysisDialog(self.context, None, SearchCriteria(), parent=self.main_window,
+                                                   task=task, label=f"Analysing {len(file_ids)} file(s)...")
+        self.analysis_dialog.setAttribute(Qt.WA_DeleteOnClose)
+        self.analysis_dialog.show()
+
+    def _on_analysis_ended(self):
+        self._analysing = False
+        self.analysis_dialog = None
+        self._load_scope()
+        panel = self.main_window.get_current_search_panel()
+        if panel is not None:
+            panel.refresh_data_grid()
 
     # --- Saving --------------------------------------------------------------------------
-
-    def _set_save_enabled(self, enabled: bool):
-        self.save_button.setEnabled(enabled)
-        self.save_and_hide_button.setEnabled(enabled)
 
     def _save(self, hide_bad_frames: bool):
         if self._scope is None:
             return
         self._hide_after_save = hide_bad_frames
         self._settings_being_saved = self.current_settings()
-        self._set_save_enabled(False)
+        self._saving = True
+        self._set_actions_enabled()
         self.status_label.setText("Saving…")
         self._loader.save(diagnose(self._scope, self._settings_being_saved).verdicts)
 
     def _on_saved(self, stored: bool):
-        self._set_save_enabled(self._scope is not None)
+        self._saving = False
+        self._set_actions_enabled()
         if not stored:
             self.status_label.clear()
-            QMessageBox.warning(self, "Diagnose Quality",
-                                "Nothing was saved: a library scan or compression is writing to this library. "
-                                "Try again when it has finished.")
+            QMessageBox.warning(self, "Diagnose Quality", f"Nothing was saved: {_LIBRARY_BUSY}")
             return
         self.context.settings.set_quality_diagnosis_settings(self._settings_being_saved.to_json())
         self.status_label.setText("Saved.")
@@ -294,6 +343,7 @@ class DiagnoseQualityDialog(QDialog):
             panel.refresh_data_grid()
 
     def _on_save_failed(self, message: str):
-        self._set_save_enabled(self._scope is not None)
+        self._saving = False
+        self._set_actions_enabled()
         self.status_label.clear()
         QMessageBox.warning(self, "Diagnose Quality", f"Could not save the diagnosis: {message}")

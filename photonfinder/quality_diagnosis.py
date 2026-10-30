@@ -216,6 +216,15 @@ def diagnose(scope: DiagnosisScope, settings: DiagnosisSettings) -> DiagnosisRes
     return result
 
 
+def frames_needing_analysis(scope: DiagnosisScope, settings: DiagnosisSettings) -> list[int]:
+    """Frames without usable stats, in groups big enough to be judged once they have them."""
+    return [frame.file_id
+            for group in scope.groups
+            if len(group.frames) >= settings.min_group_size and group.key.session_night is not None
+            for frame in group.frames
+            if not frame.has_stats or frame.read_failed]
+
+
 def _session_cards(raw: bytes) -> Optional[dict]:
     """Just the session keywords of a stored header, or None if it needs the full parser.
 

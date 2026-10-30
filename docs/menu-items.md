@@ -54,7 +54,7 @@ The Tools menu contains file operations and advanced processing tools.
 - **Export file copies** - Exports copies of selected files to a specified directory
 
 ### Quality
-- **Diagnose Quality…** - Judges the plain LIGHT frames of the current search against their peers: the same night, target, filter, exposure, gain, binning, camera and telescope. Each metric can be off, or limited to X times the median absolute deviation or X% from the median, and the rejected counts update as you change them. Nothing is stored until you save, and **Save and hide bad frames** also adds the Quality Diagnosis filter. The dialog's scope stays fixed until you click **Use current search**
+- **Diagnose Quality…** - Judges the plain LIGHT frames of the current search against their peers: the same night, target, filter, exposure, gain, binning, camera and telescope. Each metric can be off, or limited to X times the median absolute deviation or X% from the median, and the rejected counts update as you change them. **Analyse missing** analyses the frames in the scope that have no statistics, skipping groups too small to judge. Nothing is stored until you save, and **Save and hide bad frames** also adds the Quality Diagnosis filter. The dialog's scope stays fixed until you click **Use current search**
 
 ### Plate Solving
 - **Plate solve (ASTAP)** - Performs plate solving using the ASTAP software

@@ -6,7 +6,7 @@ from typing import Callable, List
 from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
 from astropy.io.fits import Header
-from peewee import JOIN, fn
+from peewee import JOIN, chunked, fn
 
 from photonfinder.core import ApplicationContext, decompress
 from photonfinder.fits_handlers import normalize_fits_header
@@ -563,3 +563,40 @@ class ImageAnalysisTask(FileProcessingTask):
         except Exception as exc:
             self.message.emit(f"  Error: {file.name}: {exc}")
             logger.error("ImageAnalysisTask error on %s", file.name, exc_info=True)
+
+
+class MissingFramesAnalysisTask(ImageAnalysisTask):
+    """Analyses the given files while holding the library write lock.
+
+    The caller acquires the lock. The task releases it, because only the task knows when the
+    work has really stopped: cancelling closes the progress dialog while the current file is
+    still being analysed and written.
+    """
+    ended = Signal()  # the lock has been released, whether finished, cancelled or failed
+
+    def __init__(self, context: ApplicationContext, file_ids: List[int]):
+        super().__init__(context, SearchCriteria(), [])
+        self.file_ids = file_ids
+
+    def _load_files(self) -> List[File]:
+        files = []
+        for batch in chunked(self.file_ids, 500):
+            files.extend(File.select(File, Image, LibraryRoot)
+                         .join_from(File, LibraryRoot)
+                         .join_from(File, Image, JOIN.LEFT_OUTER)
+                         .where(File.rowid.in_(batch)))
+        return files
+
+    def _process_files(self):
+        try:
+            self.files = self._load_files()
+            if self.files:
+                super()._process_files()
+            else:  # an empty list would make the base class process its whole search
+                self.finished.emit()
+        except Exception as e:
+            logging.error(f"Error loading files to analyse: {e}", exc_info=True)
+            self.error.emit(str(e))
+        finally:
+            self.context.library_write_lock.release()
+            self.ended.emit()
