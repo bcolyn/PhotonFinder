@@ -441,6 +441,7 @@ class Settings:
         ("compress_level", "compress_level", 9, int),
         ("obs_timezone", "obs_timezone", "", str),
         ("annotation_mag_limit", "annotation_mag_limit", 19.0, float),
+        ("quality_diagnosis_settings", "quality_diagnosis_settings", "", str),
     ]
 
     def __init__(self, organization_name="AstroFileManager", application_name="AstroFileManager",

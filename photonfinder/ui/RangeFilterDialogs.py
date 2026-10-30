@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGroupBox,
-                               QHBoxLayout, QCheckBox, QSpinBox, QDoubleSpinBox,
+                               QHBoxLayout, QCheckBox, QPushButton, QSpinBox, QDoubleSpinBox,
                                QLabel, QVBoxLayout, QWidget)
 
 from photonfinder.models import DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_VALUES
@@ -177,6 +177,12 @@ class DiagnosisFilterDialog(QDialog):
             layout.addWidget(checkbox)
         self.set_hidden([])
 
+        self.diagnose_requested = False
+        self.diagnose_button = QPushButton("Diagnose…", self)
+        self.diagnose_button.setToolTip("Close this and calculate the diagnosis")
+        self.diagnose_button.clicked.connect(self._on_diagnose_clicked)
+        layout.addWidget(self.diagnose_button)
+
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -190,6 +196,10 @@ class DiagnosisFilterDialog(QDialog):
 
     def get_hidden(self) -> list[str]:
         return [value for value, checkbox in self._checkboxes.items() if not checkbox.isChecked()]
+
+    def _on_diagnose_clicked(self):
+        self.diagnose_requested = True
+        self.reject()
 
 
 class ImageQualityDialog(QDialog):

@@ -1285,15 +1285,19 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         dialog = DiagnosisFilterDialog(diagnosis_counts(self.search_criteria), self)
         dialog.set_hidden(self.search_criteria.diagnosis_hidden)
         if dialog.exec():
-            hidden = dialog.get_hidden()
-            current = self.advanced_options.get(AdvancedFilter.QUALITY_DIAGNOSIS)
-            # The button first: replacing the old one resets the criteria.
-            if hidden:
-                self._add_diagnosis_filter_button(hidden)
-            elif current:  # everything ticked: nothing left to filter on
-                self.remove_filter_button_control(current)
-            self.search_criteria.diagnosis_hidden = hidden
-            self.update_search_criteria()
+            self.set_diagnosis_filter(dialog.get_hidden())
+        elif dialog.diagnose_requested:
+            self.mainWindow.open_diagnose_quality()
+
+    def set_diagnosis_filter(self, hidden: list[str]):
+        current = self.advanced_options.get(AdvancedFilter.QUALITY_DIAGNOSIS)
+        # The button first: replacing the old one resets the criteria.
+        if hidden:
+            self._add_diagnosis_filter_button(hidden)
+        elif current:  # everything ticked: nothing left to filter on
+            self.remove_filter_button_control(current)
+        self.search_criteria.diagnosis_hidden = hidden
+        self.update_search_criteria()
 
     def _add_diagnosis_filter_button(self, hidden: list[str]):
         text = "Diagnosis: hide bad" if set(hidden) == set(DIAGNOSIS_BAD_VALUES) else f"Diagnosis ({len(hidden)} hidden)"

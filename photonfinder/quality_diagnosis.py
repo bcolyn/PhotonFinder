@@ -65,6 +65,29 @@ class DiagnosisSettings:
     rules: dict[Metric, MetricRule] = field(default_factory=lambda: {metric: MetricRule() for metric in Metric})
     min_group_size: int = 5
 
+    def to_json(self) -> str:
+        return json.dumps({
+            "min_group_size": self.min_group_size,
+            "rules": {metric.name: {"mode": rule.mode.value, "limit": rule.limit}
+                      for metric, rule in self.rules.items()},
+        })
+
+    @classmethod
+    def from_json(cls, text: Optional[str]) -> 'DiagnosisSettings':
+        """Stored settings, falling back to the defaults for anything missing or unreadable."""
+        settings = cls()
+        if not text:
+            return settings
+        try:
+            stored = json.loads(text)
+            for metric in Metric:
+                if rule := stored.get("rules", {}).get(metric.name):
+                    settings.rules[metric] = MetricRule(RuleMode(rule["mode"]), float(rule["limit"]))
+            return cls(rules=settings.rules, min_group_size=int(stored.get("min_group_size", settings.min_group_size)))
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            logger.warning("Ignoring unreadable quality diagnosis settings: %s", exc)
+            return cls()
+
 
 @dataclass(frozen=True)
 class PeerKey:

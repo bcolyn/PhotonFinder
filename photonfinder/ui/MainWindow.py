@@ -4,7 +4,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import List
 
-from PySide6.QtCore import QThread, Signal, QObject, QSize
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize
 from PySide6.QtGui import QIcon, QPalette, QAction, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import *
 
@@ -34,6 +34,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                  enable_mcp: bool = True):
         super(MainWindow, self).__init__(parent)
         self.setupUi(self)
+        self._diagnose_dialog = None
         self.context = context
         self.app = app
         self.session_manager = SessionManager(context.get_session_file())
@@ -129,6 +130,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionPlateScale.triggered.connect(self.add_plate_scale_filter)
         self.actionImageQuality.triggered.connect(self.add_image_quality_filter)
         self.actionQualityDiagnosis.triggered.connect(self.add_diagnosis_filter)
+        self.actionDiagnose_Quality.triggered.connect(self.open_diagnose_quality)
         self.action_Create_Backup.triggered.connect(self.create_backup)
         self.action_Create_Database.triggered.connect(self.create_database)
         self.action_Open_Database.triggered.connect(self.open_database)
@@ -277,6 +279,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         If the new database can't be opened, the previous one is reopened before re-raising.
         """
         previous_path = self.context.database_path
+        if self._diagnose_dialog is not None:
+            self._diagnose_dialog.close()
         while self.tabWidget.count() > 0:
             self._remove_search_tab(0)
         try:
@@ -466,6 +470,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def add_diagnosis_filter(self):
         self.get_current_search_panel().add_diagnosis_filter()
         self.enable_actions_for_current_tab()
+
+    def open_diagnose_quality(self):
+        if self._diagnose_dialog is not None:
+            self._diagnose_dialog.raise_()
+            self._diagnose_dialog.activateWindow()
+            return
+        from .DiagnoseQualityDialog import DiagnoseQualityDialog
+        dialog = DiagnoseQualityDialog(self.context, self, parent=self)
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.finished.connect(self._on_diagnose_quality_closed)
+        self._diagnose_dialog = dialog
+        dialog.show()
+
+    def _on_diagnose_quality_closed(self):
+        self._diagnose_dialog = None
 
     def add_header_text_filter(self):
         self.get_current_search_panel().add_header_text_filter()

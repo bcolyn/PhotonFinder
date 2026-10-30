@@ -126,6 +126,7 @@
     <addaction name="action_Export_Data"/>
     <addaction name="actionCompress_files"/>
     <addaction name="actionPlate_solve_files"/>
+    <addaction name="actionDiagnose_Quality"/>
     <addaction name="separator"/>
     <addaction name="actionFind_matching_darks"/>
     <addaction name="actionFind_matching_flats"/>
@@ -509,6 +510,14 @@
   <action name="actionPlate_solve_files">
    <property name="text">
     <string>Plate Solve…</string>
+   </property>
+  </action>
+  <action name="actionDiagnose_Quality">
+   <property name="text">
+    <string>Diagnose Quality…</string>
+   </property>
+   <property name="toolTip">
+    <string>Judge the lights of the current search against their peer frames</string>
    </property>
   </action>
   <action name="actionCompress_files">

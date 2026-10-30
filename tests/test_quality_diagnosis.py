@@ -404,6 +404,25 @@ def test_counts_follow_the_rest_of_the_search(diagnosed):
     assert counts[DIAGNOSIS_OK] == 0
 
 
+def test_settings_survive_a_json_round_trip():
+    settings = DiagnosisSettings(rules={**DiagnosisSettings().rules, Metric.FWHM: MetricRule(RuleMode.PERCENT, 25.0),
+                                        Metric.BACKGROUND: MetricRule(RuleMode.OFF)}, min_group_size=8)
+    assert DiagnosisSettings.from_json(settings.to_json()) == settings
+
+
+@pytest.mark.parametrize("stored", ["", None, "not json", "[]", '{"rules": {"FWHM": {"mode": "nonsense"}}}'])
+def test_unreadable_settings_fall_back_to_the_defaults(stored):
+    assert DiagnosisSettings.from_json(stored) == DiagnosisSettings()
+
+
+def test_settings_missing_a_metric_use_its_default():
+    stored = '{"rules": {"FWHM": {"mode": "off", "limit": 1.0}}}'
+    settings = DiagnosisSettings.from_json(stored)
+    assert settings.rules[Metric.FWHM].mode == RuleMode.OFF
+    assert settings.rules[Metric.BACKGROUND] == MetricRule()
+    assert settings.min_group_size == 5
+
+
 def test_filter_survives_a_json_round_trip(context):
     criteria = SearchCriteria(diagnosis_hidden=["Bad FWHM", DIAGNOSIS_NOT_ANALYSED])
     assert SearchCriteria.from_json(criteria.to_json()) == criteria
