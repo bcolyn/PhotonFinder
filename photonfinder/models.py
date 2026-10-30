@@ -817,6 +817,8 @@ class ImageStats(Model):
     star_count = IntegerField(null=True)
     fwhm_median = FloatField(null=True)
     elongation_median = FloatField(null=True)
+    # Verdict against peer frames, written by quality_diagnosis. NULL: not analysed.
+    diagnosis = TextField(null=True)
 
     class Meta:
         database = None
