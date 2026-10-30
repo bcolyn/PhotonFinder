@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from photonfinder import quality_diagnosis
 from photonfinder.image_analysis import ImageAnalysisResult
 from photonfinder.models import (
     CORE_MODELS, DIAGNOSIS_NOT_ANALYSED, File, Image, ImageStats, LibraryRoot, SearchCriteria,
@@ -402,6 +403,7 @@ def test_closing_the_dialog_mid_analysis_still_releases_the_lock(sandbox, app, m
     sandbox.wait_idle()
     sandbox.qtbot.waitUntil(lambda: lock_is_free(sandbox))
     assert stats_of(sandbox, "M81_new0.fits").star_count == 500
+    wait_for_grid(sandbox, lambda g: {r["File name"]: r["Stars"] for r in g.rows()}["M81_new0.fits"] == "500")
 
 
 def test_showing_the_progress_dialog_again_does_not_restart_the_analysis(sandbox, app, m81, monkeypatch):
@@ -427,6 +429,64 @@ def test_showing_the_progress_dialog_again_does_not_restart_the_analysis(sandbox
     sandbox.wait_idle()
     sandbox.qtbot.waitUntil(lambda: lock_is_free(sandbox))
     assert len(calls) == 1
+
+
+def test_failing_to_start_the_analysis_releases_the_lock(sandbox, app, boundary, m81, monkeypatch):
+    add_unanalysed(sandbox, "M81", 1)
+    search(sandbox, app, object_name="M81")
+    dialog = open_dialog(sandbox, app)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("no progress window")
+
+    monkeypatch.setattr("photonfinder.ui.DiagnoseQualityDialog.ImageAnalysisDialog", fail)
+    boundary.answer("warning", None)
+    sandbox.qtbot.mouseClick(dialog.analyse_button, Qt.MouseButton.LeftButton)
+    sandbox.wait_idle()
+
+    assert [kind for kind, _ in boundary.calls] == ["warning"]
+    assert lock_is_free(sandbox)
+    assert dialog.analyse_button.isEnabled()
+    assert dialog.save_button.isEnabled()
+
+
+def test_a_late_failure_of_a_replaced_load_leaves_the_newer_scope_alone(sandbox, app, m81, monkeypatch):
+    add_frames(sandbox, "M33", GOOD_FWHMS)
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+    real_load = quality_diagnosis.load_scope
+
+    def load(context, criteria):
+        calls.append(criteria)
+        if len(calls) == 1:
+            entered.set()
+            assert release.wait(10)
+            raise OSError("the first load failed")
+        return real_load(context, criteria)
+
+    monkeypatch.setattr("photonfinder.ui.DiagnoseQualityDialog.load_scope", load)
+    app.actionDiagnose_Quality.trigger()
+    dialog = app._diagnose_dialog
+    assert entered.wait(10)
+
+    panel = app.get_current_search_panel()
+    panel.search_criteria.object_name = "M33"
+    dialog.use_current_search()
+    sandbox.qtbot.waitUntil(lambda: dialog.scope_label.text() == "Scope: 8 lights in 1 session")
+
+    release.set()
+    sandbox.wait_idle()
+    assert dialog.scope_label.text() == "Scope: 8 lights in 1 session"
+
+
+def test_a_failing_load_says_so(sandbox, app, m81, monkeypatch):
+    def fail(context, criteria):
+        raise OSError("disk gone")
+
+    monkeypatch.setattr("photonfinder.ui.DiagnoseQualityDialog.load_scope", fail)
+    dialog = open_dialog(sandbox, app)
+    assert dialog.scope_label.text() == "Could not load the scope: disk gone"
+    assert not dialog.save_button.isEnabled()
 
 
 def test_unreadable_frame_stays_not_analysed_and_is_retried(sandbox, app, m81):

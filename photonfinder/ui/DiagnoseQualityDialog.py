@@ -41,7 +41,7 @@ def _plural(count: int, noun: str) -> str:
 
 class _DiagnosisLoader(BackgroundLoaderBase):
     scope_loaded = Signal(object, object)  # (DiagnosisScope, the criteria it was loaded for)
-    load_failed = Signal(str)
+    load_failed = Signal(str, object)  # (message, the criteria it was loading)
     saved = Signal(bool)  # False: another writer holds the library
     save_failed = Signal(str)
 
@@ -53,7 +53,7 @@ class _DiagnosisLoader(BackgroundLoaderBase):
             self.scope_loaded.emit(load_scope(self.context, criteria), criteria)
         except Exception as exc:
             logging.error("Could not load the diagnosis scope", exc_info=True)
-            self.load_failed.emit(str(exc))
+            self.load_failed.emit(str(exc), criteria)
 
     def save(self, verdicts: dict):
         self.run_in_thread(self._save, verdicts)
@@ -227,7 +227,9 @@ class DiagnoseQualityDialog(QDialog):
         self._set_actions_enabled()
         self._update_preview()
 
-    def _on_load_failed(self, message: str):
+    def _on_load_failed(self, message: str, criteria: SearchCriteria):
+        if criteria is not self._scope_criteria:
+            return  # superseded by a later Use current search
         self.scope_label.setText(f"Could not load the scope: {message}")
 
     def _on_tab_changed(self):
@@ -296,23 +298,29 @@ class DiagnoseQualityDialog(QDialog):
         if not self.context.library_write_lock.acquire(blocking=False):
             QMessageBox.warning(self, "Diagnose Quality", f"Nothing was analysed: {_LIBRARY_BUSY}")
             return
-        task = MissingFramesAnalysisTask(self.context, file_ids)  # releases the lock when it ends
-        task.ended.connect(self._on_analysis_ended)
+        try:
+            task = MissingFramesAnalysisTask(self.context, file_ids)
+            task.ended.connect(self._on_analysis_ended)
+            # On the window, as this dialog may be gone by the time the run ends.
+            task.ended.connect(self.main_window.refresh_current_search)
+            # Not a child of this dialog: analysis carries on if this one is closed.
+            progress = ImageAnalysisDialog(self.context, None, SearchCriteria(), parent=self.main_window,
+                                           task=task, label=f"Analysing {len(file_ids)} file(s)...")
+            progress.setAttribute(Qt.WA_DeleteOnClose)
+        except Exception as exc:
+            logging.error("Could not start the analysis", exc_info=True)
+            self.context.library_write_lock.release()  # no task to release it
+            QMessageBox.warning(self, "Diagnose Quality", f"Could not start the analysis: {exc}")
+            return
         self._analysing = True
         self._set_actions_enabled()
-        # Not a child of this dialog: analysis carries on if this one is closed.
-        self.analysis_dialog = ImageAnalysisDialog(self.context, None, SearchCriteria(), parent=self.main_window,
-                                                   task=task, label=f"Analysing {len(file_ids)} file(s)...")
-        self.analysis_dialog.setAttribute(Qt.WA_DeleteOnClose)
-        self.analysis_dialog.show()
+        self.analysis_dialog = progress
+        progress.show()  # starts the task, which releases the lock when it ends
 
     def _on_analysis_ended(self):
         self._analysing = False
         self.analysis_dialog = None
         self._load_scope()
-        panel = self.main_window.get_current_search_panel()
-        if panel is not None:
-            panel.refresh_data_grid()
 
     # --- Saving --------------------------------------------------------------------------
 

@@ -234,15 +234,21 @@ def _session_cards(raw: bytes) -> Optional[dict]:
     if raw.startswith(b'{'):
         entries = json.loads(raw)
         return {key: entries[key][0].get('value') for key in _SESSION_KEYWORDS if entries.get(key)}
-    if b'	' in raw or len(raw) % _CARD_LENGTH:
+    if b'\t' in raw or len(raw) % _CARD_LENGTH:
         return None
     cards = {}
     for start in range(0, len(raw), _CARD_LENGTH):
-        keyword = raw[start:start + 8].rstrip()
+        card = raw[start:start + _CARD_LENGTH]
+        keyword = card[:8].rstrip().upper()
         if keyword == b'END':
             break
-        if keyword in _SESSION_KEYWORDS_BYTES:
-            cards[keyword.decode('ascii')] = Card.fromstring(raw[start:start + _CARD_LENGTH].decode('ascii')).value
+        if keyword == b'HIERARCH' and any(name in card.upper() for name in _SESSION_KEYWORDS_BYTES):
+            return None
+        name = keyword.decode('ascii')
+        if keyword in _SESSION_KEYWORDS_BYTES and name not in cards:  # the first card wins, as in a Header
+            cards[name] = Card.fromstring(card.decode('ascii')).value
+            if isinstance(cards[name], str) and cards[name].endswith('&'):  # continues on the next card
+                return None
     return cards
 
 

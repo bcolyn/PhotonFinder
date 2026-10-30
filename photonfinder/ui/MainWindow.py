@@ -486,6 +486,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def _on_diagnose_quality_closed(self):
         self._diagnose_dialog = None
 
+    def refresh_current_search(self):
+        panel = self.get_current_search_panel()
+        if panel is not None:
+            panel.refresh_data_grid()
+
     def add_header_text_filter(self):
         self.get_current_search_panel().add_header_text_filter()
 

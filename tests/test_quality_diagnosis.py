@@ -267,7 +267,12 @@ def _session_blobs():
     yield "fits numeric site", _fits_blob("SITELAT =              50.8500", "SITELONG=             355.6500")
     yield "fits obsgeo fallback", _fits_blob("OBSGEO-B=                50.85", "OBSGEO-L=                 4.35")
     yield "fits no session cards", _fits_blob("SIMPLE  =                    T", "GAIN    =                  100")
-    yield "fits with tabs", _fits_blob("DATE-LOC= '2024-01-01T22:30:00'	/ local time")
+    yield "fits with tabs", _fits_blob("DATE-LOC= '2024-01-01T22:30:00'\t/ local time")
+    yield "fits repeated card", _fits_blob("DATE-LOC= '2024-01-01T22:30:00'", "DATE-LOC= '2024-06-01T22:30:00'")
+    yield "fits hierarch site", _fits_blob("HIERARCH SITELAT = 50.5", "DATE-LOC= '2024-01-01T22:30:00'")
+    yield "fits unrelated hierarch", _fits_blob("HIERARCH ESO DET GAIN = 2", "DATE-LOC= '2024-01-01T22:30:00'")
+    yield "fits lowercase keyword", _fits_blob("date-loc= '2024-01-01T22:30:00'", "sitelat = '50 51 00'")
+    yield "fits continued value", _fits_blob("DATE-LOC= '2024-01-01T22:&'", "CONTINUE  '30:00'")
 
 
 @pytest.mark.parametrize("blob", [blob for _, blob in _session_blobs()], ids=[name for name, _ in _session_blobs()])
