@@ -346,6 +346,8 @@ class ImageViewerWindow(QMainWindow):
         self._fitted = False
         self._pending_process = False
         self._load_worker: ImageLoadWorker | None = None
+        # Replaced while still running: destroying a running QThread crashes the application.
+        self._retired_load_workers: set[ImageLoadWorker] = set()
         self._process_worker: ProcessWorker | None = None
         self._nav_tb: QToolBar | None = None
         self._view_tb: QToolBar | None = None
@@ -692,6 +694,8 @@ class ImageViewerWindow(QMainWindow):
         if self._load_worker and self._load_worker.isRunning():
             self._load_worker.image_loaded.disconnect()
             self._load_worker.error.disconnect()
+            self._retired_load_workers.add(self._load_worker)
+            self._load_worker.finished.connect(self._on_retired_load_worker_finished)
 
         self._load_worker = ImageLoadWorker(filename, self._is_fits)
         self._load_worker.image_loaded.connect(self._on_raw_loaded)
@@ -738,6 +742,10 @@ class ImageViewerWindow(QMainWindow):
             self._load_worker.image_loaded.disconnect()
             self._load_worker.error.disconnect()
             self._load_worker.wait()
+        for worker in self._retired_load_workers:
+            worker.finished.disconnect()
+            worker.wait()
+        self._retired_load_workers.clear()
         if self._process_worker and self._process_worker.isRunning():
             self._process_worker.result.disconnect()
             self._process_worker.error.disconnect()
@@ -1386,6 +1394,9 @@ class ImageViewerWindow(QMainWindow):
         self.statusBar().showMessage(f"{Path(self._filename).name}  |  {w_px}×{h}")
 
         self._run_processing()
+
+    def _on_retired_load_worker_finished(self):
+        self._retired_load_workers.discard(self.sender())
 
     def _on_load_error(self, msg: str):
         self._is_loading = False
