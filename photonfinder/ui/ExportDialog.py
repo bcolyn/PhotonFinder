@@ -421,7 +421,7 @@ class ExportWorker(BackgroundLoaderBase):
                 shutil.copyfileobj(source_fd, destination_file)
 
     def _copy_wcs(self, file: File, header):
-        if self.override_platesolve and hasattr(file, 'filewcs'):
+        if self.override_platesolve and hasattr(file, 'filewcs') and file.filewcs:
             wcs_str = decompress(file.filewcs.wcs)
             wcs_header = fits.Header.fromstring(wcs_str)
             for card in wcs_header.cards:

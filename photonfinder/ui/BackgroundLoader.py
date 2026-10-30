@@ -78,7 +78,7 @@ class ProjectsLoader(BackgroundLoaderBase):
             projects = Project.list_projects_with_image_data()
 
             projects_with_coords = [p for p in projects
-                                    if hasattr(p, 'image') and p.image.coord_ra and p.image.coord_dec]
+                                    if hasattr(p, 'image') and p.image and p.image.coord_ra and p.image.coord_dec]
             if projects_with_coords:
                 from astropy.coordinates import SkyCoord, get_constellation
                 import astropy.units as u
@@ -242,7 +242,7 @@ class ImageReindexWorker(BackgroundLoaderBase):
 
                         # There is no information from plate solving with an external tool - try to extract from
                         # the file header
-                        if not hasattr(header_record.file, 'filewcs'):
+                        if not getattr(header_record.file, 'filewcs', None):
                             wcs = build_wcs_from_header(header_record.file, header)
                             if wcs is not None:
                                 FileWCS.insert(wcs.__data__).on_conflict_ignore().execute()
@@ -252,7 +252,7 @@ class ImageReindexWorker(BackgroundLoaderBase):
                         # Process the header
                         image = normalize_fits_header(header_record.file, header, self.context.status_reporter)
                         if image:
-                            if hasattr(header_record.file, 'filewcs'):
+                            if getattr(header_record.file, 'filewcs', None):
                                 wcs_str = decompress(header_record.file.filewcs.wcs)
                                 wcs_header = Header.fromstring(wcs_str)
                                 ra, dec, healpix, radius = get_image_center_coords(wcs_header)

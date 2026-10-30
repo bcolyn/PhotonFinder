@@ -20,7 +20,7 @@ Tests are written with pytest and organised by component.
 ## Prerequisites
 
 ```bash
-uv sync --extra dev
+uv sync
 ```
 
 ## Running tests

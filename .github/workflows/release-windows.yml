@@ -26,10 +26,10 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: uv sync --extra dev --extra build
+        run: uv sync --group build
 
       - name: Generate code from UI files
-        run: uv run python setup.py build_ui
+        run: uv run python scripts/build_ui.py
 
       # Test dataset — cached by dataset revision hash
       - name: Get dataset revision hash
@@ -58,7 +58,7 @@ jobs:
         run: uv run pytest tests/
 
       - name: Build with PyInstaller
-        run: uv run --extra build pyinstaller --noconfirm photonfinder.spec
+        run: uv run --group build pyinstaller --noconfirm photonfinder.spec
 
       - name: Zip the build
         run: |

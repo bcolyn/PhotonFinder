@@ -788,7 +788,7 @@ class ProjectFile(Model):
         file = query.first()
         if not file:
             return None
-        if hasattr(file, 'projectfile'):
+        if getattr(file, 'projectfile', None):
             return file.projectfile
         return ProjectFile(project=project, file=file)
 

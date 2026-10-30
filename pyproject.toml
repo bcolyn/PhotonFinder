@@ -1,7 +1,3 @@
-[build-system]
-requires = ["setuptools>=61.0", "wheel", "pyqt-distutils>=0.7.3"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "PhotonFinder"
 version = "2.0.0"
@@ -12,59 +8,57 @@ authors = [
 ]
 license = "MIT"
 
+# Not 3.14 yet: pytest-qt 4.5.0 does not support it and crashes the test process.
 requires-python = ">=3.13"
+
+# Ranges here, exact versions in uv.lock. An exact pin needs a reason next to it.
 dependencies = [
-    "pyside6==6.11.1",
-    "pyinstaller==6.19.0",
-    "pyinstaller-hooks-contrib==2026.4",
-    "pyqt-distutils==0.7.3",
-    "peewee~=4.0.0",
-    "astropy~=7.2.0",
-    "astropy-healpix~=1.1.3",
+    "pyside6~=6.12.0",
+    "peewee~=4.5.3",
+    "astropy~=8.0.2",
+    "astropy-healpix~=2.0.1",
     "astroquery~=0.4.11",
-    "photutils~=3.0.0",
+    "photutils~=3.1.1",
     "sep>=1.4.0",
-    "xisf~=0.9.6",
-    "zstd~=1.5.7.3",
-    "setuptools<81",
+    "xisf~=0.9.7",
+    # 1.5.7.3 was yanked upstream: not threadsafe.
+    "zstd==1.5.7.2",
     "fs~=2.4.16",
-    "numpy==2.4.6",
-    "pillow~=12.2.0",
+    "numpy~=2.5.4",
+    "pillow~=13.0.0",
     "psutil~=7.2.0",
-    "requests==2.34.2",
-    "opencv-python~=4.13.0.92",
-    "timezonefinder>=6.0.0",
+    "requests~=2.34.2",
+    "opencv-python~=5.0.0.93",
+    "timezonefinder~=9.2.0",
+    # Not imported: the time zone database zoneinfo needs on Windows.
     "tzdata",
+    # 2.x removed FastMCP; moving to it means migrating mcp_server.py.
     "mcp~=1.2",
-    "huggingface-hub==1.20.1",
+    "anyio~=4.13",
+    "pydantic~=2.13",
+    "uvicorn>=0.49.0",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "pytest>=7.0.0",
+    "pytest~=9.2",
     "pytest-dotenv>=0.5.2",
-    "pytest-qt>=4.2.0",
-    "pytest-mock>=3.10.0",
-    "pytest-cov>=4.1.0",
-    "huggingface-hub>=0.27.0",
-    "ipython>=8.0.0",
+    "pytest-qt>=4.5.0",
+    "pytest-mock~=3.17",
+    "pytest-cov~=7.1",
+    "huggingface-hub>=1.20.1",
+    "ipython~=9.18",
 ]
 build = [
+    "pyinstaller~=6.22.3",
+    "pyinstaller-hooks-contrib>=2026.9",
     # Required during PyInstaller analysis: astropy/photutils submodules import
     # matplotlib at collection time, causing a startup failure if it's absent.
     # It is excluded from the bundle via photonfinder.spec; only needed at build time.
-    "matplotlib",
+    "matplotlib>=3.11.2",
 ]
 
 [tool.uv]
 package = false
-
-[tool.setuptools]
-packages = ["photonfinder"]
-
-[tool.setuptools.cmdclass]
-build_ui = "pyqt_distutils.build_ui.build_ui"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = "test_*.py"
+# fs imports pkg_resources, which newer setuptools no longer ships.
+constraint-dependencies = ["setuptools<81"]

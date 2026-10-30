@@ -63,12 +63,12 @@ Binary releases are published on GitHub. Those are the recommended way to run Ph
 ```bash
 git clone https://github.com/your-repo/PhotonFinder.git
 cd PhotonFinder
-uv sync --extra dev
+uv sync
 ```
 
 2. Build UI files:
 ```bash
-uv run python setup.py build_ui
+uv run python scripts/build_ui.py
 ```
 
    The MCP tool manifest is generated the same way, and is only needed after adding or
@@ -238,7 +238,7 @@ full tool list.
 To create a standalone executable:
 
 ```bash
-uv run --extra build pyinstaller --noconfirm photonfinder.spec
+uv run --group build pyinstaller --noconfirm photonfinder.spec
 ```
 
 ## 🤝 Contributing

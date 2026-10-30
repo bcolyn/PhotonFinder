@@ -73,7 +73,7 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
             date_iso = datetime.fromisoformat(date_str) if date_str else None
             self.tableWidget.setItem(row, 1, QTableWidgetItem(_format_date(date_iso)))
             self.tableWidget.setItem(row, 2, QTableWidgetItem(str(project.file_counts)))
-            if hasattr(project, 'image'):
+            if hasattr(project, 'image') and project.image:
                 image = project.image
                 self.tableWidget.setItem(row, 3, QTableWidgetItem(_format_ra(image.coord_ra)))
                 self.tableWidget.setItem(row, 4, QTableWidgetItem(_format_dec(image.coord_dec)))

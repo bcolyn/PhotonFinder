@@ -294,7 +294,7 @@ def _coords_by_pixel(project_files: List[ProjectFile]):
     filtered_data = [
         [pf.file.image.coord_ra, pf.file.image.coord_dec, pf.file.image.coord_pix256]
         for pf in project_files
-        if pf.file.image.coord_pix256 is not None
+        if getattr(pf.file, 'image', None) and pf.file.image.coord_pix256 is not None
     ]
 
     if not filtered_data:

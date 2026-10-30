@@ -692,7 +692,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 project_actions.append(recent_project_action)
 
         # enable or disable based on current selection
-        if selected_file and hasattr(selected_file, 'image'):
+        if selected_file and hasattr(selected_file, 'image') and selected_file.image:
             selected_image = selected_file.image
             current_type = selected_image.image_type
             find_darks_action.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
@@ -1688,10 +1688,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 dec_item = model.index(row, 16)
                 solved_item = model.index(row, 17)
 
-                model.setData(ra_item, _format_ra(file.image.coord_ra), Qt.DisplayRole)
-                model.setData(ra_item, file.image.coord_ra, SORT_ROLE)
-                model.setData(dec_item, _format_dec(file.image.coord_dec), Qt.DisplayRole)
-                model.setData(dec_item, file.image.coord_dec, SORT_ROLE)
+                image = getattr(file, 'image', None)
+                if image:
+                    model.setData(ra_item, _format_ra(image.coord_ra), Qt.DisplayRole)
+                    model.setData(ra_item, image.coord_ra, SORT_ROLE)
+                    model.setData(dec_item, _format_dec(image.coord_dec), Qt.DisplayRole)
+                    model.setData(dec_item, image.coord_dec, SORT_ROLE)
                 model.setData(solved_item, "True", Qt.DisplayRole)
                 model.setData(solved_item, "True", SORT_ROLE)
 
