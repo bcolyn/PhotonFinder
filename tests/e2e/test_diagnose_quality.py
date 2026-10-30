@@ -3,13 +3,16 @@ import threading
 from datetime import datetime, timedelta
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
 
 from photonfinder.image_analysis import ImageAnalysisResult
 from photonfinder.models import (
     CORE_MODELS, DIAGNOSIS_NOT_ANALYSED, File, Image, ImageStats, LibraryRoot, SearchCriteria,
 )
 from photonfinder.quality_diagnosis import DiagnosisSettings, Metric, MetricRule, RuleMode
+from photonfinder.ui.ImageAnalysisDialog import ImageAnalysisDialog
 from photonfinder.ui.RangeFilterDialogs import DiagnosisFilterDialog
 from photonfinder.ui.SearchPanel import AdvancedFilter
 
@@ -452,3 +455,116 @@ def test_analysis_results_reach_the_grid(sandbox, app, m81, analyze_ok):
     dialog = open_dialog(sandbox, app)
     sandbox.qtbot.mouseClick(dialog.analyse_button, Qt.MouseButton.LeftButton)
     wait_for_grid(sandbox, lambda g: {r["File name"]: r["Stars"] for r in g.rows()}["M81_new0.fits"] == "500")
+
+
+# --- Other ways in ---------------------------------------------------------------------
+
+
+def run_analyse_images(sandbox, app) -> ImageAnalysisDialog:
+    panel = app.get_current_search_panel()
+    panel.analyse_images()
+    dialog = panel.findChild(ImageAnalysisDialog)
+    sandbox.wait_idle()
+    sandbox.qtbot.waitUntil(lambda: dialog._btn.text() == "Close")
+    return dialog
+
+
+def test_analyse_images_offers_the_diagnosis_when_done(sandbox, app, m81, analyze_ok):
+    add_unanalysed(sandbox, "M81", 1)
+    search(sandbox, app, object_name="M81")
+    progress = run_analyse_images(sandbox, app)
+    assert progress.diagnose_button.isVisible()
+    assert app._diagnose_dialog is None  # only an offer
+
+    sandbox.qtbot.mouseClick(progress.diagnose_button, Qt.MouseButton.LeftButton)
+    assert not progress.isVisible()
+    sandbox.wait_idle()
+    assert app._diagnose_dialog.isVisible()
+    assert app._diagnose_dialog.scope_label.text() == "Scope: 10 lights in 1 session"
+
+
+def test_ignoring_the_offer_changes_nothing(sandbox, app, m81, analyze_ok):
+    search(sandbox, app, object_name="M81")
+    progress = run_analyse_images(sandbox, app)
+    progress._btn.click()
+    sandbox.wait_idle()
+    assert app._diagnose_dialog is None
+
+
+def test_no_offer_without_a_light(sandbox, app, analyze_ok):
+    add_frames(sandbox, "M81", [3.0])
+    with sandbox.context.database.bind_ctx(CORE_MODELS):
+        Image.update(image_type="DARK").execute()
+    search(sandbox, app)
+    assert not run_analyse_images(sandbox, app).diagnose_button.isVisible()
+
+
+def test_analyse_missing_does_not_offer_what_is_already_open(sandbox, app, m81, analyze_ok):
+    add_unanalysed(sandbox, "M81", 1)
+    search(sandbox, app, object_name="M81")
+    dialog = open_dialog(sandbox, app)
+    sandbox.qtbot.mouseClick(dialog.analyse_button, Qt.MouseButton.LeftButton)
+    progress = dialog.analysis_dialog
+    sandbox.wait_idle()
+    sandbox.qtbot.waitUntil(lambda: progress._btn.text() == "Close")
+    assert not progress.diagnose_button.isVisible()
+
+
+def test_cancelled_analysis_does_not_offer(sandbox, app, m81, monkeypatch):
+    search(sandbox, app, object_name="M81")
+    started, release = threading.Event(), threading.Event()
+
+    def held(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return GOOD_RESULT
+
+    monkeypatch.setattr("photonfinder.ui.BackgroundLoader.analyze_file", held)
+    panel = app.get_current_search_panel()
+    panel.analyse_images()
+    progress = panel.findChild(ImageAnalysisDialog)
+    assert started.wait(10)
+    progress._btn.click()
+    release.set()
+    sandbox.wait_idle()
+    assert app._diagnose_dialog is None
+
+
+def context_menu_item(app, text: str):
+    """Right-click the first grid row and choose an item from the real menu.
+
+    The menu blocks in its own event loop, so a timer works it from inside that loop, and
+    always closes it: a menu left open would hang the test.
+    """
+    panel = app.get_current_search_panel()
+    view = panel.dataView
+    position = view.visualRect(view.model().index(0, 0)).center()
+    view.selectRow(0)
+    found = []
+
+    def choose():
+        menu = QApplication.activePopupWidget()
+        try:
+            action = next((a for a in menu.actions() if a.text() == text), None)
+            found.append(action)
+            if action is not None:
+                menu.setActiveAction(action)
+                QTest.keyClick(menu, Qt.Key.Key_Return)
+        finally:
+            if menu.isVisible():
+                menu.close()
+
+    QTimer.singleShot(0, choose)
+    panel.show_context_menu(position)
+    assert found and found[0] is not None, f"no {text!r} item in the menu"
+
+
+def test_right_click_menu_opens_the_dialog_and_brings_it_forward(sandbox, app, m81):
+    context_menu_item(app, "Diagnose Quality…")
+    sandbox.wait_idle()
+    dialog = app._diagnose_dialog
+    assert dialog is not None and dialog.isVisible()
+
+    context_menu_item(app, "Diagnose Quality…")
+    sandbox.wait_idle()
+    assert app._diagnose_dialog is dialog

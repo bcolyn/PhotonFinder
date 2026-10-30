@@ -678,6 +678,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         clear_solution_action = menu.addAction("Clear Plate Solution")
         clear_solution_action.setEnabled(is_solved)
         analyse_action = menu.addAction("Analyse Images...")
+        menu.addAction(self.mainWindow.actionDiagnose_Quality)
         menu.addSeparator()
         mark_bad_action = menu.addAction("Mark as bad")
         menu.addSeparator()
@@ -1682,6 +1683,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             files=selected_files if selected_files else None,
             search_criteria=self.search_criteria,
             parent=self,
+            on_diagnose=self.mainWindow.open_diagnose_quality,
         )
         dialog.setAttribute(Qt.WA_DeleteOnClose)
         dialog.analysis_complete.connect(self.on_files_analysed)

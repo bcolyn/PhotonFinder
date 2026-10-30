@@ -1,5 +1,7 @@
 """Dialog for running image quality analysis on selected files."""
 
+from typing import Callable
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QPlainTextEdit, QProgressBar, QPushButton, QVBoxLayout,
@@ -8,6 +10,12 @@ from PySide6.QtWidgets import (
 from photonfinder.core import ApplicationContext
 from photonfinder.models import File, SearchCriteria
 from photonfinder.ui.BackgroundLoader import ImageAnalysisTask
+
+
+def _analysed_a_light(task: ImageAnalysisTask) -> bool:
+    """The quality diagnosis only covers plain LIGHT frames."""
+    return any((image := getattr(file, 'image', None)) and (image.image_type or "").upper() == "LIGHT"
+               for file, _ in task.analyzed_files)
 
 
 class ImageAnalysisDialog(QDialog):
@@ -19,7 +27,8 @@ class ImageAnalysisDialog(QDialog):
 
     def __init__(self, context: ApplicationContext, files: list[File] | None,
                  search_criteria: SearchCriteria, parent=None,
-                 task: ImageAnalysisTask | None = None, label: str | None = None):
+                 task: ImageAnalysisTask | None = None, label: str | None = None,
+                 on_diagnose: Callable[[], None] | None = None):
         super().__init__(parent)
         self.setWindowTitle("Analyse Images")
         self.setMinimumSize(500, 350)
@@ -37,6 +46,11 @@ class ImageAnalysisDialog(QDialog):
         layout.addWidget(self._log)
         btn_row = QHBoxLayout()
         btn_row.addStretch()
+        self._on_diagnose = on_diagnose
+        self.diagnose_button = QPushButton("Diagnose Quality…")
+        self.diagnose_button.setVisible(False)
+        self.diagnose_button.clicked.connect(self._on_diagnose_clicked)
+        btn_row.addWidget(self.diagnose_button)
         self._btn = QPushButton("Cancel")
         self._btn.clicked.connect(self._on_btn_clicked)
         btn_row.addWidget(self._btn)
@@ -64,7 +78,12 @@ class ImageAnalysisDialog(QDialog):
         task, self._task = self._task, None
         self._log.appendPlainText(f"\nDone: {len(task.analyzed_files)} file(s) analysed.")
         self._btn.setText("Close")
+        self.diagnose_button.setVisible(self._on_diagnose is not None and _analysed_a_light(task))
         self.analysis_complete.emit(task)
+
+    def _on_diagnose_clicked(self):
+        self.close()
+        self._on_diagnose()
 
     def _on_error(self, msg: str):
         self._log.appendPlainText(f"\nError: {msg}")
