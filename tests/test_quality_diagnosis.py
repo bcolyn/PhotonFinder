@@ -243,6 +243,29 @@ def test_scope_expands_to_whole_peer_groups_only(context, library):
     assert _group_ids(context, criteria) == [sorted([seen.rowid, hidden.rowid])]
 
 
+def test_selection_scopes_to_the_peer_groups_of_its_lights(context, library):
+    selected = _light(library)
+    peer = _light(library)
+    dark = _light(library, image_type="DARK")
+    other = _light(library, object_name="M33")
+
+    scope = load_scope(context, SearchCriteria(object_name="M33"), {selected.rowid, dark.rowid})
+
+    assert [sorted(frame.file_id for frame in group.frames) for group in scope.groups] \
+        == [sorted([selected.rowid, peer.rowid])]
+    assert scope.selected_lights == 1
+    assert other.rowid not in {frame.file_id for group in scope.groups for frame in group.frames}
+
+
+def test_no_selection_falls_back_to_the_search(context, library):
+    light = _light(library, object_name="M33")
+    _light(library)
+    for selection in (None, set()):
+        scope = load_scope(context, SearchCriteria(object_name="M33"), selection)
+        assert [[frame.file_id for frame in group.frames] for group in scope.groups] == [[light.rowid]]
+        assert scope.selected_lights == 0
+
+
 def test_a_night_runs_across_midnight_using_the_cached_header(context, library):
     # UTC+12: by UTC alone, the first two would land in different nights.
     evening = _light(library, date_obs=datetime(2024, 1, 1, 10, 30), header={"DATE-LOC": "2024-01-01T22:30:00"})

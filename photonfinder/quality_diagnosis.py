@@ -150,6 +150,7 @@ class PeerGroup:
 @dataclass
 class DiagnosisScope:
     groups: list[PeerGroup]
+    selected_lights: int = 0  # how many selected lights it was built from; 0 if from a search
 
     @property
     def frame_count(self) -> int:
@@ -275,20 +276,30 @@ def _load_session_info(file_ids: list[int]) -> dict[int, tuple]:
     return result
 
 
-def _scope_file_ids(criteria: SearchCriteria) -> set[int]:
+def _lights_in_search(criteria: SearchCriteria) -> set[int]:
     query = File.select(File.rowid).join_from(File, Image, JOIN.LEFT_OUTER)
     query = Image.apply_search_criteria(query, criteria).where(fn.UPPER(Image.image_type) == "LIGHT")
     return {rowid for rowid, in query.tuples()}
 
 
-def load_scope(context: ApplicationContext, criteria: SearchCriteria) -> DiagnosisScope:
-    """Load the peer groups of the LIGHT frames matching `criteria`.
+def _lights_among(file_ids: set[int]) -> set[int]:
+    lights = set()
+    for batch in chunked(file_ids, _BATCH_SIZE):
+        query = Image.select(Image.file).where(Image.file.in_(batch), fn.UPPER(Image.image_type) == "LIGHT")
+        lights.update(file_id for file_id, in query.tuples())
+    return lights
 
-    Groups are always whole, including frames the search hid, so that a group is judged
-    together. Only frames that could be a peer need their header read for the session night.
+
+def load_scope(context: ApplicationContext, criteria: SearchCriteria,
+               selected_file_ids: Optional[set[int]] = None) -> DiagnosisScope:
+    """Load the peer groups of the selected LIGHT frames, or else of those matching `criteria`.
+
+    Groups are always whole, including frames the search hid or the user didn't select, so
+    that a group is judged together. Only frames that could be a peer need their header read
+    for the session night.
     """
     with context.database.bind_ctx(CORE_MODELS):
-        scope_ids = _scope_file_ids(criteria)
+        scope_ids = _lights_among(selected_file_ids) if selected_file_ids else _lights_in_search(criteria)
         if not scope_ids:
             return DiagnosisScope(groups=[])
 
@@ -324,7 +335,8 @@ def load_scope(context: ApplicationContext, criteria: SearchCriteria) -> Diagnos
         ))
         if file_id in scope_ids:
             scope_keys.add(key)
-    return DiagnosisScope(groups=[PeerGroup(key, frames) for key, frames in groups.items() if key in scope_keys])
+    return DiagnosisScope(groups=[PeerGroup(key, frames) for key, frames in groups.items() if key in scope_keys],
+                          selected_lights=len(scope_ids) if selected_file_ids else 0)
 
 
 def save_diagnoses(context: ApplicationContext, verdicts: dict[int, Optional[str]]) -> bool:

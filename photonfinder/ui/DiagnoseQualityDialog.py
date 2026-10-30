@@ -45,12 +45,12 @@ class _DiagnosisLoader(BackgroundLoaderBase):
     saved = Signal(bool)  # False: another writer holds the library
     save_failed = Signal(str)
 
-    def load(self, criteria: SearchCriteria):
-        self.run_in_thread(self._load, criteria)
+    def load(self, criteria: SearchCriteria, selected_file_ids: set[int] | None):
+        self.run_in_thread(self._load, criteria, selected_file_ids)
 
-    def _load(self, criteria: SearchCriteria):
+    def _load(self, criteria: SearchCriteria, selected_file_ids: set[int] | None):
         try:
-            self.scope_loaded.emit(load_scope(self.context, criteria), criteria)
+            self.scope_loaded.emit(load_scope(self.context, criteria, selected_file_ids), criteria)
         except Exception as exc:
             logging.error("Could not load the diagnosis scope", exc_info=True)
             self.load_failed.emit(str(exc), criteria)
@@ -102,9 +102,10 @@ class _MetricRow:
 
 
 class DiagnoseQualityDialog(QDialog):
-    """Judges the peer groups of a search, previewing in memory until the user saves.
+    """Judges the peer groups of the selection or else the search, previewing in memory until
+    the user saves.
 
-    The scope stays fixed until the user asks for the current search, since saving overwrites
+    The scope stays fixed until the user asks for the current one, since saving overwrites
     stored results and must not change target because the grid was filtered meanwhile.
     """
 
@@ -115,6 +116,7 @@ class DiagnoseQualityDialog(QDialog):
         self.setWindowTitle("Diagnose Quality")
         self._scope: DiagnosisScope | None = None
         self._scope_criteria: SearchCriteria | None = None
+        self._scope_selection: set[int] = set()
         self._watched_panel = None
         self._hide_after_save = False
         self._settings_being_saved: DiagnosisSettings | None = None
@@ -147,7 +149,7 @@ class DiagnoseQualityDialog(QDialog):
         layout.addWidget(self.scope_label)
 
         stale_row = QHBoxLayout()
-        self.stale_label = QLabel("The current search has changed. Saving still applies to the scope above.")
+        self.stale_label = QLabel("The search or selection has changed. Saving still applies to the scope above.")
         self.use_current_button = QPushButton("Use current search")
         self.use_current_button.clicked.connect(self.use_current_search)
         stale_row.addWidget(self.stale_label, 1)
@@ -203,6 +205,7 @@ class DiagnoseQualityDialog(QDialog):
         panel = self.main_window.get_current_search_panel()
         self._scope = None
         self._scope_criteria = scope_criteria(panel.search_criteria)
+        self._scope_selection = self._selected_file_ids(panel)
         self._update_stale_note()
         self._load_scope()
 
@@ -214,7 +217,7 @@ class DiagnoseQualityDialog(QDialog):
         self.details_label.clear()
         self.status_label.clear()
         self._set_actions_enabled()
-        self._loader.load(self._scope_criteria)
+        self._loader.load(self._scope_criteria, self._scope_selection)
 
     def _on_scope_loaded(self, scope: DiagnosisScope, criteria: SearchCriteria):
         if criteria is not self._scope_criteria:
@@ -222,8 +225,10 @@ class DiagnoseQualityDialog(QDialog):
         self._scope = scope
         lights = scope.frame_count
         sessions = len({group.key.session_night for group in scope.groups})
-        self.scope_label.setText(f"Scope: {_plural(lights, 'light')} in {_plural(sessions, 'session')}"
-                                 if lights else "Scope: no lights in this search")
+        peers_of = f" (peers of {_plural(scope.selected_lights, 'selected light')})" if scope.selected_lights else ""
+        self.scope_label.setText(f"Scope: {_plural(lights, 'light')} in {_plural(sessions, 'session')}{peers_of}"
+                                 if lights else "Scope: no lights in this "
+                                                f"{'selection' if self._scope_selection else 'search'}")
         self._set_actions_enabled()
         self._update_preview()
 
@@ -236,17 +241,28 @@ class DiagnoseQualityDialog(QDialog):
         if self._watched_panel is not None:
             try:
                 self._watched_panel.search_criteria_changed.disconnect(self._update_stale_note)
+                self._watched_panel.dataView.selectionModel().selectionChanged.disconnect(self._update_stale_note)
             except RuntimeError:
                 pass  # the tab has been closed
         self._watched_panel = self.main_window.get_current_search_panel()
         if self._watched_panel is not None:
             self._watched_panel.search_criteria_changed.connect(self._update_stale_note)
+            self._watched_panel.dataView.selectionModel().selectionChanged.connect(self._update_stale_note)
         self._update_stale_note()
+
+    @staticmethod
+    def _selected_file_ids(panel) -> set[int]:
+        return {file.rowid for file in panel.get_selected_files()}
 
     def _update_stale_note(self):
         panel = self._watched_panel
-        stale = (panel is not None and self._scope_criteria is not None
-                 and scope_criteria(panel.search_criteria) != self._scope_criteria)
+        stale = False
+        if panel is not None and self._scope_criteria is not None:
+            selection = self._selected_file_ids(panel)
+            # An emptied selection alone is no new scope: refreshing the grid after a save clears it.
+            stale = (scope_criteria(panel.search_criteria) != self._scope_criteria
+                     or (bool(selection) and selection != self._scope_selection))
+            self.use_current_button.setText("Use current selection" if selection else "Use current search")
         self.stale_label.setVisible(stale)
         self.use_current_button.setVisible(stale)
 

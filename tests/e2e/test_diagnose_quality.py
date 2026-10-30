@@ -3,7 +3,7 @@ import threading
 from datetime import datetime, timedelta
 
 import pytest
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QItemSelectionModel, Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -456,13 +456,13 @@ def test_a_late_failure_of_a_replaced_load_leaves_the_newer_scope_alone(sandbox,
     calls = []
     real_load = quality_diagnosis.load_scope
 
-    def load(context, criteria):
+    def load(context, criteria, selection):
         calls.append(criteria)
         if len(calls) == 1:
             entered.set()
             assert release.wait(10)
             raise OSError("the first load failed")
-        return real_load(context, criteria)
+        return real_load(context, criteria, selection)
 
     monkeypatch.setattr("photonfinder.ui.DiagnoseQualityDialog.load_scope", load)
     app.actionDiagnose_Quality.trigger()
@@ -480,7 +480,7 @@ def test_a_late_failure_of_a_replaced_load_leaves_the_newer_scope_alone(sandbox,
 
 
 def test_a_failing_load_says_so(sandbox, app, m81, monkeypatch):
-    def fail(context, criteria):
+    def fail(context, criteria, selection):
         raise OSError("disk gone")
 
     monkeypatch.setattr("photonfinder.ui.DiagnoseQualityDialog.load_scope", fail)
@@ -628,3 +628,139 @@ def test_right_click_menu_opens_the_dialog_and_brings_it_forward(sandbox, app, m
     context_menu_item(app, "Diagnose Quality…")
     sandbox.wait_idle()
     assert app._diagnose_dialog is dialog
+
+
+# --- Selection -------------------------------------------------------------------------
+
+
+@pytest.fixture
+def two_targets(sandbox, app, m81):
+    """All of M81 and M33 in the grid, each with one bad frame, and nothing selected."""
+    add_frames(sandbox, "M33", [*GOOD_FWHMS, 9.0], [*(f"M33_{i}.fits" for i in range(8)), "M33_bad.fits"])
+    search(sandbox, app)
+    return sandbox.grid()
+
+
+def test_no_selection_covers_the_whole_search(sandbox, app, two_targets):
+    assert open_dialog(sandbox, app).scope_label.text() == "Scope: 18 lights in 1 session"
+
+
+@pytest.mark.parametrize("entry", ["tools", "right_click"])
+def test_a_selection_narrows_the_scope_to_its_peer_groups(sandbox, app, two_targets, entry):
+    two_targets.select("File name", "M33_0.fits")
+    if entry == "tools":
+        app.actionDiagnose_Quality.trigger()
+    else:
+        panel = app.get_current_search_panel()
+        row = two_targets.column("File name").index("M33_0.fits")
+        position = panel.dataView.visualRect(panel.dataView.model().index(row, 0)).center()
+
+        def choose():
+            menu = QApplication.activePopupWidget()
+            menu.setActiveAction(next(a for a in menu.actions() if a.text() == "Diagnose Quality…"))
+            QTest.keyClick(menu, Qt.Key.Key_Return)
+
+        QTimer.singleShot(0, choose)
+        panel.show_context_menu(position)
+    sandbox.wait_idle()
+    dialog = app._diagnose_dialog
+    assert dialog.scope_label.text() == "Scope: 9 lights in 1 session (peers of 1 selected light)"
+    assert dialog.rejected_label.text() == "Rejected 1 of 9 lights"
+
+    sandbox.qtbot.mouseClick(dialog.save_button, Qt.MouseButton.LeftButton)
+    sandbox.wait_idle()
+    assert diagnosis_of(sandbox, "M33_bad.fits") == "Bad FWHM"
+    assert diagnosis_of(sandbox, "M33_0.fits") == "OK"  # judged with its whole group
+    assert diagnosis_of(sandbox, BAD_NAME) is None
+
+
+def test_selecting_two_groups_covers_both(sandbox, app, two_targets):
+    view = two_targets.panel.dataView
+    names = two_targets.column("File name")
+    view.selectionModel().clearSelection()
+    model = view.model()
+    for name in ("M33_0.fits", "M81_0.fits"):
+        view.selectionModel().select(model.index(names.index(name), 0),
+                                     QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+    assert open_dialog(sandbox, app).scope_label.text() == "Scope: 18 lights in 1 session (peers of 2 selected lights)"
+
+
+def test_selection_without_lights_has_an_empty_scope(sandbox, app, two_targets):
+    with sandbox.context.database.bind_ctx(CORE_MODELS):
+        Image.update(image_type="DARK").where(Image.file.in_(File.select().where(File.name == BAD_NAME))).execute()
+    search(sandbox, app)
+    sandbox.grid().select("File name", BAD_NAME)
+    dialog = open_dialog(sandbox, app)
+    assert dialog.scope_label.text() == "Scope: no lights in this selection"
+    assert not dialog.save_button.isEnabled()
+
+
+def test_changing_the_selection_offers_it_without_following_it(sandbox, app, two_targets):
+    two_targets.select("File name", "M33_0.fits")
+    dialog = open_dialog(sandbox, app)
+    assert not dialog.use_current_button.isVisible()
+
+    two_targets.select("File name", "M81_0.fits")
+    assert dialog.use_current_button.isVisible()
+    assert dialog.use_current_button.text() == "Use current selection"
+    assert dialog.scope_label.text() == "Scope: 9 lights in 1 session (peers of 1 selected light)"
+
+    sandbox.qtbot.mouseClick(dialog.save_button, Qt.MouseButton.LeftButton)  # still M33
+    sandbox.wait_idle()
+    assert diagnosis_of(sandbox, "M33_bad.fits") == "Bad FWHM"
+    assert diagnosis_of(sandbox, BAD_NAME) is None
+
+
+def test_using_the_current_selection_moves_the_scope(sandbox, app, two_targets):
+    two_targets.select("File name", "M33_0.fits")
+    dialog = open_dialog(sandbox, app)
+    two_targets.select("File name", "M81_0.fits")
+    sandbox.qtbot.mouseClick(dialog.use_current_button, Qt.MouseButton.LeftButton)
+    sandbox.wait_idle()
+    assert not dialog.use_current_button.isVisible()
+
+    sandbox.qtbot.mouseClick(dialog.save_button, Qt.MouseButton.LeftButton)
+    sandbox.wait_idle()
+    assert diagnosis_of(sandbox, BAD_NAME) == "Bad FWHM"
+    assert diagnosis_of(sandbox, "M33_bad.fits") is None
+
+
+def test_clearing_the_selection_is_no_new_scope(sandbox, app, two_targets):
+    two_targets.select("File name", "M33_0.fits")
+    dialog = open_dialog(sandbox, app)
+    two_targets.panel.dataView.clearSelection()
+    assert not dialog.use_current_button.isVisible()
+
+
+def test_saving_with_a_selection_does_not_look_like_a_changed_scope(sandbox, app, two_targets):
+    two_targets.select("File name", "M33_0.fits")
+    dialog = open_dialog(sandbox, app)
+    sandbox.qtbot.mouseClick(dialog.save_button, Qt.MouseButton.LeftButton)
+    wait_for_grid(sandbox, lambda g: {r["File name"]: r["Diagnosis"] for r in g.rows()}["M33_bad.fits"] == "Bad FWHM")
+    assert not dialog.use_current_button.isVisible()
+
+
+def test_selection_scope_survives_saving_again(sandbox, app, two_targets):
+    two_targets.select("File name", "M33_0.fits")
+    dialog = open_dialog(sandbox, app)
+    sandbox.qtbot.mouseClick(dialog.save_button, Qt.MouseButton.LeftButton)
+    sandbox.wait_idle()
+    sandbox.qtbot.mouseClick(dialog.save_and_hide_button, Qt.MouseButton.LeftButton)
+    sandbox.wait_idle()
+    assert dialog.scope_label.text() == "Scope: 9 lights in 1 session (peers of 1 selected light)"
+    assert diagnosis_of(sandbox, BAD_NAME) is None
+
+
+def test_analyse_missing_follows_the_selection(sandbox, app, two_targets, analyze_ok):
+    add_unanalysed(sandbox, "M81", 2)
+    add_unanalysed(sandbox, "M33", 3)
+    search(sandbox, app)
+    sandbox.grid().select("File name", "M33_0.fits")
+    dialog = open_dialog(sandbox, app)
+    assert dialog.analyse_button.text() == "Analyse missing (3)"
+
+    sandbox.qtbot.mouseClick(dialog.analyse_button, Qt.MouseButton.LeftButton)
+    sandbox.wait_idle()
+    sandbox.qtbot.waitUntil(lambda: dialog.analyse_button.text() == "Analyse missing (0)")
+    assert stats_of(sandbox, "M33_new0.fits").star_count == 500
+    assert stats_of(sandbox, "M81_new0.fits") is None
