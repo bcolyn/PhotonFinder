@@ -1,4 +1,3 @@
-import configparser
 import logging
 import queue
 import shutil
@@ -157,6 +156,9 @@ class SolverBase(metaclass=ABCMeta):
             raise SolverError("Unknown file type: " + str(input_image) + ". Only FITS and XISF files are supported.")
 
 
+ASTAP_TIMEOUT_SECONDS = 600  # far above a normal solve, which takes seconds even when blind
+
+
 class ASTAPSolver(SolverBase):
     tmp_dir: str | None
     _exe: str
@@ -166,10 +168,11 @@ class ASTAPSolver(SolverBase):
     def solver_type(self) -> SolverType:
         return SolverType.ASTAP
 
-    def __init__(self, exe=get_default_astap_path()):
+    def __init__(self, exe=get_default_astap_path(), timeout: int = ASTAP_TIMEOUT_SECONDS):
         super().__init__()
         self._exe = exe
         self._log = True
+        self._timeout = timeout
 
     def _solve(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None) -> Header:
 
@@ -177,15 +180,16 @@ class ASTAPSolver(SolverBase):
         ini = tmp_image_file.with_suffix(".ini")
         log = tmp_image_file.with_suffix(".log")
 
-        if ini.exists():
-            ini.unlink()
-        if log.exists():
-            log.unlink()
+        for previous_output in (wcs, ini, log):
+            previous_output.unlink(missing_ok=True)
 
-        self._run_astap(tmp_image_file, hint)
+        returncode = self._run_astap(tmp_image_file, hint)
 
-        if not wcs.exists() and ini.exists():
-            self._raise_error(ini, log, tmp_image_file)
+        # Only ASTAP's own output counts. The image header can't say: a file that was solved
+        # before keeps its old solution there when this run fails.
+        ini_values = self._read_ini(ini)
+        if not wcs.exists() or ini_values.get("PLTSOLVD") != "T":
+            self._raise_failure(ini_values, log, tmp_image_file, returncode)
 
         with fits.open(tmp_image_file) as hdul:
             header = hdul[0].header
@@ -195,8 +199,8 @@ class ASTAPSolver(SolverBase):
 
         return result_header
 
-    def _run_astap(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None):
-        """Execute ASTAP with the given parameters."""
+    def _run_astap(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None) -> int:
+        """Execute ASTAP with the given parameters and return its exit code."""
         params = [self._exe, "-f", str(tmp_image_file), "-update", "-platesolve"]
         options = {"--speed": "slow", "-z": "1"}
         if hint is not None:
@@ -205,7 +209,11 @@ class ASTAPSolver(SolverBase):
         if self._log:
             params.append("-log")
 
-        subprocess.run(params, capture_output=True, text=True)
+        try:
+            result = subprocess.run(params, capture_output=True, text=True, errors="replace", timeout=self._timeout)
+        except subprocess.TimeoutExpired:
+            raise SolverFailure(f"ASTAP timed out after {self._timeout}s on {tmp_image_file.name}", None) from None
+        return result.returncode
 
     @staticmethod
     def is_pre_solved(header):
@@ -279,22 +287,28 @@ class ASTAPSolver(SolverBase):
 
         return ASTAPSolver.create_hint(ra, dec, fov)
 
-    def _raise_error(self, ini_file, log_file, image_file):
-        parser = configparser.ConfigParser()
-        with open(ini_file) as stream:
-            parser.read_string("[top]\n" + stream.read())
-        plain_ini = parser["top"]
-        if "ERROR" in plain_ini:
-            raise SolverError(plain_ini["ERROR"])
-        else:
-            log = None
-            if self._log:
-                try:
-                    with open(log_file) as logstream:
-                        log = logstream.readlines()
-                except:
-                    pass
+    @staticmethod
+    def _read_ini(ini_file: Path) -> dict[str, str]:
+        """ASTAP's KEY=value lines. Its CMDLINE holds arbitrary paths and keys can repeat, which
+        an ini parser would refuse, and only the first = separates."""
+        if not ini_file.exists():
+            return {}
+        values = {}
+        for line in ini_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            key, separator, value = line.partition("=")
+            if separator:
+                values[key.strip().upper()] = value.strip()
+        return values
+
+    def _raise_failure(self, ini_values: dict[str, str], log_file: Path, image_file: Path, returncode: int):
+        if ini_values.get("ERROR"):
+            raise SolverError(ini_values["ERROR"])
+        log = None
+        if self._log and log_file.exists():
+            log = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        if ini_values:
             raise SolverFailure("Failed to solve image " + str(image_file), log)
+        raise SolverFailure(f"ASTAP gave no result for {image_file.name} (exit code {returncode})", log)
 
 
 class AstrometryNetSolver(SolverBase):
