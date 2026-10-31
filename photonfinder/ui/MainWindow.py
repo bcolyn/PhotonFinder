@@ -9,7 +9,7 @@ from PySide6.QtGui import QIcon, QPalette, QAction, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext, LibraryBusyError, StatusReporter, backup_database
-from photonfinder.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
+from photonfinder.filesystem import Importer, ScanCancelled, update_fits_header_cache, check_missing_header_cache
 from photonfinder.models import SearchCriteria, Project, File, ProjectFile, RootAndPath, Image, LibraryRoot
 from .AboutDialog import AboutDialog
 from .ImageViewerWindow import ImageViewerWindow
@@ -28,6 +28,7 @@ from .session import SessionManager, Session
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     SCAN_WRITER = "Library scan"
+    SCAN_STOP_TIMEOUT_MS = 30_000
     tabs_changed = Signal(list)
     projects_window: ProjectsWindow | None
 
@@ -167,12 +168,33 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.menu_File.aboutToShow.connect(self._update_database_actions)
 
     def closeEvent(self, event):
+        """The database closes after this, so everything using it has to stop here."""
         try:
-            self.save_session()
+            try:
+                self.save_session()
+            except Exception as e:
+                logging.error(f"Could not save the session: {e}", exc_info=True)
+            self._stop_scan()
             if self.mcp_controller is not None:
                 self.mcp_controller.stop()
         finally:
             event.accept()  # Accept the event to actually close the window
+
+    def _stop_scan(self):
+        """Cancel a running scan and wait for it, as the window closes."""
+        worker = self.scan_worker
+        if worker is None:
+            return
+        self.context.status_reporter.update_status("Stopping the library scan...")
+        worker.finished.disconnect(self._scan_finished)
+        worker.cancel()
+        if not worker.wait(self.SCAN_STOP_TIMEOUT_MS):  # stuck in the filesystem, say on a dead network share
+            logging.error("The library scan did not stop in time")
+            return
+        self.context.writers.end(self.SCAN_WRITER)
+        self.context.library_write_lock.release()
+        worker.deleteLater()
+        self.scan_worker = None
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         # Check if dragged data has URLs (files)
@@ -892,11 +914,20 @@ class LibraryScanWorker(QThread):
                                  context.settings.get_bad_file_patterns(),
                                  context.settings.get_bad_dir_patterns())
 
+    def cancel(self):
+        self.importer.cancel()
+
+    def _cancelled(self) -> bool:
+        return self.importer.cancelled
+
     def run(self):
-        if self.files:
-            self.import_files()
-        else:
-            self.import_roots()
+        try:
+            if self.files:
+                self.import_files()
+            else:
+                self.import_roots()
+        except ScanCancelled:
+            logging.info("Library scan cancelled")
 
     def import_roots(self):
         for changes_per_library in self.importer.import_roots(self.roots):
@@ -905,10 +936,11 @@ class LibraryScanWorker(QThread):
                 f"added {len(changes_per_library.new_files)} " +
                 f"changed {len(changes_per_library.changed_files)}")
             changes_per_library.apply_all()
-            update_fits_header_cache(changes_per_library, self.context.status_reporter, self.context.settings)
-        check_missing_header_cache(self.context.status_reporter, self.context.settings)
+            update_fits_header_cache(changes_per_library, self.context.status_reporter, self.context.settings,
+                                     self._cancelled)
+        check_missing_header_cache(self.context.status_reporter, self.context.settings, self._cancelled)
 
     def import_files(self):
         changes = self.importer.import_selection(self.files)
         changes.apply_all()
-        update_fits_header_cache(changes, self.context.status_reporter, self.context.settings)
+        update_fits_header_cache(changes, self.context.status_reporter, self.context.settings, self._cancelled)

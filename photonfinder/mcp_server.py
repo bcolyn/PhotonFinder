@@ -188,11 +188,26 @@ def _criteria_from_dict(criteria: Optional[dict], tool: str = "search") -> Searc
     return SearchCriteria.from_json(json.dumps(clean))
 
 
+class NoLibraryOpen(Exception):
+    """Between closing one library and opening the next, or while the application closes."""
+
+    def __init__(self):
+        super().__init__("No library is open right now, as the application is switching library "
+                         "or closing. Try again shortly.")
+
+
+def _bound(context: ApplicationContext, models):
+    database = context.database
+    if database is None:
+        raise NoLibraryOpen()
+    return database.bind_ctx(models)
+
+
 def query_search(context: ApplicationContext, criteria: Optional[dict] = None,
                  page: int = 0, page_size: int = 100) -> dict:
     page, page_size = _clamp_page(page, page_size)
     logger.debug("search_files: page=%d page_size=%d", page, page_size)
-    with context.database.bind_ctx(CORE_MODELS):
+    with _bound(context, CORE_MODELS):
         sc = _criteria_from_dict(criteria, "search_files")
         rows, total, has_more = run_search_files(sc, page, page_size)
         logger.debug("search_files: returned %d rows (total=%d, has_more=%s)",
@@ -207,7 +222,7 @@ def query_search(context: ApplicationContext, criteria: Optional[dict] = None,
 
 
 def query_library_roots(context: ApplicationContext) -> list[dict]:
-    with context.database.bind_ctx(CORE_MODELS):
+    with _bound(context, CORE_MODELS):
         return [{"rowid": r.rowid, "name": r.name, "path": r.path,
                  "description": r.description}
                 for r in LibraryRoot.select().order_by(LibraryRoot.name)]
@@ -233,12 +248,12 @@ def _serialize_project(p: Project) -> dict:
 
 
 def query_projects(context: ApplicationContext) -> list[dict]:
-    with context.database.bind_ctx(CORE_MODELS):
+    with _bound(context, CORE_MODELS):
         return [_serialize_project(p) for p in Project.list_projects_with_image_data()]
 
 
 def query_project_details(context: ApplicationContext, rowid: int) -> dict:
-    with context.database.bind_ctx(CORE_MODELS):
+    with _bound(context, CORE_MODELS):
         for p in Project.list_projects_with_image_data():
             if p.rowid == rowid:
                 return _serialize_project(p)
@@ -250,7 +265,7 @@ def query_distinct_values(context: ApplicationContext, field: str) -> list:
     if column is None:
         raise ValueError(
             f"Unknown field '{field}'. Valid fields: {', '.join(sorted(DISTINCT_FIELDS))}.")
-    with context.database.bind_ctx(CORE_MODELS):
+    with _bound(context, CORE_MODELS):
         query = (Image.select(column)
                  .where(column.is_null(False))
                  .distinct()
@@ -259,7 +274,7 @@ def query_distinct_values(context: ApplicationContext, field: str) -> list:
 
 
 def query_file_details(context: ApplicationContext, rowid: int) -> dict:
-    with context.database.bind_ctx(CORE_MODELS):
+    with _bound(context, CORE_MODELS):
         file = (File.select(File, Image, LibraryRoot)
                 .join_from(File, LibraryRoot)
                 .join_from(File, Image, JOIN.LEFT_OUTER)
@@ -307,14 +322,14 @@ def query_file_details(context: ApplicationContext, rowid: int) -> dict:
 
 
 def query_list_catalogs(context: ApplicationContext) -> list[str]:
-    with context.database.bind_ctx(CATALOG_MODELS):
+    with _bound(context, CATALOG_MODELS):
         return [row[0] for row in
                 CatalogEntry.select(CatalogEntry.catalog).distinct()
                 .order_by(CatalogEntry.catalog).tuples()]
 
 
 def query_lookup_object(context: ApplicationContext, catalog: str, catalog_id: str) -> dict:
-    with context.database.bind_ctx(CATALOG_MODELS):
+    with _bound(context, CATALOG_MODELS):
         entry = (CatalogEntry
                  .select()
                  .where(
@@ -347,7 +362,7 @@ def query_target_report(context: ApplicationContext, criteria: Optional[dict] = 
     max_paths = max(0, max_paths)
     # A list of paths has no place in a CSV cell; CSV is for compact summaries.
     include_paths = include_paths and output_format == "json"
-    with context.database.bind_ctx(CORE_MODELS):
+    with _bound(context, CORE_MODELS):
         sc = _criteria_from_dict(criteria, "report_targets")
         rows = reports.target_report(sc)
 
@@ -401,7 +416,7 @@ def query_catalog_report(context: ApplicationContext, catalog: str,
     if catalog not in known:
         return {"error": f"Unknown catalog '{catalog}'. Valid catalogs: {', '.join(known)}."}
 
-    with context.database.bind_ctx(CORE_MODELS):
+    with _bound(context, CORE_MODELS):
         sc = _criteria_from_dict(criteria, "report_catalog_coverage")
         result = reports.catalog_report(context, catalog, sc, only_matching,
                                         limit=page_size, offset=page * page_size)
@@ -452,7 +467,7 @@ def query_header_values(context: ApplicationContext, fields: Optional[list] = No
     specs = [(spec, *reports.parse_field_spec(spec)) for spec in fields]
     sources = {source for _, _, source in specs}
 
-    with context.database.bind_ctx(CORE_MODELS):
+    with _bound(context, CORE_MODELS):
         sc = _criteria_from_dict(criteria, "get_header_values")
         query = reports.header_values_query(sc, sources)
         total = query.count()
@@ -536,6 +551,8 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
     except ValueError as e:
         return {"error": str(e)}
 
+    if context.database is None:
+        raise NoLibraryOpen()
     try:
         context.writers.begin(MCP_SOLVE_WRITER)
     except LibraryBusyError as e:
@@ -562,7 +579,7 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
 
         results = []
         solved = failed = 0
-        with context.database.bind_ctx(CORE_MODELS):
+        with _bound(context, CORE_MODELS):
             for rowid in rowids:
                 file = (File.select(File, Image)
                         .join_from(File, Image, JOIN.LEFT_OUTER)
@@ -817,6 +834,9 @@ def build_mcp(context: ApplicationContext):
                 started = time.monotonic()
                 try:
                     text = _to_text(await fn(**kw))
+                except NoLibraryOpen as e:
+                    logger.info("MCP %s(%s): %s", fn.__name__, args, e)
+                    return _to_text({"error": str(e)})
                 except Exception:
                     logger.exception("MCP %s(%s) failed after %.2fs", fn.__name__, args,
                                      time.monotonic() - started)

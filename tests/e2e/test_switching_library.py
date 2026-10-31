@@ -1,14 +1,18 @@
 """Switching library is refused while something could write to the current one."""
 import sqlite3
 import threading
+import time
+from types import SimpleNamespace
 
 import pytest
+from PySide6.QtCore import QThreadPool
 
-from photonfinder import mcp_server
+from photonfinder import filesystem, mcp_server
 from photonfinder.core import ActiveWriters, DatabaseLock, LibraryBusyError
-from photonfinder.models import Project, SearchCriteria
-from photonfinder.ui.BackgroundLoader import ImageAnalysisTask, ImageReindexWorker, MissingFramesAnalysisTask, \
-    PlateSolveTask
+from photonfinder.filesystem import Importer
+from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, Project, SearchCriteria
+from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase, ImageAnalysisTask, ImageReindexWorker, \
+    MissingFramesAnalysisTask, PlateSolveTask
 from photonfinder.ui.CompressFilesDialog import CompressFilesWorker
 from photonfinder.ui.DiagnoseQualityDialog import _DiagnosisLoader
 from photonfinder.ui.ExportDialog import ExportDialog, ExportWorker
@@ -17,6 +21,7 @@ from photonfinder.ui.ImageViewerWindow import ImageViewerWindow
 from photonfinder.ui.MainWindow import LibraryScanWorker
 from photonfinder.ui.PlateSolveDialog import PlateSolveDialog
 from photonfinder.ui.ProjectEditDialog import ProjectEditDialog
+from tests.e2e.helpers import add_libraries, wait_for_scan
 from tests.e2e.test_diagnose_quality import GOOD_RESULT, add_unanalysed, search
 
 
@@ -282,6 +287,151 @@ def test_mcp_cannot_start_a_writer_during_a_switch(sandbox, monkeypatch):
         result = mcp_server.query_plate_solve(sandbox.context, [1])
     assert "being switched" in result["error"]
     assert sandbox.context.writers.running() == []
+
+
+# --- A read-only job spanning a switch ------------------------------------------------
+
+
+def _row_count(path, table: str) -> int:
+    connection = sqlite3.connect(path)
+    try:
+        return connection.execute(f"select count(*) from {table}").fetchone()[0]
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("repeat", range(5))
+@pytest.mark.parametrize("nested", [False, True], ids=["plain", "nested_bind"])
+def test_a_reader_spanning_a_switch_leaves_the_models_on_the_new_library(sandbox, app, tmp_path, nested, repeat):
+    context = sandbox.context
+    first = str(context.database_path)
+    other = str(tmp_path / "other.db")
+    reached, release = threading.Event(), threading.Event()
+
+    def read_only_job():
+        if nested:
+            with context.database.bind_ctx([File, Image]):
+                reached.set()
+                release.wait(20)
+        else:
+            reached.set()
+            release.wait(20)
+
+    loader = BackgroundLoaderBase(context)
+    loader.run_in_thread(read_only_job)
+    assert reached.wait(10)
+    assert not context.writers.running()  # a reader doesn't stop the switch
+
+    app._switch_database(other)
+    # The new tab's loaders finish first, so nothing rebinds the models after this job ends.
+    sandbox.qtbot.waitUntil(lambda: QThreadPool.globalInstance().activeThreadCount() == 1)
+    release.set()
+    sandbox.wait_idle()
+
+    assert [m.__name__ for m in CORE_MODELS if m._meta.database is not context.database] == []
+    LibraryRoot.create(name="after the switch", path="/x/")  # as LibraryRootEditDialog writes
+    assert _row_count(first, "libraryroot") == 0
+    assert _row_count(other, "libraryroot") == 1
+
+
+def test_a_job_that_runs_with_no_database_open_is_skipped_without_an_error(sandbox, app, caplog):
+    ran = []
+    loader = BackgroundLoaderBase(sandbox.context)
+    runnable = loader._create_runnable(lambda: ran.append(True))
+    database, sandbox.context.database = sandbox.context.database, None
+    try:
+        runnable.run()
+    finally:
+        sandbox.context.database = database
+    assert not ran
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+
+# --- Closing the window ----------------------------------------------------------------
+
+
+def _scan_until_reached(sandbox, monkeypatch, target, attribute: str):
+    """Start a real scan and slow down its file loop, so that closing lands in the middle.
+    Returns the original, as the shared monkeypatch also holds the boundary's patches."""
+    reached = threading.Event()
+    original = getattr(target, attribute)
+
+    def slowed(*args, **kwargs):
+        reached.set()
+        time.sleep(0.02)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(target, attribute, slowed)
+    sandbox.window.action_Scan_Libraries.trigger()
+    assert reached.wait(20)
+    return original
+
+
+def _errors(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+
+
+def _scan_stopped(sandbox, worker) -> bool:
+    return (worker.isFinished() and sandbox.window.scan_worker is None and not sandbox.context.writers.running()
+            and sandbox.context.library_write_lock.acquire(blocking=False))
+
+
+def test_closing_during_a_scan_cancels_it_and_keeps_the_library(sandbox, app, modals, boundary, libraries, monkeypatch,
+                                                                caplog):
+    root = libraries.roots["rig"]
+    add_libraries(sandbox, modals, boundary, {"rig": root}, scan=True)
+    wait_for_scan(sandbox)
+    expected = sorted(sandbox.grid().column("File name"))
+    assert expected
+
+    # A rescan abandoned partway has only seen some folders, and must not count the rest as deleted.
+    original = _scan_until_reached(sandbox, monkeypatch, Importer, "_import_file")
+    worker = app.scan_worker
+    app.close()
+
+    assert _scan_stopped(sandbox, worker)
+    sandbox.context.library_write_lock.release()
+    assert _errors(caplog) == []
+    monkeypatch.setattr(Importer, "_import_file", original)
+    sandbox.restart()
+    assert sorted(sandbox.grid().column("File name")) == expected
+
+
+def test_a_scan_closed_during_its_header_stage_is_finished_by_the_next_scan(sandbox, app, modals, boundary, libraries,
+                                                                            monkeypatch, caplog):
+    root = libraries.roots["rig"]
+    add_libraries(sandbox, modals, boundary, {"rig": root}, scan=False)
+
+    original = _scan_until_reached(sandbox, monkeypatch, filesystem, "_handle_file_metadata_safely")
+    worker = app.scan_worker
+    app.close()
+
+    assert _scan_stopped(sandbox, worker)
+    sandbox.context.library_write_lock.release()
+    assert _errors(caplog) == []
+    files = _row_count(sandbox.database_path, "file")
+    assert 0 < _row_count(sandbox.database_path, "image") < files  # really stopped partway
+
+    monkeypatch.setattr(filesystem, "_handle_file_metadata_safely", original)
+    sandbox.restart()
+    sandbox.window.action_Scan_Libraries.trigger()
+    wait_for_scan(sandbox)
+    assert _row_count(sandbox.database_path, "image") == files
+
+
+def test_closing_stops_the_mcp_server_even_if_saving_the_session_fails(sandbox, app, monkeypatch, caplog):
+    stopped = []
+    app.mcp_controller = SimpleNamespace(stop=lambda: stopped.append(sandbox.context.database is not None))
+
+    def fail():
+        raise OSError("disk full")
+
+    monkeypatch.setattr(app, "save_session", fail)
+    app.close()
+
+    assert stopped == [True]  # before the database closes
+    assert any("disk full" in message for message in _errors(caplog))
+    app.mcp_controller = None
 
 
 def test_two_writers_with_one_name_both_have_to_end():

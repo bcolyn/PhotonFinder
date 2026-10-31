@@ -584,3 +584,34 @@ def test_plate_solve_lock_contention(sample, monkeypatch):
 
     assert "error" in result
     assert not FileWCS.select().where(FileWCS.file == dark).exists()
+
+
+@pytest.mark.parametrize("tool, args", [
+    ("search_files", {}),
+    ("list_library_roots", {}),
+    ("list_projects", {}),
+    ("get_project_details", {"rowid": 1}),
+    ("list_distinct_values", {"field": "camera"}),
+    ("get_file_details", {"rowid": 1}),
+    ("list_catalogs", {}),
+    ("lookup_object", {"catalog": "M", "catalog_id": "31"}),
+    ("report_targets", {}),
+    ("report_catalog_coverage", {"catalog": "M"}),
+    ("get_header_values", {"fields": ["GAIN"]}),
+    ("plate_solve_files", {"rowids": [1]}),
+])
+def test_tools_answer_cleanly_with_no_database_open(context, caplog, tool, args):
+    """As during a library switch, between closing one database and opening the next."""
+    import asyncio
+    import json
+    context.settings._store["mcp_allow_plate_solve"] = True
+    mcp = mcp_server.build_mcp(context)
+    context.close_database()
+
+    [block] = asyncio.run(mcp.call_tool(tool, args))
+
+    assert "No library is open" in json.loads(block.text)["error"]
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
+    assert context.writers.running() == []
+    assert context.solve_lock.acquire(blocking=False)
+    context.solve_lock.release()

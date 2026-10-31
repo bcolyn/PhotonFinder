@@ -4,7 +4,7 @@ import sys
 import threading
 from abc import abstractmethod
 from collections import Counter
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from enum import Enum
 from pathlib import Path
 
@@ -276,6 +276,21 @@ class ActiveWriters:
                 self._switching = False
 
 
+class LibraryDatabase(SqliteDatabase):
+    """A library database. ApplicationContext.open_database binds the models to it, and only
+    that binding counts: models are bound for the whole process, not per thread.
+
+    So bind_ctx changes nothing. Peewee's would rebind the models to whatever they were bound
+    to on entry when it exits, which for a job spanning a library switch is the old library.
+    Later writes would silently go there while searches, which bind_ctx again, show the new
+    one. Writers can't span a switch (see ActiveWriters); a reader that does simply carries on
+    in the new library, and nothing is left to receive its results.
+    """
+
+    def bind_ctx(self, models, bind_refs=True, bind_backrefs=True):
+        return nullcontext()
+
+
 class ApplicationContext:
 
     CURRENT_DB_VERSION = 1
@@ -317,7 +332,7 @@ class ApplicationContext:
 
     def open_database(self) -> None:
         logging.info(f"Database path: {self.database_path}")
-        self.database = SqliteDatabase(self.database_path, pragmas={
+        self.database = LibraryDatabase(self.database_path, pragmas={
             'journal_mode': 'wal',
             'cache_size': -1 * 64000,  # 64MB
             'foreign_keys': 1,

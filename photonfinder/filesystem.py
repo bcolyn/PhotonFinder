@@ -138,7 +138,11 @@ def read_xisf_header(file: str | Path, status_reporter: StatusReporter = None) -
     return None, None
 
 
-def update_fits_header_cache(change_list, status_reporter, settings):
+class ScanCancelled(Exception):
+    """The scan was stopped. Raised from anywhere in it, so that a partial result isn't used."""
+
+
+def update_fits_header_cache(change_list, status_reporter, settings, cancelled=lambda: False):
     """
     Update the FITS header cache based on the changes in the change_list.
 
@@ -146,12 +150,16 @@ def update_fits_header_cache(change_list, status_reporter, settings):
         change_list: A ChangeList object with new_files, changed_files, and removed_files
         status_reporter: StatusReporter to update status
         settings:  Settings object to update known keywords
+        cancelled: Checked between files. Stopping early is safe: the next scan picks up the
+            files still without a header, through check_missing_header_cache.
     """
     if status_reporter:
         status_reporter.update_status("Updating FITS header cache...")
 
     # Process new files
     for file in [*change_list.new_files, *change_list.changed_files]:
+        if cancelled():
+            raise ScanCancelled()
         _handle_file_metadata_safely(file, status_reporter, settings)
 
     # Process removed files
@@ -304,7 +312,7 @@ def decode_header_blob(blob: bytes) -> Header:
     return parse_FITS_header(raw)
 
 
-def check_missing_header_cache(status_reporter, settings):
+def check_missing_header_cache(status_reporter, settings, cancelled=lambda: False):
     """
     Process any FITS files that don't have a corresponding header entry.
     Also creates Image objects from the FITS headers using the appropriate handler.
@@ -321,6 +329,8 @@ def check_missing_header_cache(status_reporter, settings):
 
     # Process these files as new files
     for file in missing_header_files:
+        if cancelled():
+            raise ScanCancelled()
         _handle_file_metadata_safely(file, status_reporter, settings)
 
     if status_reporter:
@@ -446,6 +456,10 @@ class Importer:
         self.status = context.status_reporter
         self.bad_file_patterns = bad_file_patterns.split("|")
         self.bad_dir_patterns = bad_dir_patterns.split("|")
+        self.cancelled = False
+
+    def cancel(self):
+        self.cancelled = True
 
     def marked_bad(self, f: Info) -> bool:
         """" skips over files that are marked bad """
@@ -502,6 +516,8 @@ class Importer:
                     continue
                 change_list = self.import_files_from(open_fs, root)
                 yield change_list
+            except ScanCancelled:
+                raise
             except Exception as err:
                 self.status.update_status(f"Error importing library: {root.name} - {str(err)}")
         self.status.update_status("done.")
@@ -518,6 +534,9 @@ class Importer:
             names_on_disk = {e.name for e in entries if e.is_file}
             entry: Info
             for entry in entries:
+                if self.cancelled:
+                    # Not a partial result: folders not reached yet would count as deleted.
+                    raise ScanCancelled()
                 if entry.is_dir:
                     if self._dir_filter(entry):
                         dir_path = fs.path.join(current_dir, entry.name)
