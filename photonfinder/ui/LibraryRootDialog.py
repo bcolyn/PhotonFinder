@@ -157,8 +157,8 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
     @Slot()
     def reindex_images(self):
         """
-        Reindex all image metadata by dropping and recreating the Image table,
-        then processing all FITS headers through normalize_fits_header.
+        Reindex all image metadata by replacing each row of the Image table,
+        with one built by normalize_fits_header from the cached FITS header.
         """
         # Check if a reindexing is already in progress
         if self.reindex_worker is not None:

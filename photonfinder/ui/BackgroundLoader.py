@@ -1,7 +1,7 @@
 import logging
 import math
 from pathlib import Path
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
@@ -206,6 +206,9 @@ class SearchResultsLoader(BackgroundLoaderBase):
             self.running = False
 
 
+REINDEX_BATCH_SIZE = 1000
+
+
 class ImageReindexWorker(BackgroundLoaderBase):
     """Worker class for reindexing image metadata."""
     finished = Signal()
@@ -215,96 +218,81 @@ class ImageReindexWorker(BackgroundLoaderBase):
         self.run_writer_in_thread("Rebuild index", self._reindex_images_task)
 
     def _reindex_images_task(self):
-        """Background task to reindex image metadata."""
+        """Replace each file's Image row with one built from its cached header.
+
+        Rows are replaced a batch at a time, not cleared first, so stopping at any point leaves a
+        complete row for every file. Each batch is read in full before it is written: a write made
+        behind an open query fails at once with "database is locked" if anything else has written
+        to the library, and keeps failing.
+        """
+        status = self.context.status_reporter
         try:
-            # Report starting
-            self.context.status_reporter.update_status("Starting image metadata reindexing...")
+            total_headers = FitsHeader.select().count()
+            status.update_status(f"Processing {total_headers} FITS headers...")
 
-            # Drop and recreate the Image table
-            self.context.status_reporter.update_status("Dropping Image table...")
-            with self.context.database.bind_ctx([Image]):
-                Image.drop_table()
-                Image.create_table()
-
-            # Get count of headers for progress reporting
-            with self.context.database.bind_ctx([FitsHeader]):
-                total_headers = FitsHeader.select().count()
-
-            self.context.status_reporter.update_status(f"Processing {total_headers} FITS headers...")
-
-            # Process headers in batches
-            batch_size = 1000
             processed = 0
-            new_images = []
-
-            with self.context.database.bind_ctx([FitsHeader, File, Image]):
-                # Query all headers with their associated files
-                query = (FitsHeader
-                         .select(FitsHeader, File, FileWCS)
-                         .join(File)
-                         .join(FileWCS, JOIN.LEFT_OUTER))
-
-                # Process each header
-                for header_record in query:
+            last_rowid = 0
+            while batch := list(FitsHeader
+                                .select(FitsHeader, File, FileWCS)
+                                .join(File)
+                                .join(FileWCS, JOIN.LEFT_OUTER)
+                                .where(FitsHeader.rowid > last_rowid)
+                                .order_by(FitsHeader.rowid)
+                                .limit(REINDEX_BATCH_SIZE)):
+                last_rowid = batch[-1].rowid
+                images, solutions = [], []
+                for header_record in batch:
                     try:
-                        # Deserialize the header
-                        from astropy.io.fits import Header
-                        header = decode_header_blob(header_record.header)
-
-                        if header is None:
-                            continue
-
-                        # There is no information from plate solving with an external tool - try to extract from
-                        # the file header
-                        if not getattr(header_record.file, 'filewcs', None):
-                            wcs = build_wcs_from_header(header_record.file, header)
-                            if wcs is not None:
-                                FileWCS.insert(wcs.__data__).on_conflict_ignore().execute()
-                                setattr(header_record.file, 'filewcs', wcs)
-
-                        self.context.settings.add_known_fits_keywords(header.keys())
-                        # Process the header
-                        image = normalize_fits_header(header_record.file, header, self.context.status_reporter)
-                        if image:
-                            if getattr(header_record.file, 'filewcs', None):
-                                wcs_str = decompress(header_record.file.filewcs.wcs)
-                                wcs_header = Header.fromstring(wcs_str)
-                                ra, dec, healpix, radius = get_image_center_coords(wcs_header)
-                                image.coord_ra = ra
-                                image.coord_dec = dec
-                                image.coord_pix256 = healpix
-                                image.coord_radius = radius
-                            new_images.append(image)
-
-                        # Update progress periodically
-                        processed += 1
-                        if processed % 100 == 0 or processed == total_headers:
-                            self.context.status_reporter.update_status(
-                                f"Processed {processed}/{total_headers} headers...", True)
-
-                        # Bulk save images in batches
-                        if len(new_images) >= batch_size:
-                            with self.context.database.atomic():
-                                Image.bulk_create(new_images)
-                            new_images = []
-
+                        image, solution = self._reindexed_row(header_record)
                     except Exception as e:
-                        logging.error(f"Error processing header: {e}", exc_info=True)
-                        self.context.status_reporter.update_status(f"Error processing header: {str(e)}")
+                        # Its current row stays, as nothing better came out of this header.
+                        logging.error(f"Error processing header of {header_record.file.name}: {e}", exc_info=True)
+                        status.update_status(f"Error processing header of {header_record.file.name}: {e}")
+                        continue
+                    if image is not None:
+                        images.append(image)
+                    if solution is not None:
+                        solutions.append(solution)
 
-                # Save any remaining images
-                if new_images:
-                    with self.context.database.atomic():
-                        Image.bulk_create(new_images)
-                    self.context.status_reporter.update_status(f"Saved {len(new_images)} images to database", True)
+                with self.context.database.atomic():
+                    for solution in solutions:
+                        FileWCS.insert(solution.__data__).on_conflict_ignore().execute()
+                    for image in images:
+                        Image.insert(image.__data__).on_conflict_replace().execute()
 
-            self.context.status_reporter.update_status("Image metadata reindexing complete!")
+                processed += len(batch)
+                status.update_status(f"Processed {processed}/{total_headers} headers...", True)
+
+            status.update_status("Image metadata reindexing complete!")
 
         except Exception as e:
-            self.context.status_reporter.update_status(f"Error during reindexing: {str(e)}")
+            logging.error(f"Error during reindexing: {e}", exc_info=True)
+            status.update_status(f"Error during reindexing: {e}")
 
         # Signal that we're done
         self.finished.emit()
+
+    def _reindexed_row(self, header_record: FitsHeader) -> tuple[Optional[Image], Optional[FileWCS]]:
+        """The Image row for this header, and a solution found in the header if none was stored."""
+        from astropy.io.fits import Header
+        file = header_record.file
+        header = decode_header_blob(header_record.header)
+
+        stored_solution = getattr(file, 'filewcs', None)
+        found_solution = None
+        if not stored_solution:
+            found_solution = build_wcs_from_header(file, header)
+
+        self.context.settings.add_known_fits_keywords(header.keys())
+        image = normalize_fits_header(file, header, self.context.status_reporter)
+        solution = stored_solution or found_solution
+        if image and solution:
+            ra, dec, healpix, radius = get_image_center_coords(Header.fromstring(decompress(solution.wcs)))
+            image.coord_ra = ra
+            image.coord_dec = dec
+            image.coord_pix256 = healpix
+            image.coord_radius = radius
+        return image, found_solution
 
 
 class ProgressBackgroundTask(BackgroundLoaderBase):
