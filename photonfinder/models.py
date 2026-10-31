@@ -380,10 +380,18 @@ class LibraryRoot(Model):
 
     @staticmethod
     def find_for_file(fs_item: str) -> Optional['LibraryRoot']:
-        return LibraryRoot.select().where(fn.LIKE(LibraryRoot.path + "%", fs_item)).get_or_none()
+        """The root this path is in, the innermost one when roots are nested."""
+        item = norm_db_path_sep(fs_item).casefold() + "/"
+        matches = [root for root in LibraryRoot.select() if item.startswith(norm_db_path(root.path).casefold())]
+        return max(matches, key=lambda root: len(norm_db_path(root.path)), default=None)
 
     def __eq__(self, other):
+        if not isinstance(other, LibraryRoot):
+            return NotImplemented
         return self.name == other.name and self.path == other.path
+
+    def __hash__(self):
+        return hash((self.name, self.path))
 
 
 @auto_str

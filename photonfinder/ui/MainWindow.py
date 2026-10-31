@@ -9,7 +9,8 @@ from PySide6.QtGui import QIcon, QPalette, QAction, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import *
 
 from photonfinder.core import ApplicationContext, LibraryBusyError, StatusReporter, backup_database
-from photonfinder.filesystem import Importer, ScanCancelled, update_fits_header_cache, check_missing_header_cache
+from photonfinder.filesystem import Importer, ScanCancelled, update_fits_header_cache, check_missing_header_cache, \
+    repair_truncated_header_cache
 from photonfinder.models import SearchCriteria, Project, File, ProjectFile, RootAndPath, Image, LibraryRoot
 from .AboutDialog import AboutDialog
 from .ImageViewerWindow import ImageViewerWindow
@@ -939,6 +940,7 @@ class LibraryScanWorker(QThread):
             update_fits_header_cache(changes_per_library, self.context.status_reporter, self.context.settings,
                                      self._cancelled)
         check_missing_header_cache(self.context.status_reporter, self.context.settings, self._cancelled)
+        repair_truncated_header_cache(self.context.status_reporter, self.context.settings, self._cancelled)
 
     def import_files(self):
         changes = self.importer.import_selection(self.files)

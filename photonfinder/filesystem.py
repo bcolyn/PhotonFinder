@@ -55,13 +55,23 @@ def is_compressed(filename):
     return compression_ext(filename) is not None
 
 
+_FITS_BLOCK_SIZE = 2880
+_FITS_CARD_SIZE = 80
+
+
+def _has_end_card(block: bytes) -> bool:
+    """Whether a card in this block is END. ENDTIME and the like are ordinary keywords."""
+    return any(block[start:start + 8].rstrip(b" \0") == b"END"
+               for start in range(0, len(block), _FITS_CARD_SIZE))
+
+
 def read_fits_header(file: str | Path, status_reporter: StatusReporter = None) -> bytes | None:
     """
     Read the FITS header from a file.
 
     A FITS header consists of one or more blocks of 2880 bytes.
     Each block contains 36 lines of 80 characters.
-    The header ends with a line that starts with 'END'.
+    The header ends with the END card.
 
     Args:
         file: filename or Path object
@@ -74,12 +84,9 @@ def read_fits_header(file: str | Path, status_reporter: StatusReporter = None) -
     try:
         with fopen(file) as f:
             header = bytes()
-            block_size = 2880
-            line_size = 80
-            lines_per_block = block_size // line_size
 
             while True:
-                block = f.read(block_size)
+                block = f.read(_FITS_BLOCK_SIZE)
                 if not block:
                     # End of file without finding END
                     log(ERROR, f"End block not found in FITS file: {file}")
@@ -92,18 +99,8 @@ def read_fits_header(file: str | Path, status_reporter: StatusReporter = None) -
 
                 header += block
 
-                # search for END in the block
-                for i in range(lines_per_block):
-                    start = i * line_size
-                    end = start + line_size
-                    if start >= len(block):
-                        break
-
-                    line = block[start:end].decode('ascii', errors='replace').rstrip()
-
-                    # Check if this line starts with 'END'
-                    if line.startswith('END'):
-                        return header
+                if _has_end_card(block):
+                    return header
 
     except Exception as e:
         log(DEBUG, f"Error reading FITS header from {file}: {str(e)}")
@@ -332,6 +329,70 @@ def check_missing_header_cache(status_reporter, settings, cancelled=lambda: Fals
         if cancelled():
             raise ScanCancelled()
         _handle_file_metadata_safely(file, status_reporter, settings)
+
+    if status_reporter:
+        status_reporter.update_status("FITS header cache updated.")
+
+
+def _is_truncated_header(raw: bytes) -> bool:
+    """A cached FITS header without an END card. An older version stopped reading at any card
+    starting with END, such as ENDTIME, and lost the blocks after it."""
+    return not raw.startswith(b'{') and not _has_end_card(raw[-_FITS_BLOCK_SIZE:])
+
+
+def _repair_truncated_header(file: File, status_reporter, settings):
+    """Read the header from disk again. The file itself is unchanged, so what was derived from
+    it stays: the plate solution with the position it gave the image, and the stats."""
+    header_bytes = read_fits_header(file.full_filename(), status_reporter)
+    if not header_bytes:
+        log(WARN, f"Could not read the full header of {file.name} again, keeping the cached part")
+        return
+    header = parse_FITS_header(header_bytes)
+    image = normalize_fits_header(file, header, status_reporter)
+    existing_wcs = FileWCS.get_or_none(FileWCS.file == file)
+    existing_image = Image.get_or_none(Image.file == file)
+    if image is not None and existing_wcs is not None and existing_image is not None:
+        image.coord_ra = existing_image.coord_ra
+        image.coord_dec = existing_image.coord_dec
+        image.coord_pix256 = existing_image.coord_pix256
+        image.coord_radius = existing_image.coord_radius
+    recovered_wcs = None
+    if existing_wcs is None:
+        try:
+            recovered_wcs = build_wcs_from_header(file, header)
+        except Exception as e:
+            log(WARN, f"Ignoring unusable WCS in header of {file.name}: {e}")
+
+    with FitsHeader._meta.database.atomic():
+        FitsHeader.update(header=compress(header_bytes)).where(FitsHeader.file == file).execute()
+        if image is not None:
+            Image.insert(image.__data__).on_conflict_replace().execute()
+        if recovered_wcs is not None:
+            FileWCS.insert(recovered_wcs.__data__).on_conflict_ignore().execute()
+    settings.add_known_fits_keywords(header.keys())
+
+
+def repair_truncated_header_cache(status_reporter, settings, cancelled=lambda: False):
+    """Find cached headers cut short by an older version and read them from disk again, as a scan
+    sees these files as unchanged. Checking is cheap: about 0.5s for 50,000 headers."""
+    if status_reporter:
+        status_reporter.update_status("Checking for incomplete FITS headers in the cache...")
+
+    # Finished before anything is written: a write can't follow an open read on this connection.
+    file_ids = [file_id for file_id, blob
+                in FitsHeader.select(FitsHeader.file, FitsHeader.header).tuples().iterator()
+                if _is_truncated_header(decompress(blob))]
+
+    for file_id in file_ids:
+        if cancelled():
+            raise ScanCancelled()
+        file = File.get_by_id(file_id)
+        try:
+            _repair_truncated_header(file, status_reporter, settings)
+        except Exception as e:
+            log(WARN, f"Error repairing header of {file.name}: {e}", exc_info=True)
+            if status_reporter:
+                status_reporter.update_status(f"Error repairing header of {file.name}: {e}")
 
     if status_reporter:
         status_reporter.update_status("FITS header cache updated.")
@@ -617,6 +678,10 @@ class Importer:
         changes = ChangeList()
         for file in files:
             root = LibraryRoot.find_for_file(file)
+            if root is None:
+                logging.warning(f"Skipping {file}: not in a library")
+                self.status.update_status(f"Skipping {file}: not in a library")
+                continue
             root_fs = fs.open_fs(root.path, writeable=False)
             rel_path = fs.path.relativefrom(root.path, file)
 

@@ -328,10 +328,12 @@ class GenericHandler(FitsHeaderHandler):
         bin = _int(header.get('XBINNING'))
         if bin is not None:
             return bin
-        combined = header.get('BINNING', 1)
-        if combined and '*' in str(combined):
-            return int(combined.split('*')[0])
-        return None
+        combined = header.get('BINNING')
+        bin = _int(combined)
+        if bin is not None:
+            return bin
+        match = re.fullmatch(r'\s*(\d+)\s*[x*]\s*\d+\s*', str(combined), re.IGNORECASE)
+        return int(match.group(1)) if match else None
 
     def _get_set_temp(self, header: Header) -> Optional[float]:
         return _float(header.get('SET-TEMP', header.get('CCDTEMP')))
