@@ -9,7 +9,7 @@ from peewee import SqliteDatabase
 
 from photonfinder.core import ApplicationContext, compress
 from photonfinder.filesystem import decode_header_blob
-from photonfinder.calibration import _session_info_from_header
+from photonfinder.calibration import _session_info_from_blob, _session_info_from_header
 from photonfinder.image_analysis import ImageAnalysisResult
 from photonfinder.models import (
     DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED, File, FitsHeader, Image, ImageStats, LibraryRoot, SearchCriteria,
@@ -19,7 +19,7 @@ from photonfinder.mcp_server import _criteria_from_dict
 from photonfinder.models import DIAGNOSIS_MISSING_METRICS, DIAGNOSIS_OK
 from photonfinder.quality_diagnosis import (
     DiagnosisScope, DiagnosisSettings, FrameStats, Metric, MetricRule,
-    PeerGroup, PeerKey, RuleMode, _session_info_from_blob, diagnose, frames_needing_analysis, load_scope,
+    PeerGroup, PeerKey, RuleMode, diagnose, frames_needing_analysis, load_scope,
     save_diagnoses,
 )
 from tests.conftest import DynamicSettings, McpSettings

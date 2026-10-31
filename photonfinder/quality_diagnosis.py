@@ -18,22 +18,18 @@ from functools import cached_property
 from typing import Optional
 
 import numpy as np
-from astropy.io.fits import Card
 from peewee import JOIN, chunked, fn
 
-from photonfinder.calibration import CalibrationMatcher, _session_info_from_header, session_date_for
-from photonfinder.core import ApplicationContext, decompress
+from photonfinder.calibration import CalibrationMatcher, load_session_info, session_date_for
+from photonfinder.core import ApplicationContext
 from photonfinder.models import (
     CORE_MODELS, DIAGNOSIS_BAD_BACKGROUND, DIAGNOSIS_BAD_ELONGATION, DIAGNOSIS_BAD_FWHM, DIAGNOSIS_BAD_STAR_COUNT,
-    DIAGNOSIS_MISSING_METRICS, DIAGNOSIS_OK, DIAGNOSIS_SEPARATOR, File, FitsHeader, Image, ImageStats, SearchCriteria,
+    DIAGNOSIS_MISSING_METRICS, DIAGNOSIS_OK, DIAGNOSIS_SEPARATOR, File, Image, ImageStats, SearchCriteria,
 )
 
 logger = logging.getLogger(__name__)
 
 _BATCH_SIZE = 500
-_CARD_LENGTH = 80
-_SESSION_KEYWORDS = ('DATE-LOC', 'SITELAT', 'SITELONG', 'OBSGEO-B', 'OBSGEO-L')
-_SESSION_KEYWORDS_BYTES = frozenset(keyword.encode('ascii') for keyword in _SESSION_KEYWORDS)
 
 
 class Metric(Enum):
@@ -226,56 +222,6 @@ def frames_needing_analysis(scope: DiagnosisScope, settings: DiagnosisSettings) 
             if not frame.has_stats or frame.read_failed]
 
 
-def _session_cards(raw: bytes) -> Optional[dict]:
-    """Just the session keywords of a stored header, or None if it needs the full parser.
-
-    Parsing a whole header takes milliseconds, which adds up to minutes across a library,
-    and a session night only needs these few cards.
-    """
-    if raw.startswith(b'{'):
-        entries = json.loads(raw)
-        return {key: entries[key][0].get('value') for key in _SESSION_KEYWORDS if entries.get(key)}
-    if b'\t' in raw or len(raw) % _CARD_LENGTH:
-        return None
-    cards = {}
-    for start in range(0, len(raw), _CARD_LENGTH):
-        card = raw[start:start + _CARD_LENGTH]
-        keyword = card[:8].rstrip().upper()
-        if keyword == b'END':
-            break
-        if keyword == b'HIERARCH' and any(name in card.upper() for name in _SESSION_KEYWORDS_BYTES):
-            return None
-        name = keyword.decode('ascii')
-        if keyword in _SESSION_KEYWORDS_BYTES and name not in cards:  # the first card wins, as in a Header
-            cards[name] = Card.fromstring(card.decode('ascii')).value
-            if isinstance(cards[name], str) and cards[name].endswith('&'):  # continues on the next card
-                return None
-    return cards
-
-
-def _session_info_from_blob(blob: bytes) -> tuple:
-    """(date_loc, sitelat, sitelong) from a stored header."""
-    from photonfinder.filesystem import decode_header_blob
-    try:
-        cards = _session_cards(decompress(blob))
-    except Exception:
-        cards = None  # a card the quick route can't read: the full parser repairs those
-    return _session_info_from_header(decode_header_blob(blob) if cards is None else cards)
-
-
-def _load_session_info(file_ids: list[int]) -> dict[int, tuple]:
-    """(date_loc, sitelat, sitelong) per file, from its cached header."""
-    result = {}
-    for batch in chunked(file_ids, _BATCH_SIZE):
-        query = FitsHeader.select(FitsHeader.file, FitsHeader.header).where(FitsHeader.file.in_(batch))
-        for file_id, blob in query.tuples():
-            try:
-                result[file_id] = _session_info_from_blob(blob)
-            except Exception as exc:
-                logger.debug("No session info for file %s: %s", file_id, exc)
-    return result
-
-
 def _lights_in_search(criteria: SearchCriteria) -> set[int]:
     query = File.select(File.rowid).join_from(File, Image, JOIN.LEFT_OUTER)
     query = Image.apply_search_criteria(query, criteria).where(fn.UPPER(Image.image_type) == "LIGHT")
@@ -314,7 +260,7 @@ def load_scope(context: ApplicationContext, criteria: SearchCriteria,
 
         scope_equipment = {row[1:8] for row in rows if row[0] in scope_ids}
         candidates = [row for row in rows if row[1:8] in scope_equipment]
-        session_info = _load_session_info([row[0] for row in candidates])
+        session_info = load_session_info([row[0] for row in candidates])
 
     fallback_tz = CalibrationMatcher(context)._fallback_tz()
     groups: dict[PeerKey, list[FrameStats]] = {}

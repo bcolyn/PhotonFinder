@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import re
 import statistics
@@ -8,11 +9,18 @@ from functools import lru_cache
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from peewee import JOIN
+from astropy.io.fits import Card
+from peewee import JOIN, chunked
 
-from photonfinder.core import ApplicationContext
+from photonfinder.core import ApplicationContext, decompress
 from photonfinder.fits_handlers import _datetime, _float
 from photonfinder.models import File, Image, FitsHeader, SearchCriteria
+
+
+_BATCH_SIZE = 500
+_CARD_LENGTH = 80
+_SESSION_KEYWORDS = ('DATE-LOC', 'SITELAT', 'SITELONG', 'OBSGEO-B', 'OBSGEO-L')
+_SESSION_KEYWORDS_BYTES = frozenset(keyword.encode('ascii') for keyword in _SESSION_KEYWORDS)
 
 
 def _dms_to_deg(s: Optional[str]) -> Optional[float]:
@@ -124,6 +132,56 @@ def _session_info_from_header(hdr) -> tuple[Optional[datetime.datetime], Optiona
     return date_loc, sitelat, sitelong
 
 
+def _session_cards(raw: bytes) -> Optional[dict]:
+    """Just the session keywords of a stored header, or None if it needs the full parser.
+
+    Parsing a whole header takes milliseconds, which adds up to minutes across a library,
+    and a session night only needs these few cards.
+    """
+    if raw.startswith(b'{'):
+        entries = json.loads(raw)
+        return {key: entries[key][0].get('value') for key in _SESSION_KEYWORDS if entries.get(key)}
+    if b'\t' in raw or len(raw) % _CARD_LENGTH:
+        return None
+    cards = {}
+    for start in range(0, len(raw), _CARD_LENGTH):
+        card = raw[start:start + _CARD_LENGTH]
+        keyword = card[:8].rstrip().upper()
+        if keyword == b'END':
+            break
+        if keyword == b'HIERARCH' and any(name in card.upper() for name in _SESSION_KEYWORDS_BYTES):
+            return None
+        name = keyword.decode('ascii')
+        if keyword in _SESSION_KEYWORDS_BYTES and name not in cards:  # the first card wins, as in a Header
+            cards[name] = Card.fromstring(card.decode('ascii')).value
+            if isinstance(cards[name], str) and cards[name].endswith('&'):  # continues on the next card
+                return None
+    return cards
+
+
+def _session_info_from_blob(blob: bytes) -> tuple:
+    """(date_loc, sitelat, sitelong) from a stored header."""
+    from photonfinder.filesystem import decode_header_blob
+    try:
+        cards = _session_cards(decompress(blob))
+    except Exception:
+        cards = None  # a card the quick route can't read: the full parser repairs those
+    return _session_info_from_header(decode_header_blob(blob) if cards is None else cards)
+
+
+def load_session_info(file_ids: list[int]) -> dict[int, tuple]:
+    """(date_loc, sitelat, sitelong) per file, from its cached header."""
+    result = {}
+    for batch in chunked(file_ids, _BATCH_SIZE):
+        query = FitsHeader.select(FitsHeader.file, FitsHeader.header).where(FitsHeader.file.in_(batch))
+        for file_id, blob in query.tuples():
+            try:
+                result[file_id] = _session_info_from_blob(blob)
+            except Exception as exc:
+                logging.debug("No session info for file %s: %s", file_id, exc)
+    return result
+
+
 @dataclass(frozen=True, eq=True)
 class SessionKey:
     session_date: Optional[datetime.date]
@@ -170,21 +228,7 @@ class CalibrationMatcher:
         """Batch-load FITS header info for given files."""
         if not hasattr(self, 'context') or not files:
             return {}
-        from photonfinder.filesystem import decode_header_blob
-        file_ids = [f.id for f in files if hasattr(f, 'id') and f.id is not None]
-        if not file_ids:
-            return {}
-        result = {}
-        try:
-            with self.context.database.bind_ctx([FitsHeader]):
-                for fh in FitsHeader.select().where(FitsHeader.file_id.in_(file_ids)):
-                    try:
-                        result[fh.file_id] = _session_info_from_header(decode_header_blob(fh.header))
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-        return result
+        return load_session_info([f.rowid for f in files if f.rowid is not None])
 
     def get_sessions(self, light_files: list[File]) -> dict[SessionKey, list[File]]:
         """Group LIGHT files by (session_date, filter), sorted by date then filter."""
@@ -195,7 +239,7 @@ class CalibrationMatcher:
             image = f.image if hasattr(f, 'image') else None
             if not image:
                 continue
-            info = session_info.get(getattr(f, 'id', None), (None, None, None))
+            info = session_info.get(f.rowid, (None, None, None))
             date_loc, sitelat, sitelong = info
             key = SessionKey(
                 session_date=session_date_for(
@@ -235,7 +279,7 @@ class CalibrationMatcher:
         cal_groups: dict[tuple, list] = {}
         for f in files:
             image = f.image if hasattr(f, 'image') else None
-            info = session_info.get(getattr(f, 'id', None), (None, None, None))
+            info = session_info.get(f.rowid, (None, None, None))
             date_loc, sitelat, sitelong = info
             d = session_date_for(
                 image.date_obs if image else None,
@@ -403,7 +447,7 @@ class CalibrationMatcher:
             if itype not in ("DARK", "FLAT", "BIAS"):
                 continue
 
-            info = session_info.get(getattr(f, 'id', None), (None, None, None))
+            info = session_info.get(f.rowid, (None, None, None))
             date_loc, sitelat, sitelong = info
             d = session_date_for(
                 image.date_obs,
