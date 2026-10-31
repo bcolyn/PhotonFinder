@@ -23,6 +23,7 @@ class ImageAnalysisDialog(QDialog):
     Shows progress while running image quality analysis.
     Auto-starts on show(). Emits analysis_complete(task) when all files are done.
     """
+    writer_window_label = "Analyse Images"  # see MainWindow._database_switch_blockers
     analysis_complete = Signal(object)  # ImageAnalysisTask
 
     def __init__(self, context: ApplicationContext, files: list[File] | None,

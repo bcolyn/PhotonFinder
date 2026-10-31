@@ -20,6 +20,7 @@ from photonfinder.ui.generated.ProjectEditDialog_ui import Ui_ProjectEditDialog
 
 
 class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
+    writer_window_label = "Edit Project"  # see MainWindow._database_switch_blockers
     project_files: List[ProjectFile]
     links_to_delete: Set[ProjectFile]
     links_to_add: Set[ProjectFile]

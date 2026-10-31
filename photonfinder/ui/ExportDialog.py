@@ -314,7 +314,7 @@ class ExportWorker(BackgroundLoaderBase):
         self.project_file_ids = project_file_ids or set()
         self._written = {}
         self.collisions = []
-        self.run_in_thread(self._export_files_task)
+        self.run_writer_in_thread("Export", self._export_files_task)
 
     def _export_files_task(self):
         """Background task to export files."""
@@ -542,6 +542,7 @@ class HeadersDialog(QDialog):
 
 class ExportDialog(QDialog, Ui_ExportDialog):
     """Dialog for exporting files."""
+    writer_window_label = "Export"  # see MainWindow._database_switch_blockers
 
     def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria,
                  files: Optional[List[File]] = None, parent=None):

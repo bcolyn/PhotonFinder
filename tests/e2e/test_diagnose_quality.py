@@ -10,6 +10,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from photonfinder import quality_diagnosis
+from photonfinder.core import LibraryBusyError
 from photonfinder.image_analysis import ImageAnalysisResult
 from photonfinder.models import (
     CORE_MODELS, DIAGNOSIS_NOT_ANALYSED, File, Image, ImageStats, LibraryRoot, SearchCriteria,
@@ -238,11 +239,16 @@ def test_filter_dialog_leads_to_the_diagnose_dialog(sandbox, app, modals, m81):
     assert not app.actionQualityDiagnosis.isChecked()
 
 
-def test_switching_database_closes_the_dialog(sandbox, app, m81, tmp_path):
-    open_dialog(sandbox, app)
-    app._switch_database(str(tmp_path / "other.db"))
+def test_closing_the_dialog_allows_switching_database(sandbox, app, m81, tmp_path):
+    dialog = open_dialog(sandbox, app)
+    with pytest.raises(LibraryBusyError):
+        app._switch_database(str(tmp_path / "other.db"))
+    dialog.close()
     sandbox.wait_idle()
     assert app._diagnose_dialog is None
+    app._switch_database(str(tmp_path / "other.db"))
+    sandbox.wait_idle()
+    assert sandbox.context.database_path == str(tmp_path / "other.db")
 
 
 # --- Analyse missing -------------------------------------------------------------------

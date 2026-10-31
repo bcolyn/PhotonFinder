@@ -3,6 +3,8 @@ import os
 import sys
 import threading
 from abc import abstractmethod
+from collections import Counter
+from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
 
@@ -227,6 +229,53 @@ class DatabaseLock:
             os.close(fd)
 
 
+class LibraryBusyError(Exception):
+    """The library can't be switched while it's in use, or a writer can't start during a switch."""
+
+
+class ActiveWriters:
+    """The jobs in this process that are writing to the open library.
+
+    Separate from library_write_lock, which is also held across processes: a writer in
+    another PhotonFinder window has no effect on this window switching library. Readers
+    don't register. A job registers when it's started, not when its thread gets to run.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._running = Counter()
+        self._switching = False
+
+    def begin(self, name: str) -> None:
+        with self._lock:
+            if self._switching:
+                raise LibraryBusyError("The library is being switched.")
+            self._running[name] += 1
+
+    def end(self, name: str) -> None:
+        with self._lock:
+            self._running[name] -= 1
+            if self._running[name] <= 0:
+                del self._running[name]
+
+    def running(self) -> list[str]:
+        with self._lock:
+            return sorted(self._running)
+
+    @contextmanager
+    def switching(self):
+        """Keeps new writers out during a library switch, which is refused if any is running."""
+        with self._lock:
+            if self._running:
+                raise LibraryBusyError(f"Still running: {', '.join(sorted(self._running))}.")
+            self._switching = True
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._switching = False
+
+
 class ApplicationContext:
 
     CURRENT_DB_VERSION = 1
@@ -254,6 +303,7 @@ class ApplicationContext:
         # Single writer for batch jobs that change library files and their rows (library
         # scans, Compress Files); readers never take it.
         self.library_write_lock = DatabaseLock(database_path, '.write.lock')
+        self.writers = ActiveWriters()
 
     def __enter__(self):
         self.open_database()

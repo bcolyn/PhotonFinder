@@ -45,7 +45,7 @@ from peewee import JOIN
 from pydantic import BaseModel, Field
 
 from photonfinder import reports, solve_service
-from photonfinder.core import ApplicationContext, mcp_port_file
+from photonfinder.core import ApplicationContext, LibraryBusyError, mcp_port_file
 from photonfinder.models import (
     CORE_MODELS, CATALOG_MODELS, SearchCriteria, SORTABLE_FIELDS, File, Image, LibraryRoot,
     Project, ProjectFile, FitsHeader, FileWCS, CatalogEntry,
@@ -510,6 +510,9 @@ def _resolve_solver_index(name: Optional[str], default_index: int) -> int:
     return SOLVER_NAMES[key]
 
 
+MCP_SOLVE_WRITER = "Plate solving (MCP)"
+
+
 def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Optional[str] = None,
                        backup_solver: Optional[str] = None, hint_ra: Optional[float] = None,
                        hint_dec: Optional[float] = None, hint_scale: Optional[float] = None,
@@ -533,7 +536,12 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
     except ValueError as e:
         return {"error": str(e)}
 
+    try:
+        context.writers.begin(MCP_SOLVE_WRITER)
+    except LibraryBusyError as e:
+        return {"error": f"{e} Try again shortly."}
     if not context.solve_lock.acquire(blocking=False):
+        context.writers.end(MCP_SOLVE_WRITER)
         return {"error": "A plate-solve is already running (from this application or "
                           "another MCP request); try again shortly."}
     try:
@@ -581,6 +589,7 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
         return {"results": results, "solved": solved, "failed": failed}
     finally:
         context.solve_lock.release()
+        context.writers.end(MCP_SOLVE_WRITER)
 
 
 class _RootAndPathInput(BaseModel):

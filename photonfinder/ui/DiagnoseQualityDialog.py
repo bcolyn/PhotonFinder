@@ -56,7 +56,7 @@ class _DiagnosisLoader(BackgroundLoaderBase):
             self.load_failed.emit(str(exc), criteria)
 
     def save(self, verdicts: dict):
-        self.run_in_thread(self._save, verdicts)
+        self.run_writer_in_thread("Saving diagnosis", self._save, verdicts)
 
     def _save(self, verdicts: dict):
         try:
@@ -108,6 +108,7 @@ class DiagnoseQualityDialog(QDialog):
     The scope stays fixed until the user asks for the current one, since saving overwrites
     stored results and must not change target because the grid was filtered meanwhile.
     """
+    writer_window_label = "Diagnose Quality"  # see MainWindow._database_switch_blockers
 
     def __init__(self, context: ApplicationContext, main_window, parent=None):
         super().__init__(parent)

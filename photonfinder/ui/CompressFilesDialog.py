@@ -30,7 +30,7 @@ class CompressFilesWorker(BackgroundLoaderBase):
 
     def compress(self, files: list, ext: str, verify: bool, level: int, parallelism: int):
         self.cancelled = False
-        self.run_in_thread(self._run, files, ext, verify, level, parallelism)
+        self.run_writer_in_thread("Compress Files", self._run, files, ext, verify, level, parallelism)
 
     def cancel(self):
         self.cancelled = True

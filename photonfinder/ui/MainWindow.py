@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize
 from PySide6.QtGui import QIcon, QPalette, QAction, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import *
 
-from photonfinder.core import ApplicationContext, StatusReporter, backup_database
+from photonfinder.core import ApplicationContext, LibraryBusyError, StatusReporter, backup_database
 from photonfinder.filesystem import Importer, update_fits_header_cache, check_missing_header_cache
 from photonfinder.models import SearchCriteria, Project, File, ProjectFile, RootAndPath, Image, LibraryRoot
 from .AboutDialog import AboutDialog
@@ -27,6 +27,7 @@ from .session import SessionManager, Session
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
+    SCAN_WRITER = "Library scan"
     tabs_changed = Signal(list)
     projects_window: ProjectsWindow | None
 
@@ -162,6 +163,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.action_filter_no_project.triggered.connect(self.add_no_project_filter)
         self.menuSearch_Details.aboutToShow.connect(self.populate_search_details)
         self.menuProject_Details.aboutToShow.connect(self.populate_project_details)
+        self.menu_File.setToolTipsVisible(True)
+        self.menu_File.aboutToShow.connect(self._update_database_actions)
 
     def closeEvent(self, event):
         try:
@@ -277,22 +280,57 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         Tabs are removed without close_search_tab's "never leave zero tabs" rule, which
         would otherwise start a new panel (and its queries) on the database being closed.
         If the new database can't be opened, the previous one is reopened before re-raising.
+        Refused with LibraryBusyError while something could write to the current library,
+        since a job still running would carry on writing its rows to the new one.
         """
+        blockers = self._database_switch_blockers()
+        if blockers:
+            raise LibraryBusyError(self._database_busy_message(blockers))
         previous_path = self.context.database_path
-        if self._diagnose_dialog is not None:
-            self._diagnose_dialog.close()
-        while self.tabWidget.count() > 0:
-            self._remove_search_tab(0)
-        try:
-            self.context.switch_database(file_path)
-        except Exception:
-            logging.error(f"Could not open {file_path}, reopening {previous_path}", exc_info=True)
-            self.context.switch_database(previous_path)
-            raise
-        finally:
-            self.setWindowTitle(f"PhotonFinder - {self.context.database_path}")
-            self.new_search_tab()
-            self.reload_library_roots_in_all_panels()
+        with self.context.writers.switching():
+            while self.tabWidget.count() > 0:
+                self._remove_search_tab(0)
+            try:
+                self.context.switch_database(file_path)
+            except Exception:
+                logging.error(f"Could not open {file_path}, reopening {previous_path}", exc_info=True)
+                self.context.switch_database(previous_path)
+                raise
+            finally:
+                self.setWindowTitle(f"PhotonFinder - {self.context.database_path}")
+                self.new_search_tab()
+                self.reload_library_roots_in_all_panels()
+
+    def _database_switch_blockers(self) -> list[str]:
+        """What stops the library being switched: writers running in this process, and open
+        windows that can start one, which declare it with a writer_window_label.
+
+        Modal dialogs don't need the label, as the menu can't be reached while one is open.
+        Nor do the grid and the Projects panel: their writes are finished before the event
+        loop runs again, so one can't be in progress when a switch is requested.
+        """
+        windows = [widget.writer_window_label for widget in self.findChildren(QWidget)
+                   if getattr(widget, 'writer_window_label', None) and widget.isVisible()]
+        return list(dict.fromkeys(self.context.writers.running() + windows))
+
+    @staticmethod
+    def _database_busy_message(blockers: list[str]) -> str:
+        return f"Wait for or close these first: {', '.join(blockers)}."
+
+    def _update_database_actions(self):
+        blockers = self._database_switch_blockers()
+        tip = self._database_busy_message(blockers) if blockers else ""
+        for action in (self.action_Create_Database, self.action_Open_Database):
+            action.setEnabled(not blockers)
+            action.setToolTip(tip)
+            action.setStatusTip(tip)
+
+    def _refuse_database_switch(self, title: str) -> bool:
+        """The disabled menu items only update when the menu opens, so check again here."""
+        blockers = self._database_switch_blockers()
+        if blockers:
+            QMessageBox.warning(self, title, self._database_busy_message(blockers))
+        return bool(blockers)
 
     def manage_library_roots(self):
         """
@@ -377,9 +415,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.context.status_reporter.update_status(
                 "Library scan not started: compression is running on this library.")
             return False
+        self.context.writers.begin(self.SCAN_WRITER)
         try:
             self.scan_worker = create_worker()
         except Exception:
+            self.context.writers.end(self.SCAN_WRITER)
             self.context.library_write_lock.release()
             raise
         self.scan_worker.finished.connect(self._scan_finished)
@@ -388,6 +428,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def _scan_finished(self):
         """Called when the scan is finished."""
+        self.context.writers.end(self.SCAN_WRITER)
         self.context.library_write_lock.release()
         self.context.status_reporter.update_status("Library scan complete.")
 
@@ -545,6 +586,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.critical(self, "Backup Failed", error_msg)
 
     def create_database(self):
+        if self._refuse_database_switch("Create Database"):
+            return
 
         file_path, _ = QFileDialog.getSaveFileName(self, "Create Database",
                                                    "", "SQLite Database (*.db);;All Files (*)")
@@ -568,6 +611,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         Prompts the user for a file and calls ApplicationContext.switch_database
         to open the selected database.
         """
+        if self._refuse_database_switch("Open Database"):
+            return
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Open Database",

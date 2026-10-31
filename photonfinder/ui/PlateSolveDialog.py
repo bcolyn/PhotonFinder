@@ -96,6 +96,7 @@ def _infer_scale_from_wcs(file: File):
 
 
 class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
+    writer_window_label = "Plate Solve"  # see MainWindow._database_switch_blockers
     solving_complete = Signal(object)  # emits PlateSolveTask when done
     wcs_copied = Signal(object)        # emits object with .solved_files after Direct Copy
 

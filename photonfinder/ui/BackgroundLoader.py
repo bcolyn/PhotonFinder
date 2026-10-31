@@ -33,6 +33,18 @@ class BackgroundLoaderBase(QObject):
         runnable = self._create_runnable(fn, *args, **kwargs)
         self.thread_pool.start(runnable)
 
+    def run_writer_in_thread(self, name: str, fn, *args, **kwargs):
+        """Run a job that writes to the library, which can't be switched until the job ends."""
+        self.context.writers.begin(name)
+
+        def run():
+            try:
+                fn(*args, **kwargs)
+            finally:
+                self.context.writers.end(name)
+
+        self.run_in_thread(run)
+
     def _create_runnable(self, fn, *args, **kwargs):
         """Create a QRunnable that will execute the given function."""
 
@@ -198,7 +210,7 @@ class ImageReindexWorker(BackgroundLoaderBase):
 
     def reindex_images(self):
         """Start the reindexing process in a background thread."""
-        self.run_in_thread(self._reindex_images_task)
+        self.run_writer_in_thread("Rebuild index", self._reindex_images_task)
 
     def _reindex_images_task(self):
         """Background task to reindex image metadata."""
@@ -311,13 +323,18 @@ class ProgressBackgroundTask(BackgroundLoaderBase):
 
 
 class FileProcessingTask(ProgressBackgroundTask):
+    writer_name: str | None = None  # set by tasks that write to the library
+
     def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File]):
         super().__init__(context)
         self.search_criteria = search_criteria
         self.files = files
 
     def start(self):
-        self.run_in_thread(self._process_files)
+        if self.writer_name:
+            self.run_writer_in_thread(self.writer_name, self._process_files)
+        else:
+            self.run_in_thread(self._process_files)
 
     def _process_files(self):
         try:
@@ -360,6 +377,7 @@ class FileProcessingTask(ProgressBackgroundTask):
 
 
 class PlateSolveTask(FileProcessingTask):
+    writer_name = "Plate solving"
 
     def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File],
                  solver: SolverBase, backup_solver: SolverBase = None, hint: SolverHint = None,
@@ -533,6 +551,7 @@ class FileListTask(FileProcessingTask):
 
 class ImageAnalysisTask(FileProcessingTask):
     """Per-file image quality analysis. Stores results in ImageStats (upsert)."""
+    writer_name = "Image analysis"
 
     def __init__(self, context: ApplicationContext,
                  search_criteria: SearchCriteria, files: List[File]):

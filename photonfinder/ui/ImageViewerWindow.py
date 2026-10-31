@@ -327,6 +327,7 @@ class ImageCanvas(QGraphicsView):
 
 class ImageViewerWindow(QMainWindow):
     """Single non-modal viewer window; MainWindow holds one reference."""
+    writer_window_label = "Image Viewer"  # plate solves and marks files bad; see MainWindow._database_switch_blockers
 
     def __init__(self, context=None, parent=None):
         super().__init__(parent)
