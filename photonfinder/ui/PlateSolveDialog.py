@@ -109,6 +109,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self._task: PlateSolveTask | None = None
         self._pending_retry_files = None
         self._solve_lock_held = False
+        self._cancelling = False
 
         self._populate_combos()
         self._load_settings()
@@ -429,6 +430,9 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self._task = None
         self._release_solve_lock()
         self.solving_complete.emit(task)
+        if self._cancelling:
+            self.close()
+            return
         self._show_results(task)
         if task.first_solution is not None:
             ra, dec, scale_arcsec = task.first_solution
@@ -500,20 +504,38 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         dlg.exec()
 
     def _on_error(self, error_message: str):
+        task = self._task
+        self._task = None
         self._release_solve_lock()
+        self.solving_complete.emit(task)  # the files solved before the error are stored
+        if self._cancelling:
+            self.close()
+            return
         self._append_log(f"Error: {error_message}")
         QMessageBox.critical(self, "Plate solving error", error_message)
         self.start_button.setEnabled(True)
         self.direct_copy_button.setEnabled(True)
         self.close_button.setText("Close")
-        self._task = None
 
     def closeEvent(self, event):
+        """Cancelling only stops the task between files, and the current one can take minutes.
+        So report what's been solved now, and stay alive, hidden, until the task ends: that's
+        when the last result arrives and when the solve lock can really be released."""
+        if self._task is None:
+            super().closeEvent(event)
+            return
+        self._cancelling = True
+        self._task.cancel()
+        self.solving_complete.emit(self._task)
+        self.hide()
+        event.ignore()
+
+    def reject(self):
+        """Escape cancels a running solve, like closing does."""
         if self._task is not None:
-            self._task.cancel()
-            self._task = None
-            self._release_solve_lock()
-        super().closeEvent(event)
+            self.close()
+        else:
+            super().reject()
 
     def _on_close_clicked(self):
         self.close()
