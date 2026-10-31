@@ -220,6 +220,9 @@
        <height>120</height>
       </size>
      </property>
+     <property name="lineWrapMode">
+      <enum>QPlainTextEdit::LineWrapMode::NoWrap</enum>
+     </property>
      <property name="readOnly">
       <bool>true</bool>
      </property>
