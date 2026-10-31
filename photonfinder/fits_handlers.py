@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional, Tuple
 
 import astropy.units as u
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import Angle, SkyCoord
 from astropy.io.fits import Header
 
 from photonfinder.models import File, Image
@@ -222,21 +222,16 @@ class FitsHeaderHandler:
                 return None
 
         try:
-            # Check if RA and DEC are already in degrees (numeric values)
+            # Each on its own, as a header can mix them: a number is in degrees, text is sexagesimal
+            # with RA in hours.
             ra_numeric = _try_parse(ra_value)
             dec_numeric = _try_parse(dec_value)
+            ra = Angle(ra_value, unit=u.hourangle) if ra_numeric is None else Angle(float(ra_numeric), unit=u.deg)
+            dec = Angle(dec_value, unit=u.deg) if dec_numeric is None else Angle(float(dec_numeric), unit=u.deg)
 
-            if ra_numeric and dec_numeric:
-                # RA and DEC are already in degrees, use them directly for SkyCoord
-                ra_degrees = float(ra_value)
-                dec_degrees = float(dec_value)
-                # Create SkyCoord object for HEALPix calculation
-                coords = SkyCoord(float(ra_value), dec_degrees, unit=u.deg, frame='icrs')
-            else:
-                # RA and DEC are in string format (HH:MM:SS), parse them
-                coords = SkyCoord(ra_value, dec_value, unit=(u.hourangle, u.deg), frame='icrs')
-                ra_degrees = coords.ra.degree
-                dec_degrees = coords.dec.degree
+            coords = SkyCoord(ra, dec, frame='icrs')
+            ra_degrees = coords.ra.degree
+            dec_degrees = coords.dec.degree
 
             if ra_degrees == 0.0 and dec_degrees == 0.0:
                 return None, None, None

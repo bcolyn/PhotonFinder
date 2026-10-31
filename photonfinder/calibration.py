@@ -43,13 +43,13 @@ def _dms_to_deg(s: Optional[str]) -> Optional[float]:
         # Normalize separators (colons, d/m/s markers, degree symbols) to spaces
         s = re.sub(r"[d°:\'\"hms]+", ' ', s).strip()
         parts = s.split()
+        # The sign comes from the text: -0 as a number can't say it is negative.
+        d_sign = -1 if parts and parts[0].startswith('-') else 1
         if len(parts) == 3:
             d, m, sec = float(parts[0]), float(parts[1]), float(parts[2])
-            d_sign = -1 if d < 0 else 1
             return sign * d_sign * (abs(d) + m / 60.0 + sec / 3600.0)
         if len(parts) == 2:
             d, m = float(parts[0]), float(parts[1])
-            d_sign = -1 if d < 0 else 1
             return sign * d_sign * (abs(d) + m / 60.0)
         if len(parts) == 1:
             return sign * float(parts[0])
