@@ -1,6 +1,8 @@
 """The Diagnose Quality dialog on the real main window: tuning, saving and its scope."""
 import threading
 from datetime import datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QItemSelectionModel, Qt, QTimer
@@ -13,6 +15,7 @@ from photonfinder.models import (
     CORE_MODELS, DIAGNOSIS_NOT_ANALYSED, File, Image, ImageStats, LibraryRoot, SearchCriteria,
 )
 from photonfinder.quality_diagnosis import DiagnosisSettings, Metric, MetricRule, RuleMode
+from photonfinder.ui.common import _format_dec
 from photonfinder.ui.ImageAnalysisDialog import ImageAnalysisDialog
 from photonfinder.ui.RangeFilterDialogs import DiagnosisFilterDialog
 from photonfinder.ui.SearchPanel import AdvancedFilter
@@ -764,3 +767,101 @@ def test_analyse_missing_follows_the_selection(sandbox, app, two_targets, analyz
     sandbox.qtbot.waitUntil(lambda: dialog.analyse_button.text() == "Analyse missing (0)")
     assert stats_of(sandbox, "M33_new0.fits").star_count == 500
     assert stats_of(sandbox, "M81_new0.fits") is None
+
+
+# --- Updating a sorted grid ------------------------------------------------------------
+
+
+STATS_COLUMNS = ["Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation"]
+# A different order for each column, so a value on the wrong row shows up.
+SHUFFLE = [3, 0, 5, 1, 7, 2, 6, 4]
+
+
+def analysed_values(number: int) -> dict[str, float]:
+    return {"Bg Median": 100.0 + SHUFFLE[number], "Bg RMS": 5.0 + SHUFFLE[(number + 1) % 8],
+            "Stars": 500 + SHUFFLE[(number + 2) % 8], "FWHM": 2.0 + SHUFFLE[(number + 3) % 8] / 10,
+            "Elongation": 1.1 + SHUFFLE[(number + 4) % 8] / 100}
+
+
+def analysed_text(number: int) -> dict[str, str]:
+    values = analysed_values(number)
+    return {"Bg Median": f"{values['Bg Median']:.1f}", "Bg RMS": f"{values['Bg RMS']:.2f}",
+            "Stars": str(values["Stars"]), "FWHM": f"{values['FWHM']:.2f}", "Elongation": f"{values['Elongation']:.3f}"}
+
+
+def analyse_by_name(name, **_) -> ImageAnalysisResult:
+    values = analysed_values(int(Path(name).stem.split("_")[1]))
+    return ImageAnalysisResult(background_median=values["Bg Median"], background_rms=values["Bg RMS"],
+                               star_count=values["Stars"], fwhm_median=values["FWHM"],
+                               elongation_median=values["Elongation"])
+
+
+def sort_grid(sandbox, panel, column: str, descending: bool):
+    """Click the header as the user does: the first click on a column is always ascending."""
+    col = sandbox.grid().headers().index(column)
+    panel.dataView.horizontalHeader().setSortIndicator(col, Qt.SortOrder.AscendingOrder)
+    if descending:
+        panel.dataView.horizontalHeader().setSortIndicator(col, Qt.SortOrder.DescendingOrder)
+    sandbox.wait_idle()
+    assert panel.proxy_model.sortColumn() == col
+    assert panel.proxy_model.sortOrder() == (Qt.SortOrder.DescendingOrder if descending else Qt.SortOrder.AscendingOrder)
+
+
+@pytest.mark.parametrize("descending", [False, True], ids=["ascending", "descending"])
+@pytest.mark.parametrize("column", [*STATS_COLUMNS, "Diagnosis", "File name"])
+def test_analysis_results_land_on_their_own_rows_in_a_sorted_grid(sandbox, app, monkeypatch, column, descending):
+    add_frames(sandbox, "M81", [3.0] * 8)
+    with sandbox.context.database.bind_ctx(CORE_MODELS):
+        for i, file in enumerate(File.select().order_by(File.rowid)):
+            ImageStats.update(diagnosis="Bad FWHM" if i % 2 else "OK").where(ImageStats.file == file).execute()
+    search(sandbox, app, object_name="M81")
+    panel = app.get_current_search_panel()
+    sort_grid(sandbox, panel, column, descending)
+    monkeypatch.setattr("photonfinder.ui.BackgroundLoader.analyze_file", analyse_by_name)
+
+    run_analyse_images(sandbox, app)
+
+    grid = sandbox.grid()
+    names = grid.column("File name")
+    assert sorted(names) == [f"M81_{i}.fits" for i in range(8)]
+    for name_on_row, *cells in zip(names, *(grid.column(c) for c in STATS_COLUMNS)):
+        assert dict(zip(STATS_COLUMNS, cells)) == analysed_text(int(name_on_row[4])), name_on_row
+    assert grid.column("Diagnosis") == [""] * 8
+
+
+def test_solve_results_land_on_their_own_rows_in_a_sorted_grid(sandbox, app):
+    add_frames(sandbox, "M81", [3.0] * 8)
+    search(sandbox, app, object_name="M81")
+    panel = app.get_current_search_panel()
+    sort_grid(sandbox, panel, "RA", True)  # setting the RA moves the row, ahead of its Dec and Solved cells
+    with sandbox.context.database.bind_ctx(CORE_MODELS):
+        solved = list(File.select(File, Image).join(Image).order_by(File.rowid))
+        for i, file in enumerate(solved):
+            file.image.coord_ra = 10.0 * (SHUFFLE[i] + 1)
+            file.image.coord_dec = float(i + 1)
+
+    panel.on_files_solved(SimpleNamespace(solved_files=solved))
+
+    grid = sandbox.grid()
+    decs = {name: dec for name, dec in zip(grid.column("File name"), grid.column("DEC"))}
+    assert decs == {f"M81_{i}.fits": _format_dec(float(i + 1)) for i in range(8)}
+    assert grid.column("Solved") == ["True"] * 8
+
+
+def test_clearing_a_plate_solution_updates_its_own_row_in_a_sorted_grid(sandbox, app):
+    add_frames(sandbox, "M81", [3.0] * 3)
+    with sandbox.context.database.bind_ctx(CORE_MODELS):
+        for i, file in enumerate(File.select().order_by(File.rowid)):
+            Image.update(coord_ra=10.0 * (i + 1), coord_dec=float(i + 1)).where(Image.file == file).execute()
+    search(sandbox, app, object_name="M81")
+    panel = app.get_current_search_panel()
+    sort_grid(sandbox, panel, "RA", True)  # blanking the RA moves the row, ahead of its Dec and Solved cells
+    grid = sandbox.grid()
+    names = grid.column("File name")
+    row = names.index("M81_1.fits")
+
+    panel.clear_plate_solution(panel.proxy_model.index(row, 0).data(Qt.ItemDataRole.UserRole), row)
+
+    by_name = dict(zip(grid.column("File name"), zip(grid.column("RA"), grid.column("DEC"), grid.column("Solved"))))
+    assert by_name["M81_1.fits"] == ("", "", "False")
+    assert all(by_name[n][0] and by_name[n][1] for n in ("M81_0.fits", "M81_2.fits"))

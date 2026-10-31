@@ -137,8 +137,7 @@ def test_solving_a_file_without_an_image_marks_its_row_solved(library, qtbot):
     name_item = QStandardItem(file.name)
     name_item.setData(file, ROWID_ROLE)
     model.setItem(0, 0, name_item)
-    panel = SimpleNamespace(dataView=SimpleNamespace(model=lambda: model),
-                            search_criteria=SimpleNamespace(plate_solved=None))
+    panel = SimpleNamespace(data_model=model, search_criteria=SimpleNamespace(plate_solved=None))
 
     SearchPanel.on_files_solved(panel, SimpleNamespace(solved_files=[file]))
 

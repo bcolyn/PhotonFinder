@@ -894,13 +894,15 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             wcs = FileWCS.get_or_none(FileWCS.file == file)
             if wcs:
                 wcs.delete_instance()
-        model = self.dataView.model()
-        model.setData(model.index(model_row, 15), "", Qt.DisplayRole)
-        model.setData(model.index(model_row, 15), None, SORT_ROLE)
-        model.setData(model.index(model_row, 16), "", Qt.DisplayRole)
-        model.setData(model.index(model_row, 16), None, SORT_ROLE)
-        model.setData(model.index(model_row, 17), "False", Qt.DisplayRole)
-        model.setData(model.index(model_row, 17), "False", SORT_ROLE)
+        # The source model: a sorted proxy moves the row as soon as a sort value changes.
+        model = self.data_model
+        source_row = self.proxy_model.mapToSource(self.proxy_model.index(model_row, 0)).row()
+        model.setData(model.index(source_row, 15), "", Qt.DisplayRole)
+        model.setData(model.index(source_row, 15), None, SORT_ROLE)
+        model.setData(model.index(source_row, 16), "", Qt.DisplayRole)
+        model.setData(model.index(source_row, 16), None, SORT_ROLE)
+        model.setData(model.index(source_row, 17), "False", Qt.DisplayRole)
+        model.setData(model.index(source_row, 17), "False", SORT_ROLE)
         if hasattr(file, 'has_wcs'):
             file.has_wcs = False
 
@@ -1693,7 +1695,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if not task.analyzed_files:
             return
         result_map = {f: r for f, r in task.analyzed_files}
-        model = self.dataView.model()
+        model = self.data_model  # not the sorted proxy, which moves rows as sort values change
         for row in range(model.rowCount()):
             file = model.index(row, 0).data(ROWID_ROLE)
             if file not in result_map:
@@ -1718,7 +1720,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def on_files_solved(self, task: PlateSolveTask):
         solved_files = {f: f for f in task.solved_files}
-        model = self.dataView.model()
+        model = self.data_model  # not the sorted proxy, which moves rows as sort values change
         for row in range(model.rowCount()):
             index = model.index(row, 0)
             file = solved_files.get(index.data(ROWID_ROLE))
