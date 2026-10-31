@@ -63,7 +63,7 @@ class TestTemplateFilename:
         template = string.Template("output/dir/$filename")
         result = template_filename(light1, template, settings)
         assert result == "output/dir/test_file1.fits"
-        assert settings.get_last_light_path() == Path("output/dir")
+        assert settings.get_last_light_path() == "output/dir"
 
 
 class TestTemplateFilenameWithRef:

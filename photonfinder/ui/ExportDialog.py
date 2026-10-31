@@ -117,7 +117,7 @@ def template_filename(file: File, template: string.Template, settings: Settings,
     if not result:
         result = file_name
     if image and image.image_type == 'LIGHT':
-        settings.set_last_light_path(Path(result).parent)
+        settings.set_last_light_path(Path(result).parent.as_posix())
     return result
 
 

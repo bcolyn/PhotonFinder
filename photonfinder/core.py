@@ -573,12 +573,20 @@ def _install_setting_accessors(cls) -> None:
     """
     def _make_getter(key, default, typ):
         def getter(self):
-            return self.settings.value(key, default, typ)
+            try:
+                return self.settings.value(key, default, typ)
+            except RuntimeError as e:
+                # A pickled object, as older versions saved for a Path. PySide refuses to read those,
+                # and removing it means this only happens once.
+                logging.warning(f"Removing the unreadable setting {key}: {e}")
+                self.settings.remove(key)
+                return default
         return getter
 
     def _make_setter(key):
         def setter(self, value):
-            self.settings.setValue(key, value)
+            # QSettings would pickle a Path, and PySide then can't read it back from the registry.
+            self.settings.setValue(key, value.as_posix() if isinstance(value, Path) else value)
         return setter
 
     for suffix, key, default, typ in cls._SPECS:
