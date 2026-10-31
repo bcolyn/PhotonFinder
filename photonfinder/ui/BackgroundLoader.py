@@ -548,6 +548,10 @@ class ImageAnalysisTask(FileProcessingTask):
             result = analyze_file(file.full_filename(), detect_sources=detect_sources)
             if result.error:
                 self.message.emit(f"  Warning: {result.error}")
+                # Stored stats survive a failed read. A frame with none gets an empty row, which
+                # the quality diagnosis counts as "could not be read".
+                ImageStats.insert(file=file).on_conflict_ignore().execute()
+                return
             (ImageStats
              .insert(
                  file=file,

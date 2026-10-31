@@ -358,6 +358,31 @@ def test_reanalysing_a_frame_clears_its_diagnosis(context, library):
     assert stats.diagnosis is None
 
 
+def test_failed_analysis_keeps_the_existing_stats_and_diagnosis(context, library):
+    from photonfinder.ui.BackgroundLoader import ImageAnalysisTask
+    file = _light(library)  # its file is not on disk, so reading it really fails
+    assert save_diagnoses(context, {file.rowid: "Bad FWHM"})
+
+    task = ImageAnalysisTask(context, SearchCriteria(), [file])
+    task._process_file(file, 0)
+
+    stats = ImageStats.get(ImageStats.file == file)
+    assert stats.fwhm_median == 3.0
+    assert stats.star_count == 500
+    assert stats.diagnosis == "Bad FWHM"
+    assert task.analyzed_files == []  # or the grid would blank this row's diagnosis
+
+
+def test_failed_analysis_of_a_frame_without_stats_counts_as_could_not_be_read(context, library):
+    from photonfinder.ui.BackgroundLoader import ImageAnalysisTask
+    file = _light(library, stats=False)
+
+    ImageAnalysisTask(context, SearchCriteria(), [file])._process_file(file, 0)
+
+    assert ImageStats.get(ImageStats.file == file).star_count is None
+    assert diagnose(load_scope(context, SearchCriteria()), DiagnosisSettings()).read_failed == 1
+
+
 def test_old_database_gains_the_column_with_rows_left_null(tmp_path):
     db_path = tmp_path / "old.db"
     with ApplicationContext(str(db_path), McpSettings()) as ctx:

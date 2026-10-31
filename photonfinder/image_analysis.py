@@ -25,8 +25,8 @@ class ImageAnalysisResult:
 
 
 def _to_float32(data: np.ndarray) -> np.ndarray:
-    """Convert to C-contiguous float32 as required by sep."""
-    if data.dtype == np.float32 and data.flags['C_CONTIGUOUS']:
+    """Convert to writeable C-contiguous float32 as required by sep."""
+    if data.dtype == np.float32 and data.flags['C_CONTIGUOUS'] and data.flags['WRITEABLE']:
         return data
     return np.ascontiguousarray(data.astype(np.float32))
 

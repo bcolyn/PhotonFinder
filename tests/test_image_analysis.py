@@ -4,11 +4,13 @@ import math
 
 import numpy as np
 import pytest
+from xisf import XISF
 
 from photonfinder.image_analysis import (
     CALIBRATION_TYPES,
     ImageAnalysisResult,
     _to_float32,
+    analyze_file,
     analyze_image,
 )
 from photonfinder.platesolver import select_first_channel
@@ -44,6 +46,32 @@ class TestHelpers:
         result = _to_float32(arr)
         assert result.dtype == np.float32
         assert result.flags["C_CONTIGUOUS"]
+
+    def test_to_float32_read_only_copies(self):
+        arr = np.zeros((10, 10), dtype=np.float32)
+        arr.setflags(write=False)
+        assert _to_float32(arr).flags["WRITEABLE"]  # sep refuses read-only buffers
+
+
+class TestReadOnlyInput:
+    @staticmethod
+    def _noise() -> np.ndarray:
+        return np.random.default_rng(0).normal(0.5, 0.01, (256, 256)).astype(np.float32)
+
+    def test_read_only_float32_array(self):
+        data = self._noise()
+        data.setflags(write=False)
+        result = analyze_image(data)
+        assert result.error is None
+        assert result.background_median is not None
+
+    def test_float32_xisf_file_first_load_and_from_cache(self, tmp_path):
+        path = tmp_path / "master.xisf"
+        XISF.write(str(path), self._noise()[:, :, None], creator_app="test")
+        for _ in ("first load", "from cache"):
+            result = analyze_file(path)
+            assert result.error is None
+            assert result.background_median is not None
 
 
 class TestFormulas:
