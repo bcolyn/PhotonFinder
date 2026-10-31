@@ -43,7 +43,13 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            'zero-based.\n'
                            'Discover valid values for `filter`/`type`/`camera`/etc. via '
                            '`list_distinct_values`,\n'
-                           'and valid `paths` roots via `list_library_roots`.\n',
+                           'and valid `paths` roots via `list_library_roots`.\n'
+                           '\n'
+                           "Each result's `stats` holds the stored image analysis, all null if "
+                           'never analysed.\n'
+                           '`stats.diagnosis` is the verdict against peer frames: null if not '
+                           'diagnosed, `OK`, or\n'
+                           'one or more `Bad ...` reasons joined by `, `.\n',
             'inputSchema': {'$defs': {'SearchCriteriaInput': {'description': 'Search filters, '
                                                                              'shared by '
                                                                              '`search_files` and '

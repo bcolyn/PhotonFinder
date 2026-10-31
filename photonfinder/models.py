@@ -1048,12 +1048,12 @@ def serialize_search_row(row: 'File') -> dict:
     else:
         result["projects"] = []
 
-    data = row.__data__
     result["stats"] = {
-        "background_median": data.get("stats_background_median"),
-        "background_rms": data.get("stats_background_rms"),
-        "star_count": data.get("stats_star_count"),
-        "fwhm_median": data.get("stats_fwhm_median"),
-        "elongation_median": data.get("stats_elongation_median"),
+        "background_median": search_row_stat(row, "stats_background_median"),
+        "background_rms": search_row_stat(row, "stats_background_rms"),
+        "star_count": search_row_stat(row, "stats_star_count"),
+        "fwhm_median": search_row_stat(row, "stats_fwhm_median"),
+        "elongation_median": search_row_stat(row, "stats_elongation_median"),
+        "diagnosis": search_row_stat(row, "stats_diagnosis"),
     }
     return result

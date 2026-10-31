@@ -9,7 +9,7 @@ from datetime import datetime
 import pytest
 from astropy.io.fits import Header
 
-from photonfinder.models import File, Image, FileWCS
+from photonfinder.models import File, Image, FileWCS, ImageStats
 from photonfinder import mcp_server
 from photonfinder.platesolver import SolverBase, SolverType
 from tests.conftest import fixed_solution_header as _fixed_solution_header
@@ -615,3 +615,30 @@ def test_tools_answer_cleanly_with_no_database_open(context, caplog, tool, args)
     assert context.writers.running() == []
     assert context.solve_lock.acquire(blocking=False)
     context.solve_lock.release()
+
+
+def test_search_returns_stored_stats_for_an_analysed_frame_only(sample):
+    ctx, data = sample
+    ImageStats.create(file=data["light"], background_median=100.5, background_rms=5.25, star_count=500,
+                      fwhm_median=3.5, elongation_median=1.2, diagnosis="Bad FWHM, Bad star count")
+
+    rows = {r["rowid"]: r for r in mcp_server.query_search(ctx, {})["results"]}
+
+    assert rows[data["light"].rowid]["stats"] == {
+        "background_median": 100.5, "background_rms": 5.25, "star_count": 500,
+        "fwhm_median": 3.5, "elongation_median": 1.2, "diagnosis": "Bad FWHM, Bad star count",
+    }
+    assert rows[data["dark"].rowid]["stats"] == {
+        "background_median": None, "background_rms": None, "star_count": None,
+        "fwhm_median": None, "elongation_median": None, "diagnosis": None,
+    }
+
+
+def test_the_diagnosis_filter_stays_out_of_mcp_input(sample):
+    ctx, data = sample
+    ImageStats.create(file=data["light"], diagnosis="OK")
+
+    result = mcp_server.query_search(ctx, {"diagnosis_hidden": ["OK"]})
+
+    assert data["light"].rowid in {r["rowid"] for r in result["results"]}  # dropped, like any unknown field
+    assert "diagnosis_hidden" not in mcp_server.SearchCriteriaInput.model_fields

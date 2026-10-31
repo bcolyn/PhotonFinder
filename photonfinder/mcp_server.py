@@ -858,6 +858,10 @@ def build_mcp(context: ApplicationContext):
         Returns `{results, page, page_size, total, has_more}`. `page` is zero-based.
         Discover valid values for `filter`/`type`/`camera`/etc. via `list_distinct_values`,
         and valid `paths` roots via `list_library_roots`.
+
+        Each result's `stats` holds the stored image analysis, all null if never analysed.
+        `stats.diagnosis` is the verdict against peer frames: null if not diagnosed, `OK`, or
+        one or more `Bad ...` reasons joined by `, `.
         """
         clean = criteria.model_dump(exclude_none=True, mode="json") if criteria else None
         return await anyio.to_thread.run_sync(query_search, context, clean, page, page_size)
