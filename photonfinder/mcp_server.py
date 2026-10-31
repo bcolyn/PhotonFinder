@@ -592,11 +592,14 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
                 outcome = solve_service.solve_file(file, primary, backup, hint=hint, file_wcs=file_wcs)
                 if outcome.success:
                     solved += 1
-                    results.append({
+                    result = {
                         "rowid": rowid, "path": file.full_filename(), "success": True,
                         "ra": outcome.ra, "dec": outcome.dec, "scale_arcsec": outcome.scale_arcsec,
                         "solver": outcome.used_solver,
-                    })
+                    }
+                    if outcome.warning:
+                        result["warning"] = outcome.warning
+                    results.append(result)
                 else:
                     failed += 1
                     results.append({

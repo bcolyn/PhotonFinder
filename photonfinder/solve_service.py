@@ -38,6 +38,7 @@ class SolveOutcome:
     width: Optional[int] = None
     height: Optional[int] = None
     used_solver: Optional[str] = None
+    warning: Optional[str] = None  # solved and stored, but something about it needs saying
 
 
 def _solver_name(solver: SolverBase) -> str:
@@ -84,33 +85,43 @@ def solve_file(file: File, solver: SolverBase, backup_solver: SolverBase = None,
             used_solver = backup_solver
 
         stamp_wcs_origin(solution, used_solver.wcs_origin)
-        new_file_wcs = FileWCS(file=file, wcs=compress(solution.tostring().encode()))
-        FileWCS.insert(new_file_wcs.__data__).on_conflict_replace().execute()
-        ra, dec, healpix, radius = get_image_center_coords(solution)
-        Image.update(coord_ra=ra, coord_dec=dec, coord_pix256=healpix, coord_radius=radius
-                     ).where(Image.file == file).execute()
-        file.has_wcs = True
-        if file.image:
-            file.image.coord_ra = ra
-            file.image.coord_dec = dec
-            file.image.coord_pix256 = healpix
-            file.image.coord_radius = radius
 
+        # Everything that can fail on the solution comes before the first write, so that a
+        # failure keeps whatever solution the file already had.
+        ra, dec, healpix, radius = get_image_center_coords(solution)
+        pixel_scales = proj_plane_pixel_scales(WCS(solution))  # degrees/pixel
+        scale_arcsec = round(float(pixel_scales[0]) * 3600, 3)
+        image_values = dict(coord_ra=ra, coord_dec=dec, coord_pix256=healpix, coord_radius=radius)
         width = height = None
         naxis1 = solution.get('NAXIS1')
         naxis2 = solution.get('NAXIS2')
         if naxis1 and naxis2:
             width, height = int(naxis1), int(naxis2)
-            Image.update(width=width, height=height).where(Image.file == file).execute()
-            if file.image:
-                file.image.width = width
-                file.image.height = height
+            image_values.update(width=width, height=height)
 
-        pixel_scales = proj_plane_pixel_scales(WCS(solution))  # degrees/pixel
-        scale_arcsec = round(float(pixel_scales[0]) * 3600, 3)
+        new_file_wcs = FileWCS(file=file, wcs=compress(solution.tostring().encode()))
+        with FileWCS._meta.database.atomic():
+            FileWCS.insert(new_file_wcs.__data__).on_conflict_replace().execute()
+            images_updated = Image.update(**image_values).where(Image.file == file).execute()
+
+        file.has_wcs = True
+        if file.image:
+            for name, value in image_values.items():
+                setattr(file.image, name, value)
+
+        warning = None
+        if not images_updated:
+            # The solution is still worth keeping, it was expensive to get.
+            warning = (f"{file.name} has no image record, so its coordinates were not stored "
+                       f"and sky searches won't find it.")
+            logger.warning("Solved %s without an image record, coordinates not stored", file.name)
+            if output_callback:
+                output_callback(f"  ! {warning}")
+
         logger.info("Solved %s: RA=%.4f°  Dec=%.4f°  scale=%.2f\"/px", file.name, ra, dec, scale_arcsec)
         return SolveOutcome(success=True, ra=ra, dec=dec, radius=radius, scale_arcsec=scale_arcsec,
-                             width=width, height=height, used_solver=_solver_name(used_solver))
+                             width=width, height=height, used_solver=_solver_name(used_solver),
+                             warning=warning)
     except SolverError as e:
         logger.warning("Cannot solve %s: %s", file.name, e)
         return SolveOutcome(success=False, error=str(e))

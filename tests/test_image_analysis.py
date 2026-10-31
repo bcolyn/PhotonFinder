@@ -1,11 +1,15 @@
 """Unit tests for photonfinder.image_analysis."""
 
 import math
+import sqlite3
+from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 from xisf import XISF
 
+from photonfinder.core import ApplicationContext, StatusReporter
 from photonfinder.image_analysis import (
     CALIBRATION_TYPES,
     ImageAnalysisResult,
@@ -13,7 +17,10 @@ from photonfinder.image_analysis import (
     analyze_file,
     analyze_image,
 )
+from photonfinder.models import File, Image, ImageStats, LibraryRoot, SearchCriteria
 from photonfinder.platesolver import select_first_channel
+from photonfinder.ui.BackgroundLoader import ImageAnalysisTask
+from tests.conftest import McpSettings
 
 
 class TestHelpers:
@@ -172,3 +179,38 @@ class TestAnalyzeImage:
         assert "MASTER FLAT" in CALIBRATION_TYPES
         assert "MASTER BIAS" in CALIBRATION_TYPES
         assert "LIGHT" not in CALIBRATION_TYPES
+
+
+def test_analysing_a_search_survives_a_write_from_another_connection(tmp_path, qapp):
+    """A query iterated lazily holds a read snapshot open, and once anything else commits, each
+    write made from behind it fails at once with "database is locked"."""
+    context = ApplicationContext(str(tmp_path / "library.db"), McpSettings())
+    context.set_status_reporter(StatusReporter())
+    with context:
+        root = LibraryRoot.create(name="Main", path="/data/")
+        names = [f"f{i:03}.fits" for i in range(20)]
+        for name in names:
+            Image.create(file=File.create(root=root, path="batch/", name=name, size=1, mtime_millis=1),
+                         image_type="LIGHT")
+        analysed = []
+
+        def another_connection_commits(path, detect_sources=True):
+            analysed.append(Path(path).name)
+            if len(analysed) == 3:
+                other = sqlite3.connect(context.database_path, timeout=1)
+                other.execute("insert into project(name) values ('edited elsewhere')")
+                other.commit()
+                other.close()
+            return ImageAnalysisResult(star_count=7)
+
+        task = ImageAnalysisTask(context, SearchCriteria(), [])
+        messages = []
+        task.message.connect(messages.append)
+
+        with patch("photonfinder.ui.BackgroundLoader.analyze_file", another_connection_commits):
+            task._process_files()
+
+        assert [m for m in messages if "Error" in m] == []
+        assert analysed == names
+        assert task.total == len(names)
+        assert ImageStats.select().where(ImageStats.star_count == 7).count() == len(names)

@@ -348,10 +348,12 @@ class FileProcessingTask(ProgressBackgroundTask):
                     self._process_file(file, i)
             else:
                 with self.context.database.bind_ctx([File, Image]):
-                    query = self.create_query()
-                    self.total = query.count()
+                    # A list, as iterating lazily holds a read snapshot open: once anything else
+                    # commits, every write from behind it fails with "database is locked".
+                    files = list(self.create_query())
+                    self.total = len(files)
                     self.total_found.emit(self.total)
-                    for i, file in enumerate(query):
+                    for i, file in enumerate(files):
                         if self.cancelled:
                             break
                         self._process_file(file, i)
@@ -436,10 +438,12 @@ class PlateSolveTask(FileProcessingTask):
                     self._process_file(file, i)
             else:
                 with self.context.database.bind_ctx([File, Image]):
-                    query = self.create_query()
-                    self.total = query.count()
+                    # A list, as iterating lazily holds a read snapshot open: once anything else
+                    # commits, every write from behind it fails with "database is locked".
+                    files = list(self.create_query())
+                    self.total = len(files)
                     self.total_found.emit(self.total)
-                    for i, file in enumerate(query):
+                    for i, file in enumerate(files):
                         if self.cancelled:
                             break
                         self._process_file(file, i)
