@@ -91,7 +91,8 @@ class ProjectsLoader(BackgroundLoaderBase):
             projects = Project.list_projects_with_image_data()
 
             projects_with_coords = [p for p in projects
-                                    if hasattr(p, 'image') and p.image and p.image.coord_ra and p.image.coord_dec]
+                                    if hasattr(p, 'image') and p.image
+                                    and p.image.coord_ra is not None and p.image.coord_dec is not None]
             if projects_with_coords:
                 from astropy.coordinates import SkyCoord, get_constellation
                 import astropy.units as u

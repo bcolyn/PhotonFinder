@@ -1137,7 +1137,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if selected_image and selected_image.offset is not None:
             # Use the selected image's gain as the default
             dialog.set_offset(selected_image.offset)
-        elif self.search_criteria.offset:
+        elif self.search_criteria.offset is not None:
             try:
                 dialog.set_offset(int(self.search_criteria.offset))
             except (ValueError, TypeError):

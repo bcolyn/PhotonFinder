@@ -47,6 +47,24 @@ _SOLVER_TYPE_ORIGIN = {
 }
 
 
+def _first_header_value(header, *keys):
+    """The first of these cards that has a value. 0 is a value, a blank card isn't."""
+    for key in keys:
+        value = header.get(key)
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def file_position(header, image) -> tuple:
+    """The (ra, dec) a file already has: from its Image row, else its header, else (None, None)."""
+    if image and image.coord_ra is not None and image.coord_dec is not None:
+        return image.coord_ra, image.coord_dec
+    if header is None:
+        return None, None
+    return _first_header_value(header, "RA", "CRVAL1"), _first_header_value(header, "DEC", "CRVAL2")
+
+
 def stamp_wcs_origin(header: Header, origin: str) -> None:
     """Add a COMMENT card recording how the WCS solution was obtained."""
     header.add_comment(f"WCS_ORIGIN={origin}")
@@ -236,7 +254,7 @@ class ASTAPSolver(SolverBase):
     @staticmethod
     def create_hint(ra, dec, fov=None) -> typing.Dict[str, str]:
         hint = dict()
-        if ra and dec:
+        if ra is not None and dec is not None:
             ra_str = str(float(ra) / 15)
             spd_str = str(90 + float(dec))
             hint["-ra"] = ra_str
@@ -246,12 +264,7 @@ class ASTAPSolver(SolverBase):
         return hint
 
     def extract_hint(self, header: Header, image: Image) -> typing.Dict[str, str]:
-        if image and image.coord_ra:
-            ra = image.coord_ra
-            dec = image.coord_dec
-        else:
-            ra = header.get("RA") or header.get("CRVAL1")
-            dec = header.get("DEC") or header.get("CRVAL2")
+        ra, dec = file_position(header, image)
         scale = header.get("SCALE") or header.get("PIXSCALE")
         if scale is None:
             focal_len = header.get("FOCALLEN")
@@ -527,12 +540,7 @@ class SolveFieldSolver(SolverBase):
             hint_ra = hint.ra
             hint_dec = hint.dec
         else:
-            if image and image.coord_ra:
-                hint_ra = image.coord_ra
-                hint_dec = image.coord_dec
-            elif header is not None:
-                hint_ra = header.get("RA") or header.get("CRVAL1")
-                hint_dec = header.get("DEC") or header.get("CRVAL2")
+            hint_ra, hint_dec = file_position(header, image)
             if hint_ra is None and hint and hint.ra is not None:
                 hint_ra = hint.ra
                 hint_dec = hint.dec

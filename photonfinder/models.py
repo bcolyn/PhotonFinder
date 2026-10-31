@@ -156,13 +156,13 @@ class SearchCriteria:
             criteria.exposure = str(reference_frame.exposure)
         if reference_frame.camera:
             criteria.camera = str(reference_frame.camera)
-        if reference_frame.set_temp:
+        if reference_frame.set_temp is not None:
             criteria.temperature = str(reference_frame.set_temp)
-        if reference_frame.gain:
+        if reference_frame.gain is not None:
             criteria.gain = str(reference_frame.gain)
         if reference_frame.binning:
             criteria.binning = str(reference_frame.binning)
-        if reference_frame.offset:
+        if reference_frame.offset is not None:
             criteria.offset = int(reference_frame.offset)
 
         criteria.type = "DARK"
@@ -188,11 +188,11 @@ class SearchCriteria:
         criteria = cls()
         if reference_frame.camera:
             criteria.camera = str(reference_frame.camera)
-        if reference_frame.gain:
+        if reference_frame.gain is not None:
             criteria.gain = str(reference_frame.gain)
         if reference_frame.binning:
             criteria.binning = str(reference_frame.binning)
-        if reference_frame.offset:
+        if reference_frame.offset is not None:
             criteria.offset = int(reference_frame.offset)
         # note: bias should be temperature-independent, so don't match thatfor
         criteria.type = "BIAS"
@@ -462,7 +462,7 @@ class Image(Model):
 
     def get_sky_coord(self) -> SkyCoord | None:
         return SkyCoord(self.coord_ra, self.coord_dec, unit=u.deg,
-                        frame='icrs') if self.coord_ra and self.coord_dec else None
+                        frame='icrs') if self.coord_ra is not None and self.coord_dec is not None else None
 
     @staticmethod
     def apply_search_criteria(query, criteria, exclude_ref=None):
@@ -544,7 +544,7 @@ class Image(Model):
             except (ValueError, TypeError):
                 pass
 
-        if criteria.offset and exclude_ref is not Image.offset:
+        if criteria.offset is not None and exclude_ref is not Image.offset:
             try:
                 offset_val = int(criteria.offset)
                 conditions.append(Image.offset == offset_val)
