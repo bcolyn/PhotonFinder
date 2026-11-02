@@ -1,6 +1,6 @@
 import operator
 from datetime import datetime
-from functools import reduce, cmp_to_key
+from functools import reduce
 from itertools import chain
 from pathlib import Path
 from typing import List, Set

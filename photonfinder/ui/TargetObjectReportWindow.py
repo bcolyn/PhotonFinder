@@ -62,9 +62,6 @@ class TargetReportLoader(BackgroundLoaderBase):
     criteria: SearchCriteria
     on_result = Signal(object)
 
-    def __init__(self, context: ApplicationContext):
-        super().__init__(context)
-
     def start(self, table_widget: QTableWidget, criteria: SearchCriteria):
         self.table = table_widget
         self.criteria = criteria

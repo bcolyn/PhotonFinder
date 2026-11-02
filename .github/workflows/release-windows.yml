@@ -31,6 +31,10 @@ jobs:
       - name: Generate code from UI files
         run: uv run python scripts/build_ui.py
 
+      # After the UI build: the dialogs import the generated modules.
+      - name: Lint
+        run: uv run pylint photonfinder
+
       # Test dataset — cached by dataset revision hash
       - name: Get dataset revision hash
         id: hf-hash

@@ -29,6 +29,7 @@ class CompressFilesWorker(BackgroundLoaderBase):
     message  = Signal(str)   # per-file status line
     finished = Signal()
     error    = Signal(str)
+    cancelled = False
 
     def compress(self, files: list, ext: str, verify: bool, level: int, parallelism: int):
         self.cancelled = False
@@ -44,7 +45,7 @@ class CompressFilesWorker(BackgroundLoaderBase):
             with ThreadPoolExecutor(max_workers=parallelism) as pool:
                 futures = [pool.submit(self._process, file, ext, verify, level)
                            for file in files]
-                for future in as_completed(futures):
+                for _ in as_completed(futures):
                     completed += 1
                     self.progress.emit(completed)
                     if self.cancelled:

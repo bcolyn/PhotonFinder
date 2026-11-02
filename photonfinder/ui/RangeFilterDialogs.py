@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGroupBox,
+from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QGroupBox,
                                QHBoxLayout, QCheckBox, QPushButton, QSpinBox, QDoubleSpinBox,
-                               QLabel, QVBoxLayout, QWidget)
+                               QLabel, QVBoxLayout)
 
 from photonfinder.models import DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_VALUES
 

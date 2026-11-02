@@ -1026,7 +1026,6 @@ class ImageViewerWindow(QMainWindow):
         if self._current_file is None or self._context is None:
             return
         from photonfinder.models import SearchCriteria
-        from PySide6.QtCore import Qt
         from .PlateSolveDialog import PlateSolveDialog
         dialog = PlateSolveDialog(
             context=self._context,
@@ -1336,7 +1335,6 @@ class ImageViewerWindow(QMainWindow):
     def _on_show_metadata(self):
         if self._current_file is None or self._context is None:
             return
-        from PySide6.QtCore import Qt
         from photonfinder.models import CORE_MODELS, FitsHeader, FileWCS
         from photonfinder.filesystem import parse_FITS_header, decode_header_blob
         from photonfinder.core import decompress

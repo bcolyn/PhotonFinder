@@ -6,11 +6,11 @@ from typing import Callable, List, Optional
 from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
 from astropy.io.fits import Header
-from peewee import JOIN, chunked, fn
+from peewee import JOIN, chunked
 
 from photonfinder.core import ApplicationContext, decompress, library_busy_message
 from photonfinder.fits_handlers import normalize_fits_header
-from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, ProjectFile, \
+from photonfinder.models import File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, \
     Project, ImageStats, search_files
 from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
 from photonfinder.filesystem import decode_header_blob, build_wcs_from_header
@@ -50,7 +50,7 @@ class BackgroundLoaderBase(QObject):
 
         class WorkerRunnable(QRunnable):
             @Slot()
-            def run(self_runnable):
+            def run(self_runnable):  # pylint: disable=no-self-argument  # self is the enclosing BackgroundLoaderBase
                 try:
                     if self.context.database is None:  # mid-switch or shutting down; nothing wants the result
                         logging.info("Skipping a background job: no library is open")
@@ -177,10 +177,10 @@ class SearchResultsLoader(BackgroundLoaderBase):
         self.running = False
 
     def search(self, search_criteria, page=0):
+        """Start a search with the given criteria."""
         if self.running and search_criteria == self.last_criteria and page == self.current_page:
             return # don't start if we're running the same query already, maybe check timestamp of last tough
 
-        """Start a search with the given criteria."""
         self.current_page = page
         self.last_criteria = search_criteria
         self.running = True
@@ -286,7 +286,6 @@ class ImageReindexWorker(BackgroundLoaderBase):
 
     def _reindexed_row(self, header_record: FitsHeader) -> tuple[Optional[Image], Optional[FileWCS]]:
         """The Image row for this header, and a solution found in the header if none was stored."""
-        from astropy.io.fits import Header
         file = header_record.file
         header = decode_header_blob(header_record.header)
 
@@ -529,6 +528,7 @@ class FileListTask(FileProcessingTask):
     def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File]):
         super().__init__(context, search_criteria, files)
         self.output_filename = None
+        self.fd = None
 
     def start(self, output_filename: str = None):
         self.output_filename = output_filename
@@ -545,7 +545,7 @@ class FileListTask(FileProcessingTask):
     def _process_files(self):
         if self.output_filename is None:
             return
-        with open(self.output_filename, 'w') as fd:
+        with open(self.output_filename, 'w', encoding='utf-8') as fd:
             self.fd = fd
             super()._process_files()
 

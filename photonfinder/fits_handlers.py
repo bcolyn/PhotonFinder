@@ -320,13 +320,13 @@ class GenericHandler(FitsHeaderHandler):
         return _int(header.get('GAIN'))
 
     def _get_binning(self, header: Header) -> Optional[int]:
-        bin = _int(header.get('XBINNING'))
-        if bin is not None:
-            return bin
+        binning = _int(header.get('XBINNING'))
+        if binning is not None:
+            return binning
         combined = header.get('BINNING')
-        bin = _int(combined)
-        if bin is not None:
-            return bin
+        binning = _int(combined)
+        if binning is not None:
+            return binning
         match = re.fullmatch(r'\s*(\d+)\s*[x*]\s*\d+\s*', str(combined), re.IGNORECASE)
         return int(match.group(1)) if match else None
 

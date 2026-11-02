@@ -1,12 +1,12 @@
 import logging
 import time
 from copy import deepcopy
-from pathlib import Path
 from typing import List
 
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize, QEvent
 from PySide6.QtGui import QIcon, QPalette, QAction, QDragEnterEvent, QDropEvent
-from PySide6.QtWidgets import *
+from PySide6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QTabWidget,
+                               QToolButton, QWidget)
 
 from photonfinder.core import ApplicationContext, LibraryBusyError, StatusReporter, backup_database, \
     library_busy_message
@@ -24,7 +24,7 @@ from .SearchPanel import SearchPanel, AdvancedFilter
 from .SettingsDialog import SettingsDialog
 from .common import create_colored_svg_icon, _BUILTIN_PRESETS
 from .generated.MainWindow_ui import Ui_MainWindow
-import photonfinder.ui.generated.resources_rc
+import photonfinder.ui.generated.resources_rc  # pylint: disable=unused-import  # registers the Qt resources
 from .session import SessionManager, Session
 
 

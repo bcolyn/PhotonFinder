@@ -7,9 +7,11 @@ from enum import Enum
 from logging import DEBUG
 from typing import Collection, List
 
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-from PySide6.QtWidgets import *
+from PySide6.QtCore import (QByteArray, QEvent, QItemSelectionModel, QMimeData, QModelIndex,
+                            QSortFilterProxyModel, QUrl, Qt, Signal)
+from PySide6.QtGui import QBrush, QDesktopServices, QKeySequence, QPalette, QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame, QInputDialog, QMenu,
+                               QMessageBox, QPushButton, QSizePolicy, QToolBar, QWidget)
 
 from photonfinder.core import ApplicationContext, decompress, Change, library_busy_message
 from photonfinder.filesystem import is_compressible, parse_FITS_header, decode_header_blob
@@ -301,14 +303,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         return selected_files
 
-    def get_file_at_row(self, row) -> File | None:
-        """Get the Image object at the specified row."""
-        if row < 0 or row >= self.dataView.model().rowCount():
-            return None
-
-        name_index = self.dataView.model().index(row, 0)
-        return self.dataView.model().data(name_index, ROWID_ROLE)
-
     def refresh_data_grid(self):
         """Trigger a search with the current search criteria."""
         if self.update_in_progress:
@@ -495,7 +489,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                         object_item.setText(file.image.object_name)
                         object_item.setData(file.image.object_name, SORT_ROLE)
                     if file.image.date_obs is not None:
-                        from zoneinfo import ZoneInfo
                         utctime = file.image.date_obs.replace(tzinfo=timezone.utc)
                         localtime = utctime.astimezone(tz=None)
                         date_obs_item.setText(_format_date(localtime))
@@ -814,7 +807,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def show_folder_location(self, root_and_path: RootAndPath):
         root = LibraryRoot.get_by_id(root_and_path.root_id)
         if root:
-            import os
             filename = os.path.join(root.path, root_and_path.path)
             QDesktopServices.openUrl(QUrl.fromLocalFile(filename))
 

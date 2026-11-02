@@ -237,7 +237,7 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
         data = item.data(0, _FILE_DATA_ROLE)
         if data is None:
             return
-        root_id, root_label, file_dir, file_name, obj_name = data
+        root_id, _root_label, file_dir, file_name, _obj_name = data
         if file_name is None:
             return
         from photonfinder.models import File, FileWCS

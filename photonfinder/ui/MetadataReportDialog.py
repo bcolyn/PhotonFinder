@@ -1,5 +1,4 @@
 import csv
-import sys
 from typing import List, Tuple
 
 from PySide6.QtCore import Qt
@@ -18,6 +17,7 @@ class MetadataReportTask(FileProcessingTask):
     export_format: str
     output_filename: str
     field_list: List[Tuple[str, str]]
+    writer = None
 
     def start(self, output_filename: str = None, field_list: List[Tuple[str, str]] = None, export_format: str = 'csv'):
         self.export_format = export_format
@@ -42,7 +42,8 @@ class MetadataReportTask(FileProcessingTask):
         return query
 
     def _process_files(self):
-        with open(self.output_filename, 'w') as f:
+        # newline='' as the csv module requires, or every row ends in CR CR LF on Windows.
+        with open(self.output_filename, 'w', newline='', encoding='utf-8-sig') as f:
             self.writer = csv.writer(f, dialect=csv.excel_tab if self.export_format == 'tsv' else csv.excel)
             self.writer.writerow(map(lambda tup: tup[0], self.field_list))
             super()._process_files()
@@ -362,13 +363,13 @@ class MetadataReportDialog(QDialog, Ui_MetadataReportDialog):
         self.cancel_export()
 
     def start_export(self):
-        format = self.get_export_format()
-        if format == 'csv':
-            filter = "Comma Separated Values (*.csv);;All Files (*)"
+        export_format = self.get_export_format()
+        if export_format == 'csv':
+            file_filter = "Comma Separated Values (*.csv);;All Files (*)"
         else:
-            filter = "Tab Separated Values (*.tsv);;All Files (*)"
+            file_filter = "Tab Separated Values (*.tsv);;All Files (*)"
 
-        file_path, _ = QFileDialog.getSaveFileName(self, f"Save {format.upper()} Report", "", filter)
+        file_path, _ = QFileDialog.getSaveFileName(self, f"Save {export_format.upper()} Report", "", file_filter)
 
         if not file_path:
             return  # User cancelled

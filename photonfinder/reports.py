@@ -309,7 +309,7 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
 
     # Batch-load all representative WCS blobs in one query (avoids N round-trips).
     rep_ids = [g['rep_file_id'] for g in groups_with_candidates]
-    wcs_blobs = {r.file_id: r.wcs for r in FileWCS.select().where(FileWCS.file.in_(rep_ids))}
+    wcs_blobs = {r.file_id: r.wcs for r in FileWCS.select().where(FileWCS.file.in_(rep_ids))}  # pylint: disable=not-an-iterable  # Peewee query
     logger.debug("Phase 3: fetched %d WCS blobs in %.2fs", len(wcs_blobs), time.monotonic() - t3)
 
     for i, group in enumerate(groups_with_candidates):

@@ -12,7 +12,6 @@ from pathlib import Path
 
 import fs.path
 from astropy.io.fits import Header, Card
-from astropy.wcs.docstrings import naxis
 from fs.base import FS
 from fs.info import Info
 from peewee import JOIN
@@ -225,7 +224,7 @@ def repair_header(header: Header) -> Header:
     for i, card in enumerate(header.cards):
         try:
             card.verify('fix')
-            card.value  # force lazy parsing now so failures surface here, not later
+            _ = card.value  # force lazy parsing now so failures surface here, not later
         except Exception:
             # card.image (the public property) itself calls verify() and re-raises the
             # same error, so read the raw stored image string directly to sanitize it.
@@ -694,6 +693,6 @@ class Importer:
                 names_on_disk = {e.name for e in root_fs.scandir(rel_path_parent) if e.is_file}
                 self._import_file(file_info, rel_path_parent, root, changes, names_on_disk)
             else:
-                logging.error(f"Unknow type {file} of type {file_info.type}");
+                logging.error(f"Unknow type {file} of type {file_info.type}")
                 self.status.update_status(f"Unknow type {file} of type {file_info.type}")
         return changes

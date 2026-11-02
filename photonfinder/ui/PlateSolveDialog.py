@@ -78,7 +78,6 @@ def _infer_scale_from_header(file: File):
 
 def _infer_scale_from_wcs(file: File):
     try:
-        import math
         from astropy.io.fits import Header as AstroHeader
         wcs_rec = FileWCS.get_or_none(FileWCS.file == file)
         if wcs_rec is None:
@@ -503,7 +502,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         main_layout = self.layout()
         log_index = main_layout.indexOf(self.log_edit)
         main_layout.insertWidget(log_index + 1, scroll)
-        self._results_scroll = scroll
+        self._results_scroll = scroll  # pylint: disable=attribute-defined-outside-init  # present only while results show
 
     def _show_error_popup(self, error_msg: str):
         dlg = QDialog(self)
@@ -672,7 +671,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
 
         existing_wcs = {
             fw.file_id
-            for fw in FileWCS.select(FileWCS.file).where(
+            for fw in FileWCS.select(FileWCS.file).where(  # pylint: disable=not-an-iterable  # Peewee query
                 FileWCS.file.in_([f.rowid for f in self.files])
             )
         }

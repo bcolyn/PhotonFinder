@@ -225,7 +225,7 @@ def query_library_roots(context: ApplicationContext) -> list[dict]:
     with _bound(context, CORE_MODELS):
         return [{"rowid": r.rowid, "name": r.name, "path": r.path,
                  "description": r.description}
-                for r in LibraryRoot.select().order_by(LibraryRoot.name)]
+                for r in LibraryRoot.select().order_by(LibraryRoot.name)]  # pylint: disable=not-an-iterable  # Peewee query
 
 
 def _serialize_project(p: Project) -> dict:
@@ -870,7 +870,7 @@ def build_mcp(context: ApplicationContext):
     async def report_targets(criteria: _criteria_param("are summed into the report") = None,
                              page: int = 0, page_size: int = 100, include_paths: bool = True,
                              max_paths: int = MAX_REPORT_PATHS,
-                             format: FormatParam = "json") -> dict:
+                             format: FormatParam = "json") -> dict:  # pylint: disable=redefined-builtin  # tool parameter name seen by clients
         """Total integration time per target, grouped by object / filter / telescope / camera.
 
         Accepts the same `criteria` filters as `search_files` to narrow which files are
@@ -900,7 +900,7 @@ def build_mcp(context: ApplicationContext):
                                       only_matching: bool = True, page: int = 0,
                                       page_size: int = 100, include_files: bool = True,
                                       max_files: int = MAX_FILES_PER_OBJECT,
-                                      format: FormatParam = "json") -> dict:
+                                      format: FormatParam = "json") -> dict:  # pylint: disable=redefined-builtin  # tool parameter name seen by clients
         """Which objects of a catalog the library's images actually cover.
 
         Accepts the same `criteria` filters as `search_files` to narrow which images are
@@ -958,7 +958,7 @@ def build_mcp(context: ApplicationContext):
     async def get_header_values(fields: list[str],
                                 criteria: _criteria_param("are read") = None,
                                 page: int = 0, page_size: int = 100,
-                                format: FormatParam = "json") -> dict:
+                                format: FormatParam = "json") -> dict:  # pylint: disable=redefined-builtin  # tool parameter name seen by clients
         clean = criteria.model_dump(exclude_none=True, mode="json") if criteria else None
         return await anyio.to_thread.run_sync(query_header_values, context, fields, clean,
                                               page, page_size, format)

@@ -67,7 +67,6 @@ def fatal_error(title: str, message: str, details: str = "") -> None:
         details: Optional additional details or information
     """
     from PySide6.QtWidgets import QApplication, QMessageBox
-    import sys
 
     logging.error(f"{title}: {message} {details}")
 
@@ -265,7 +264,7 @@ class DatabaseLock:
                 os.lseek(fd, 0, os.SEEK_SET)
                 msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
             else:
-                import fcntl
+                import fcntl  # pylint: disable=import-error  # POSIX only; this branch never runs on Windows
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             os.close(fd)
@@ -283,7 +282,7 @@ class DatabaseLock:
                 os.lseek(fd, 0, os.SEEK_SET)
                 msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
             else:
-                import fcntl
+                import fcntl  # pylint: disable=import-error  # POSIX only; this branch never runs on Windows
                 fcntl.flock(fd, fcntl.LOCK_UN)
         except OSError:
             logging.warning("Failed to release the lock file %s", self._path, exc_info=True)
@@ -338,7 +337,7 @@ class ActiveWriters:
                 self._switching = False
 
 
-class LibraryDatabase(SqliteDatabase):
+class LibraryDatabase(SqliteDatabase):  # pylint: disable=abstract-method  # SQLite has no sequences
     """A library database. ApplicationContext.open_database binds the models to it, and only
     that binding counts: models are bound for the whole process, not per thread.
 
@@ -526,7 +525,6 @@ class ApplicationContext:
         # if from_version < 2:
         #     self._migrate_to_version_2()
         # etc.
-        pass
 
 
 class Settings:

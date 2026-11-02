@@ -87,8 +87,8 @@ def log(message: str) -> None:
         print(line, file=sys.stderr, flush=True)
     if _log_file is not None:
         try:
-            with _log_file.open("a", encoding="utf-8") as handle:
-                handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {line}\n")
+            with _log_file.open("a", encoding="utf-8") as log_handle:
+                log_handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {line}\n")
         except OSError:
             pass  # logging must never break the relay
 
@@ -263,15 +263,15 @@ def start_outside_job(command: list[str]) -> bool:
               f"CurrentDirectory={quote(str(Path(__file__).resolve().parent.parent))}}}; "
               "exit $r.ReturnValue")
     try:
-        result = subprocess.run(
+        completed = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-            capture_output=True, timeout=60, creationflags=subprocess.CREATE_NO_WINDOW)
+            capture_output=True, timeout=60, check=False, creationflags=subprocess.CREATE_NO_WINDOW)
     except (OSError, subprocess.SubprocessError) as e:
         log(f"could not start PhotonFinder outside the client's job object: {e}")
         return False
-    if result.returncode != 0:
+    if completed.returncode != 0:
         log("could not start PhotonFinder outside the client's job object "
-            f"(Win32_Process.Create returned {result.returncode})")
+            f"(Win32_Process.Create returned {completed.returncode})")
         return False
     return True
 
@@ -421,7 +421,7 @@ def parse_args(argv: list[str]) -> None:
     Unknown options are ignored rather than fatal: this program is launched by a client
     config the user edits by hand, and a stale flag should not take the whole server down.
     """
-    global _log_file
+    global _log_file  # pylint: disable=global-statement  # set once from the command line
     for index, argument in enumerate(argv):
         if argument == "--log-file" and index + 1 < len(argv):
             _log_file = Path(argv[index + 1])

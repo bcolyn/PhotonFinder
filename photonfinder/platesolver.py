@@ -210,7 +210,8 @@ class ASTAPSolver(SolverBase):
             params.append("-log")
 
         try:
-            result = subprocess.run(params, capture_output=True, text=True, errors="replace", timeout=self._timeout)
+            result = subprocess.run(params, capture_output=True, text=True, errors="replace", timeout=self._timeout,
+                                    check=False)
         except subprocess.TimeoutExpired:
             raise SolverFailure(f"ASTAP timed out after {self._timeout}s on {tmp_image_file.name}", None) from None
         return result.returncode
@@ -342,7 +343,7 @@ class AstrometryNetSolver(SolverBase):
             result['NAXIS1'] = original_header['NAXIS1']
             result['NAXIS2'] = original_header['NAXIS2']
         else:
-            x, y, flux, width, height = extract_sources(temp_image)
+            x, y, _flux, width, height = extract_sources(temp_image)
             if len(x) == 0:
                 raise SolverError(f"No sources detected in {image_path.name}")
             wcs_header = self.ast.solve_from_source_list(
@@ -360,7 +361,7 @@ def _to_wsl_path(path: Path, distro: str = "") -> str:
     if distro:
         cmd += ["-d", distro]
     cmd += ["wslpath", str(path).replace("\\", "/")]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
     return result.stdout.strip()
 
 
@@ -369,7 +370,7 @@ def _to_cygwin_path(path: Path, cygpath_exe: str = "", env: dict = None) -> str:
     if cygpath_exe:
         result = subprocess.run(
             [cygpath_exe, "-u", str(path)],
-            capture_output=True, text=True, timeout=30, env=env,
+            capture_output=True, text=True, timeout=30, env=env, check=False,
         )
         if result.returncode == 0:
             return result.stdout.strip()
@@ -449,7 +450,7 @@ class SolveFieldSolver(SolverBase):
                 text=True, env=env,
             )
         except Exception as e:
-            raise SolverFailure(f"Failed to launch solve-field: {e}", None)
+            raise SolverFailure(f"Failed to launch solve-field: {e}", None) from e
 
         def _reader():
             try:

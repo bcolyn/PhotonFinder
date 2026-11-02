@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 from functools import lru_cache
 from typing import Optional
@@ -62,7 +62,7 @@ _timezone_finder = None
 
 
 def _get_timezone_finder():
-    global _timezone_finder
+    global _timezone_finder  # pylint: disable=global-statement  # lazily built: loading it is slow
     if _timezone_finder is None:
         from timezonefinder import TimezoneFinder
         _timezone_finder = TimezoneFinder()

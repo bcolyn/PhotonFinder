@@ -20,7 +20,7 @@ from astropy.io import fits
 from peewee import JOIN
 
 from photonfinder.calibration import CalibrationMatcher, CalibrationCandidate, SessionKey, session_date_for
-from photonfinder.core import ApplicationContext, Settings, decompress, Change
+from photonfinder.core import ApplicationContext, Settings, decompress as decompress_blob, Change
 from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict, repair_header
 from photonfinder.models import Image, File, SearchCriteria, FileWCS, Project, ProjectFile
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
@@ -422,7 +422,7 @@ class ExportWorker(BackgroundLoaderBase):
 
     def _copy_wcs(self, file: File, header):
         if self.override_platesolve and hasattr(file, 'filewcs') and file.filewcs:
-            wcs_str = decompress(file.filewcs.wcs)
+            wcs_str = decompress_blob(file.filewcs.wcs)
             wcs_header = fits.Header.fromstring(wcs_str)
             for card in wcs_header.cards:
                 key = card.keyword
@@ -457,7 +457,7 @@ class ExportWorker(BackgroundLoaderBase):
                 hdu.writeto(output_file_path, overwrite=True, output_verify='silentfix')
                 return
 
-        raise Exception(f"No suitable image with FITS keywords found in XISF file: {source_path}")
+        raise ValueError(f"No suitable image with FITS keywords found in XISF file: {source_path}")
 
     def cancel(self):
         """Cancel the export process."""

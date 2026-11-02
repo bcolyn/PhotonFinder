@@ -119,7 +119,6 @@ def create_colored_svg_icon(svg_path: str, size: QSize, color, add_slash=False) 
 
 def ensure_header_widths(table_view, extra_padding=12):
     from PySide6.QtGui import QFontMetrics
-    from PySide6.QtCore import Qt
 
     header = table_view.horizontalHeader()
     font = header.font()

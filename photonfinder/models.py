@@ -12,7 +12,8 @@ from typing import Optional
 
 import astropy.units as u
 from astropy.coordinates import SkyCoord
-from peewee import *
+from peewee import (JOIN, SQL, BlobField, CharField, DateTimeField, DoubleField, FloatField,
+                    ForeignKeyField, IntegerField, Model, TextField, fn)
 from playhouse.sqlite_ext import RowIDField
 
 from photonfinder.core import hp
@@ -1011,10 +1012,10 @@ def search_files(search_criteria: SearchCriteria, page: int = 0, page_size: int 
     elif search_criteria.sorting_index is None:
         query = query.order_by(File.root, File.path, File.name)
     else:
-        field = fields[search_criteria.sorting_index]
-        if field == File.name or field == File.path:
-            field = field.collate("NOCASE")
-        query = query.order_by(field.desc()) if search_criteria.sorting_desc else query.order_by(field.asc())
+        sort_field = fields[search_criteria.sorting_index]
+        if sort_field == File.name or sort_field == File.path:
+            sort_field = sort_field.collate("NOCASE")
+        query = query.order_by(sort_field.desc()) if search_criteria.sorting_desc else query.order_by(sort_field.asc())
 
     total = query.count()
     rows = list(query.paginate(page + 1, page_size))

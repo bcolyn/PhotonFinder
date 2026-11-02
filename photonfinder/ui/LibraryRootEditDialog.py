@@ -96,7 +96,7 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
                 logging.info(f"Created library root: {name} at {path}")
             else:
                 # For existing library roots, check if the duplicate is a different record
-                for existing in query:
+                for existing in query:  # pylint: disable=not-an-iterable  # Peewee query
                     if existing.rowid != self.library_root.rowid:
                         if existing.name == name:
                             QMessageBox.warning(self, "Validation Error", f"A library root with the name '{name}' already exists.")
