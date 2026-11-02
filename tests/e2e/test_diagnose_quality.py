@@ -171,20 +171,27 @@ def test_unsaved_settings_are_not_remembered(sandbox, app, m81):
 
 def test_save_is_refused_while_a_writer_holds_the_library_and_tuning_still_works(sandbox, app, boundary, m81):
     dialog = open_dialog(sandbox, app)
-    assert sandbox.context.library_write_lock.acquire(blocking=False)
+    assert dialog.save_button.isEnabled()
+    assert sandbox.context.library_write_lock.acquire(blocking=False, holder="Library scan")
     try:
+        assert not dialog.save_button.isEnabled()
+        assert not dialog.save_and_hide_button.isEnabled()
+        assert dialog.save_button.toolTip().startswith("Library scan is writing to this library.")
+
+        # Clicked before the button caught up, as for another window's writer.
         boundary.answer("warning", None)
-        sandbox.qtbot.mouseClick(dialog.save_button, Qt.MouseButton.LeftButton)
+        dialog._save(hide_bad_frames=False)
         sandbox.wait_idle()
 
         assert [kind for kind, _ in boundary.calls] == ["warning"]
         assert diagnosis_of(sandbox, BAD_NAME) is None
         assert not sandbox.context.settings.get_quality_diagnosis_settings()  # nothing was saved
-        assert dialog.save_button.isEnabled()
         dialog.min_group_spin.setValue(50)
         wait_for_preview(sandbox, dialog, "Rejected 0 of 9 lights")
     finally:
         sandbox.context.library_write_lock.release()
+    sandbox.wait_idle()
+    assert dialog.save_button.isEnabled()
 
 
 def test_only_one_dialog_at_a_time(sandbox, app, m81):
@@ -349,18 +356,26 @@ def test_analyse_is_refused_while_a_writer_holds_the_library(sandbox, app, bound
     add_unanalysed(sandbox, "M81", 2)
     search(sandbox, app, object_name="M81")
     dialog = open_dialog(sandbox, app)
-    assert sandbox.context.library_write_lock.acquire(blocking=False)
+    assert dialog.analyse_button.isEnabled()
+    assert sandbox.context.library_write_lock.acquire(blocking=False, holder="Plate solving")
     try:
-        boundary.answer("warning", None)
-        sandbox.qtbot.mouseClick(dialog.analyse_button, Qt.MouseButton.LeftButton)
+        assert not dialog.analyse_button.isEnabled()
+        assert dialog.analyse_button.toolTip().startswith("Plate solving is writing to this library.")
+
+        # Clicked before the button caught up: the analysis refuses to start.
+        dialog._analyse_missing()
         sandbox.wait_idle()
+        [progress] = [w for w in app.findChildren(ImageAnalysisDialog) if w.isVisible()]
+        assert "Not started: Plate solving is writing to this library." in progress._log.toPlainText()
+        assert progress._btn.text() == "Close"
     finally:
         sandbox.context.library_write_lock.release()
+    sandbox.wait_idle()
 
-    assert [kind for kind, _ in boundary.calls] == ["warning"]
     assert dialog.analysis_dialog is None
     assert stats_of(sandbox, "M81_new0.fits") is None
     assert dialog.analyse_button.isEnabled()
+    progress.close()
 
 
 def test_cancelling_keeps_finished_results_and_reloads(sandbox, app, m81, monkeypatch):

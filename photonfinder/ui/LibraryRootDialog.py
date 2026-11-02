@@ -1,14 +1,17 @@
 import logging
 from typing import Optional
 
-from PySide6.QtCore import Slot, Qt
+from PySide6.QtCore import QEvent, Slot, Qt
 from PySide6.QtWidgets import QDialog, QTableWidgetItem, QMessageBox
 
 from photonfinder.models import LibraryRoot
 from photonfinder.ui.LibraryRootEditDialog import LibraryRootEditDialog
 from photonfinder.ui.generated.LibraryRootDialog_ui import Ui_LibraryRootDialog
-from photonfinder.core import ApplicationContext
+from photonfinder.core import ApplicationContext, library_busy_message
 from photonfinder.ui.BackgroundLoader import ImageReindexWorker
+
+
+ROOT_CHANGE_WRITER = "Library root change"
 
 
 class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
@@ -29,6 +32,9 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
 
         # Initialize reindex worker
         self.reindex_worker = None
+        # What holds the library write lock, if anything. Deleting, editing and rebuilding
+        # the index all need it.
+        self._library_busy: str | None = None
 
         # Load the library roots
         self.load_library_roots()
@@ -38,7 +44,8 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         # The table is not editable in place (the cells are a view of the database, and
         # inline edits were silently discarded), so double-click opens the edit dialog.
         self.libraryTable.itemDoubleClicked.connect(lambda _item: self.edit_library())
-        self.update_button_states()
+        context.signal_bus.library_write_lock_changed.connect(self._refresh_library_busy)
+        self._refresh_library_busy()
 
     def load_library_roots(self):
         """
@@ -77,8 +84,24 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         Enable or disable the edit and delete buttons based on whether a row is selected.
         """
         has_selection = len(self.libraryTable.selectedItems()) > 0
-        self.editButton.setEnabled(has_selection)
-        self.deleteButton.setEnabled(has_selection)
+        busy = self._library_busy
+        tip = library_busy_message(busy) if busy else ""
+        self.editButton.setEnabled(has_selection and not busy)
+        self.deleteButton.setEnabled(has_selection and not busy)
+        self.reindexButton.setEnabled(self.reindex_worker is None and not busy)
+        for button in (self.editButton, self.deleteButton, self.reindexButton):
+            button.setToolTip(tip)
+
+    def _refresh_library_busy(self):
+        """Ask the lock when it changes here or the dialog is activated: for another window's
+        writer that means taking it for a moment."""
+        self._library_busy = self.context.library_write_lock.busy_with()
+        self.update_button_states()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self._refresh_library_busy()
 
     def get_selected_library_root(self) -> Optional[LibraryRoot]:
         """
@@ -121,7 +144,8 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         if not library_root:
             return
 
-        dialog = LibraryRootEditDialog(parent=self, library_root=library_root)
+        dialog = LibraryRootEditDialog(parent=self, library_root=library_root,
+                                       write_lock=self.context.library_write_lock)
         if dialog.exec() == QDialog.Accepted:
             self.load_library_roots()
             self.has_changes = True
@@ -145,6 +169,12 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
         )
 
         if result == QMessageBox.Yes:
+            # Deleting a root deletes all its files' rows, so not under a running writer.
+            lock = self.context.library_write_lock
+            if not lock.acquire(blocking=False, holder=ROOT_CHANGE_WRITER):
+                QMessageBox.warning(self, "Library Busy",
+                                    f"Not deleted: {library_busy_message(lock.busy_with() or 'Another job')}")
+                return
             try:
                 library_root.delete_instance()
                 logging.info(f"Deleted library root: {library_root.name}")
@@ -153,6 +183,8 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"An error occurred while deleting: {str(e)}")
                 logging.exception("Error deleting library root")
+            finally:
+                lock.release()
 
     @Slot()
     def reindex_images(self):
@@ -165,22 +197,16 @@ class LibraryRootDialog(QDialog, Ui_LibraryRootDialog):
             logging.warning("Reindexing already in progress, skipping.")
             return
 
-        # Create and start the worker
-        self.reindex_worker = ImageReindexWorker(self.context)
-
-        # Connect signals
-        self.reindex_worker.finished.connect(self._reindex_finished)
-
-        # Disable the reindex button while processing
-        self.reindexButton.setEnabled(False)
-
-        # Start the worker
-        self.reindex_worker.reindex_images()
+        worker = ImageReindexWorker(self.context)
+        worker.finished.connect(self._reindex_finished)
+        refused = worker.reindex_images()  # holds the library write lock until it ends
+        if refused:
+            QMessageBox.warning(self, "Library Busy", f"Rebuild index not started: {refused}")
+            return
+        self.reindex_worker = worker
+        self.update_button_states()
 
     def _reindex_finished(self):
         """Called when reindexing is finished."""
-        # Re-enable the reindex button
-        self.reindexButton.setEnabled(True)
-
-        # Clean up the worker
         self.reindex_worker = None
+        self.update_button_states()

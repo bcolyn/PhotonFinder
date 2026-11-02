@@ -208,6 +208,7 @@ def test_analysing_a_search_survives_a_write_from_another_connection(tmp_path, q
         task.message.connect(messages.append)
 
         with patch("photonfinder.ui.BackgroundLoader.analyze_file", another_connection_commits):
+            assert context.library_write_lock.acquire(holder="Image analysis")  # as start() does; the task releases it
             task._process_files()
 
         assert [m for m in messages if "Error" in m] == []

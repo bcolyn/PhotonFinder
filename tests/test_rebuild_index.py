@@ -42,6 +42,7 @@ def context(tmp_path, qapp, monkeypatch):
 
 
 def _rebuild(context):
+    assert context.library_write_lock.acquire(holder="Rebuild index")  # as reindex_images does; the task releases it
     ImageReindexWorker(context)._reindex_images_task()
 
 

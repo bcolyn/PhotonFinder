@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QWidget
 from astropy.io.fits import Header
 from peewee import JOIN, chunked, fn
 
-from photonfinder.core import ApplicationContext, decompress
+from photonfinder.core import ApplicationContext, decompress, library_busy_message
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, ProjectFile, \
     Project, ImageStats, search_files
@@ -211,11 +211,21 @@ REINDEX_BATCH_SIZE = 1000
 
 class ImageReindexWorker(BackgroundLoaderBase):
     """Worker class for reindexing image metadata."""
+    WRITER_NAME = "Rebuild index"
     finished = Signal()
 
-    def reindex_images(self):
-        """Start the reindexing process in a background thread."""
-        self.run_writer_in_thread("Rebuild index", self._reindex_images_task)
+    def reindex_images(self) -> str | None:
+        """Start the reindexing process in a background thread, holding the library write lock
+        until it ends. Returns why it didn't start, or None if it did."""
+        lock = self.context.library_write_lock
+        if not lock.acquire(blocking=False, holder=self.WRITER_NAME):
+            return library_busy_message(lock.busy_with() or "Another job")
+        try:
+            self.run_writer_in_thread(self.WRITER_NAME, self._reindex_images_task)
+        except Exception:
+            lock.release()
+            raise
+        return None
 
     def _reindex_images_task(self):
         """Replace each file's Image row with one built from its cached header.
@@ -268,6 +278,8 @@ class ImageReindexWorker(BackgroundLoaderBase):
         except Exception as e:
             logging.error(f"Error during reindexing: {e}", exc_info=True)
             status.update_status(f"Error during reindexing: {e}")
+        finally:
+            self.context.library_write_lock.release()
 
         # Signal that we're done
         self.finished.emit()
@@ -544,13 +556,45 @@ class FileListTask(FileProcessingTask):
 
 
 class ImageAnalysisTask(FileProcessingTask):
-    """Per-file image quality analysis. Stores results in ImageStats (upsert)."""
+    """Per-file image quality analysis. Stores results in ImageStats (upsert).
+
+    Holds the library write lock from start until the work has really stopped, which only
+    the task knows: cancelling closes the progress dialog while the current file is still
+    being analysed and written.
+    """
     writer_name = "Image analysis"
+    ended = Signal()  # the lock has been released, whether finished, cancelled, failed or refused
 
     def __init__(self, context: ApplicationContext,
                  search_criteria: SearchCriteria, files: List[File]):
         super().__init__(context, search_criteria, files)
         self.analyzed_files: list[tuple[File, ImageAnalysisResult]] = []
+
+    def start(self) -> bool:
+        """Start unless another writer holds the library. When refused, emits error with the
+        reason and then ended, and returns False."""
+        lock = self.context.library_write_lock
+        if not lock.acquire(blocking=False, holder=self.writer_name):
+            self.error.emit(f"Not started: {library_busy_message(lock.busy_with() or 'Another job')}")
+            self.ended.emit()
+            return False
+        try:
+            super().start()
+        except Exception:
+            lock.release()
+            self.ended.emit()
+            raise
+        return True
+
+    def _process_files(self):
+        try:
+            self._analyse()
+        finally:
+            self.context.library_write_lock.release()
+            self.ended.emit()
+
+    def _analyse(self):
+        super()._process_files()
 
     def _process_file(self, file: File, index: int):
         super()._process_file(file, index)
@@ -583,13 +627,7 @@ class ImageAnalysisTask(FileProcessingTask):
 
 
 class MissingFramesAnalysisTask(ImageAnalysisTask):
-    """Analyses the given files while holding the library write lock.
-
-    The caller acquires the lock. The task releases it, because only the task knows when the
-    work has really stopped: cancelling closes the progress dialog while the current file is
-    still being analysed and written.
-    """
-    ended = Signal()  # the lock has been released, whether finished, cancelled or failed
+    """Analyses the given files, which it loads by id, while holding the library write lock."""
 
     def __init__(self, context: ApplicationContext, file_ids: List[int]):
         super().__init__(context, SearchCriteria(), [])
@@ -604,16 +642,14 @@ class MissingFramesAnalysisTask(ImageAnalysisTask):
                          .where(File.rowid.in_(batch)))
         return files
 
-    def _process_files(self):
+    def _analyse(self):
         try:
             self.files = self._load_files()
-            if self.files:
-                super()._process_files()
-            else:  # an empty list would make the base class process its whole search
-                self.finished.emit()
         except Exception as e:
             logging.error(f"Error loading files to analyse: {e}", exc_info=True)
             self.error.emit(str(e))
-        finally:
-            self.context.library_write_lock.release()
-            self.ended.emit()
+            return
+        if self.files:
+            super()._analyse()
+        else:  # an empty list would make the base class process its whole search
+            self.finished.emit()

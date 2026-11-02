@@ -1,6 +1,7 @@
 """Shared plate-solve-and-persist logic used by both the Qt UI (``PlateSolveTask`` in
 ``ui/BackgroundLoader.py``) and the MCP server (``mcp_server.py``), which is hosted in
-this same process -- the two are kept apart by ``ApplicationContext.solve_lock``.
+this same process -- the two are kept apart by ``ApplicationContext.library_write_lock``,
+which both take for the whole run.
 
 Handles primary/backup solver fallback for a single file and, on success, writes the
 resulting WCS solution to the database (``FileWCS`` + ``Image`` coordinate columns).

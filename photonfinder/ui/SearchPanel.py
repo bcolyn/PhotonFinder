@@ -11,7 +11,7 @@ from PySide6.QtCore import *
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 
-from photonfinder.core import ApplicationContext, decompress, Change
+from photonfinder.core import ApplicationContext, decompress, Change, library_busy_message
 from photonfinder.filesystem import is_compressible, parse_FITS_header, decode_header_blob
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
     FileWCS, ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, diagnosis_counts, search_row_stat
@@ -637,6 +637,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         show_location_action = menu.addAction("Show location") if only_paths and len(root_and_paths) == 1 else None
 
         if only_roots:
+            self.mainWindow.update_writer_actions()
+            menu.setToolTipsVisible(True)
             menu.addAction(self.mainWindow.action_Scan_Libraries)
 
         action = menu.exec(self.filesystemTreeView.viewport().mapToGlobal(position))
@@ -720,6 +722,13 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         compress_action.setEnabled(
             selected_file is not None and is_compressible(selected_file.name)
         )
+        # Starting any of these needs the library write lock.
+        busy = self.mainWindow.update_writer_actions()
+        if busy:
+            menu.setToolTipsVisible(True)
+            for writer_action in (compress_action, plate_solve_action, analyse_action):
+                writer_action.setEnabled(False)
+                writer_action.setToolTip(library_busy_message(busy))
 
         select_project_actions = []
         if selected_file:

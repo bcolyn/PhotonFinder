@@ -3196,9 +3196,10 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            '`rowid`, `path`, `success`, and on success '
                            "`ra`/`dec`/`scale_arcsec`/`solver`, or on failure `error`. One file's "
                            'failure does not abort the rest of the batch. Returns {"error": ...} '
-                           'if the batch is empty, too large, if a plate-solve is already running '
-                           '(from this application or another request), or if the user has not '
-                           'enabled agent-triggered plate solving in Settings.',
+                           'if the batch is empty, too large, if another job is writing to the '
+                           'library (a plate-solve, scan, compression or analysis, here or in '
+                           'another PhotonFinder window), or if the user has not enabled '
+                           'agent-triggered plate solving in Settings.',
             'inputSchema': {'properties': {'rowids': {'items': {'type': 'integer'},
                                                       'title': 'Rowids',
                                                       'type': 'array'},

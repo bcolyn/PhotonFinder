@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from photonfinder.core import DatabaseLock, mcp_port_file, user_app_data_dir
+from photonfinder.core import OTHER_WINDOW, DatabaseLock, library_busy_message, mcp_port_file, user_app_data_dir
 from photonfinder import mcp_stub
 
 # Captured before the autouse fixture redirects it, so the drift check below compares the
@@ -648,11 +648,13 @@ def test_controller_falls_back_when_the_requested_port_is_taken(monkeypatch, tmp
             controller.stop()
 
 
-# --- Plate-solve lock (still cross-process: GUI vs. anything else) -------------------
+# --- Library write lock (cross-process: GUI vs. anything else) -----------------------
+# Two DatabaseLock instances on one file stand in for two processes: each has its own
+# thread lock, so only the file lock keeps them apart.
 
-def test_solve_lock_is_held_against_another_process(tmp_path):
+def test_write_lock_is_held_against_another_process(tmp_path):
     db = tmp_path / "library.db"
-    first, second = DatabaseLock(db), DatabaseLock(db)
+    first, second = DatabaseLock(db, ".write.lock"), DatabaseLock(db, ".write.lock")
 
     assert first.acquire(blocking=False)
     try:
@@ -664,8 +666,8 @@ def test_solve_lock_is_held_against_another_process(tmp_path):
     second.release()
 
 
-def test_solve_lock_without_a_database_file():
-    lock = DatabaseLock(":memory:")
+def test_write_lock_without_a_database_file():
+    lock = DatabaseLock(":memory:", ".write.lock")
     assert lock.acquire(blocking=False)
     assert not lock.acquire(blocking=False)
     lock.release()
@@ -673,27 +675,69 @@ def test_solve_lock_without_a_database_file():
     lock.release()
 
 
-def test_solve_lock_follows_a_database_switch(tmp_path):
+def test_write_lock_follows_a_database_switch(tmp_path):
     first, second = tmp_path / "first.db", tmp_path / "second.db"
-    lock = DatabaseLock(first)
+    lock = DatabaseLock(first, ".write.lock")
     lock.set_database_path(second)
 
     assert lock.acquire(blocking=False)
     try:
-        assert DatabaseLock(first).acquire(blocking=False)
-        assert not DatabaseLock(second).acquire(blocking=False)
+        on_first = DatabaseLock(first, ".write.lock")
+        assert on_first.acquire(blocking=False)
+        on_first.release()
+        assert not DatabaseLock(second, ".write.lock").acquire(blocking=False)
     finally:
         lock.release()
 
 
-def test_solve_and_library_write_locks_are_independent(tmp_path):
-    db = tmp_path / "library.db"
-    solve, write = DatabaseLock(db, ".solve.lock"), DatabaseLock(db, ".write.lock")
+def test_busy_with_names_the_holder_in_this_process(tmp_path):
+    lock = DatabaseLock(tmp_path / "library.db", ".write.lock")
+    assert lock.busy_with() is None
 
-    assert solve.acquire(blocking=False)
+    assert lock.acquire(blocking=False, holder="Plate solving")
     try:
-        assert write.acquire(blocking=False)
-        assert not DatabaseLock(db, ".write.lock").acquire(blocking=False)
-        write.release()
+        assert lock.holder == "Plate solving"
+        assert lock.busy_with() == "Plate solving"
+        assert not lock.acquire(blocking=False, holder="Library scan")
+        assert lock.holder == "Plate solving"  # a refused acquire doesn't rename it
     finally:
-        solve.release()
+        lock.release()
+
+    assert lock.holder is None
+    assert lock.busy_with() is None
+
+
+def test_busy_with_sees_another_process_and_leaves_its_lock_alone(tmp_path):
+    db = tmp_path / "library.db"
+    here, other_window = DatabaseLock(db, ".write.lock"), DatabaseLock(db, ".write.lock")
+
+    assert other_window.acquire(blocking=False, holder="Library scan")
+    try:
+        assert here.busy_with() == OTHER_WINDOW
+        assert here.holder is None
+        assert not here.acquire(blocking=False)  # still held after the probe
+    finally:
+        other_window.release()
+
+    assert here.busy_with() is None
+    assert here.acquire(blocking=False)  # the probe let go of it
+    here.release()
+
+
+def test_listeners_hear_acquire_and_release_but_not_a_probe(tmp_path):
+    lock = DatabaseLock(tmp_path / "library.db", ".write.lock")
+    heard = []
+    lock.add_listener(lambda: heard.append(lock.holder))
+
+    lock.busy_with()
+    assert heard == []
+
+    assert lock.acquire(blocking=False, holder="Rebuild index")
+    assert not lock.acquire(blocking=False)
+    lock.release()
+    assert heard == ["Rebuild index", None]
+
+
+def test_library_busy_message():
+    assert library_busy_message(OTHER_WINDOW) == ("Another PhotonFinder window is writing to this library. "
+                                                  "Try again when it has finished.")

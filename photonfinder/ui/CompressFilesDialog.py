@@ -6,13 +6,15 @@ from PySide6.QtCore import Qt, QEvent, Signal
 from PySide6.QtWidgets import QDialog, QListWidgetItem, QMessageBox
 from peewee import JOIN
 
-from photonfinder.core import ApplicationContext
+from photonfinder.core import ApplicationContext, library_busy_message
 from photonfinder.filesystem import compress_file, is_compressible
 from photonfinder.models import File, Image, LibraryRoot, CORE_MODELS, SearchCriteria
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
 from photonfinder.ui.generated.CompressFilesDialog_ui import Ui_CompressFilesDialog
 
 logger = logging.getLogger(__name__)
+
+COMPRESS_WRITER = "Compress Files"
 
 COMPRESSION_ALGORITHMS = {
     'bzip2': '.bz2',
@@ -30,7 +32,7 @@ class CompressFilesWorker(BackgroundLoaderBase):
 
     def compress(self, files: list, ext: str, verify: bool, level: int, parallelism: int):
         self.cancelled = False
-        self.run_writer_in_thread("Compress Files", self._run, files, ext, verify, level, parallelism)
+        self.run_writer_in_thread(COMPRESS_WRITER, self._run, files, ext, verify, level, parallelism)
 
     def cancel(self):
         self.cancelled = True
@@ -115,7 +117,9 @@ class CompressFilesDialog(QDialog, Ui_CompressFilesDialog):
         self.file_list.installEventFilter(self)
 
         self._running = False
+        self._started = False  # Start is one-shot
         self._holds_write_lock = False
+        self._library_busy: str | None = None  # what else holds the library write lock, if anything
         self.progress_group.setVisible(False)
         self.start_button.clicked.connect(self._start)
         self.close_button.clicked.connect(self._on_close_clicked)
@@ -129,7 +133,8 @@ class CompressFilesDialog(QDialog, Ui_CompressFilesDialog):
 
         self.level_spin.setValue(context.settings.get_compress_level())
         self.parallel_spin.setValue(context.settings.get_compress_parallelism())
-        self._update_summary()
+        context.signal_bus.library_write_lock_changed.connect(self._refresh_library_busy)
+        self._refresh_library_busy()
 
     # ------------------------------------------------------------------
 
@@ -154,19 +159,32 @@ class CompressFilesDialog(QDialog, Ui_CompressFilesDialog):
         self.summary_label.setText(
             f"{count} uncompressed FITS file(s) queued ({total_mb:.1f} MB)."
         )
-        self.start_button.setEnabled(count > 0)
+        busy = None if self._holds_write_lock else self._library_busy
+        self.start_button.setEnabled(count > 0 and not self._started and not busy)
+        self.start_button.setToolTip(library_busy_message(busy) if busy else "")
+
+    def _refresh_library_busy(self):
+        """Ask the lock when it changes here or the dialog is activated: for another window's
+        writer that means taking it for a moment."""
+        self._library_busy = None if self._holds_write_lock else self.context.library_write_lock.busy_with()
+        self._update_summary()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self._refresh_library_busy()
 
     # ------------------------------------------------------------------
 
     def _start(self):
         # One library writer at a time: a scan running alongside would see both the archive
         # and the original and register them as two files.
-        if not self.context.library_write_lock.acquire(blocking=False):
-            QMessageBox.information(self, "Library Busy",
-                                    "A library scan is running (here or in another PhotonFinder window). "
-                                    "Start compression again once it has finished.")
+        if not self.context.library_write_lock.acquire(blocking=False, holder=COMPRESS_WRITER):
+            busy = self.context.library_write_lock.busy_with() or "Another job"
+            QMessageBox.information(self, "Library Busy", f"Compression not started: {library_busy_message(busy)}")
             return
         self._holds_write_lock = True
+        self._started = True
         files = [self.file_list.item(i).data(Qt.ItemDataRole.UserRole)
                  for i in range(self.file_list.count())]
         ext         = COMPRESSION_ALGORITHMS[self.algorithm_combo.currentText()]

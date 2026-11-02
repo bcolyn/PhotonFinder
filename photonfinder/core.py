@@ -136,14 +136,22 @@ def register_udfs(db: SqliteDatabase):
         return retval
 
 
+OTHER_WINDOW = "Another PhotonFinder window"
+
+
+def library_busy_message(holder: str) -> str:
+    """Why a library writer can't start: *holder* is what DatabaseLock.busy_with returned."""
+    return f"{holder} is writing to this library. Try again when it has finished."
+
+
 class DatabaseLock:
     """Non-reentrant mutex guarding one kind of batch job on a library, held across processes.
 
     Within one process callers (e.g. the GUI and the MCP server) share a thread lock. The file
     lock covers what that cannot: a second copy of PhotonFinder opened on the same
     library, whether started by the user or by the MCP stub when it could not tell the
-    first one was alive. Each kind of job gets its own *suffix*, so plate solving and
-    library writes (scans, compression) are guarded independently. This combines:
+    first one was alive. The *suffix* names the lock file, so each kind of job can have its
+    own. This combines:
 
     * ``threading.Lock`` -- serialises threads *within* one process. Needed on its own
       because repeated OS lock calls on the same file descriptor from a single process do
@@ -158,13 +166,19 @@ class DatabaseLock:
     Exposes the same ``acquire(blocking=False)``/``release()`` surface as
     ``threading.Lock`` so callers do not care which mechanism is in play. For an
     in-memory database there is no file to lock and the thread lock alone is used.
+
+    The holder named on acquire is kept while this process holds the lock, so a refused
+    start can say what is running. Listeners are called on every acquire and release, from
+    whichever thread did it, so the UI can enable or disable what starts a writer.
     """
 
-    def __init__(self, database_path: str | Path, suffix: str = '.solve.lock') -> None:
+    def __init__(self, database_path: str | Path, suffix: str) -> None:
         self._suffix = suffix
         self._thread_lock = threading.Lock()
         self._path: str | None = None
         self._fd: int | None = None
+        self._holder: str | None = None
+        self._listeners: list = []
         self.set_database_path(database_path)
 
     def set_database_path(self, database_path: str | Path) -> None:
@@ -172,9 +186,50 @@ class DatabaseLock:
         path = str(database_path)
         self._path = None if path == ':memory:' else path + self._suffix
 
-    def acquire(self, blocking: bool = False) -> bool:
+    def add_listener(self, listener) -> None:
+        """Call *listener()* after each acquire and release."""
+        self._listeners.append(listener)
+
+    @property
+    def holder(self) -> str | None:
+        """What holds the lock in this process, or None if this process doesn't hold it."""
+        return self._holder
+
+    def acquire(self, blocking: bool = False, holder: str = "A library job") -> bool:
         if blocking:
             raise ValueError("DatabaseLock only supports non-blocking acquisition")
+        if not self._try_lock():
+            return False
+        self._holder = holder
+        self._notify()
+        return True
+
+    def release(self) -> None:
+        self._holder = None
+        self._unlock()
+        self._notify()
+
+    def busy_with(self) -> str | None:
+        """What holds the lock: its holder if it's in this process, OTHER_WINDOW if another
+        process holds it, or None if it's free.
+
+        Telling whether another process holds it means taking the lock for a moment, so a
+        start elsewhere at that instant is refused. Only call this when the answer is about
+        to be shown, never on a timer.
+        """
+        holder = self._holder
+        if holder is not None:
+            return holder
+        if self._thread_lock.locked():  # another thread here, between taking it and naming itself
+            return self._holder or "A library job"
+        if not self._try_lock():
+            if self._thread_lock.locked():  # taken here meanwhile
+                return self._holder or "A library job"
+            return OTHER_WINDOW
+        self._unlock()
+        return None
+
+    def _try_lock(self) -> bool:
         if not self._thread_lock.acquire(blocking=False):
             return False
         if self._path is None:
@@ -191,9 +246,16 @@ class DatabaseLock:
                             exc_info=True)
         return True
 
-    def release(self) -> None:
+    def _unlock(self) -> None:
         self._release_file_lock()
         self._thread_lock.release()
+
+    def _notify(self) -> None:
+        for listener in list(self._listeners):
+            try:
+                listener()
+            except Exception:
+                logging.error("A library lock listener failed", exc_info=True)
 
     def _acquire_file_lock(self) -> bool:
         fd = os.open(self._path, os.O_RDWR | os.O_CREAT, 0o644)
@@ -312,12 +374,14 @@ class ApplicationContext:
         self.status_reporter: StatusReporter | None = None
         self.session_file = session_file
         self.signal_bus = SignalBus()
-        # Prevents overlapping plate-solve batches: between the GUI dialog and the MCP
-        # server in this process, and between two copies of the application on one library.
-        self.solve_lock = DatabaseLock(database_path, '.solve.lock')
-        # Single writer for batch jobs that change library files and their rows (library
-        # scans, Compress Files); readers never take it.
+        # Single writer for batch jobs that change library files and their rows: library
+        # scans, Compress Files, plate solving, image analysis, saving a quality diagnosis,
+        # rebuilding the index, and changing or deleting a library root. Held across
+        # processes, so it also keeps two copies of the application apart. Readers never
+        # take it.
         self.library_write_lock = DatabaseLock(database_path, '.write.lock')
+        # Emitted from whichever thread took or released it; Qt queues it to the GUI thread.
+        self.library_write_lock.add_listener(self.signal_bus.library_write_lock_changed.emit)
         self.writers = ActiveWriters()
 
     def __enter__(self):
@@ -416,7 +480,6 @@ class ApplicationContext:
     def switch_database(self, database_path: str | Path) -> None:
         self.close_database()
         self.database_path = database_path
-        self.solve_lock.set_database_path(database_path)
         self.library_write_lock.set_database_path(database_path)
         self.open_database()
 
@@ -623,6 +686,9 @@ class Change(Enum):
 
 
 class SignalBus(QObject):
+
+    library_write_lock_changed = Signal()
+    """ApplicationContext.library_write_lock was taken or released in this process."""
 
     projects_changed = Signal(object, object)
     """Collection[Project], Change"""

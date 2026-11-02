@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import Qt, Signal, QThread, QTimer, QRectF, QPointF, Property, QPropertyAnimation
+from PySide6.QtCore import Qt, Signal, QThread, QTimer, QRectF, QPointF, Property, QPropertyAnimation, QEvent
 from PySide6.QtGui import QColor, QImage, QPixmap, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
 )
 
+from photonfinder.core import library_busy_message
 from photonfinder.models import File
 
 logger = logging.getLogger(__name__)
@@ -336,6 +337,10 @@ class ImageViewerWindow(QMainWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
         self._context = context
+        # What holds the library write lock, which plate solving needs, if anything does.
+        self._library_busy: str | None = None
+        if context is not None:
+            context.signal_bus.library_write_lock_changed.connect(self._refresh_library_busy)
         self._current_file = None
         self._filename: str | None = None
         self._raw_uint16: np.ndarray | None = None
@@ -989,6 +994,17 @@ class ImageViewerWindow(QMainWindow):
     # Private: plate solve / annotate / metadata buttons
     # ------------------------------------------------------------------
 
+    def _refresh_library_busy(self):
+        """Ask the lock when it changes here or the window is activated: for another window's
+        writer that means taking it for a moment."""
+        self._library_busy = self._context.library_write_lock.busy_with() if self._context else None
+        self._update_solve_buttons()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self._refresh_library_busy()
+
     def _update_solve_buttons(self):
         file = self._current_file
         has_file = file is not None
@@ -998,6 +1014,9 @@ class ImageViewerWindow(QMainWindow):
             self._plate_solve_action.setVisible(has_file and has_context)
         if self._plate_solve_btn:
             self._plate_solve_btn.setText("Force Re-Solve" if is_solved else "Plate Solve")
+            busy = self._library_busy
+            self._plate_solve_btn.setEnabled(not busy)
+            self._plate_solve_btn.setToolTip(library_busy_message(busy) if busy else "Plate-solve this image")
         if self._annotate_action:
             self._annotate_action.setVisible(bool(is_solved))
         if self._metadata_btn:

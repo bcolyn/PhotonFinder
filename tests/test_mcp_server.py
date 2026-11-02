@@ -570,20 +570,22 @@ def test_plate_solve_rejects_unknown_solver_name(sample):
     assert "error" in result
 
 
-def test_plate_solve_lock_contention(sample, monkeypatch):
+def test_plate_solve_is_refused_while_another_writer_holds_the_library(sample, monkeypatch):
     ctx, data = sample
     fake = _FakeSolver(header=_fixed_solution_header())
     monkeypatch.setattr(mcp_server, "_build_solver", lambda context, index: fake)
 
     dark = data["dark"]
-    assert ctx.solve_lock.acquire(blocking=False)
+    assert ctx.library_write_lock.acquire(blocking=False, holder="Library scan")
     try:
         result = mcp_server.query_plate_solve(ctx, [dark.rowid])
     finally:
-        ctx.solve_lock.release()
+        ctx.library_write_lock.release()
 
-    assert "error" in result
+    assert result["error"] == ("Plate solving not started: Library scan is writing to this library. "
+                               "Try again when it has finished.")
     assert not FileWCS.select().where(FileWCS.file == dark).exists()
+    assert ctx.writers.running() == []
 
 
 @pytest.mark.parametrize("tool, args", [
@@ -613,8 +615,8 @@ def test_tools_answer_cleanly_with_no_database_open(context, caplog, tool, args)
     assert "No library is open" in json.loads(block.text)["error"]
     assert not [r for r in caplog.records if r.levelname == "ERROR"]
     assert context.writers.running() == []
-    assert context.solve_lock.acquire(blocking=False)
-    context.solve_lock.release()
+    assert context.library_write_lock.acquire(blocking=False)
+    context.library_write_lock.release()
 
 
 def test_search_returns_stored_stats_for_an_analysed_frame_only(sample):

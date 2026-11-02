@@ -4,11 +4,12 @@ from copy import deepcopy
 from pathlib import Path
 from typing import List
 
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize, QEvent
 from PySide6.QtGui import QIcon, QPalette, QAction, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import *
 
-from photonfinder.core import ApplicationContext, LibraryBusyError, StatusReporter, backup_database
+from photonfinder.core import ApplicationContext, LibraryBusyError, StatusReporter, backup_database, \
+    library_busy_message
 from photonfinder.filesystem import Importer, ScanCancelled, update_fits_header_cache, check_missing_header_cache, \
     repair_truncated_header_cache
 from photonfinder.models import SearchCriteria, Project, File, ProjectFile, RootAndPath, Image, LibraryRoot
@@ -78,6 +79,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # hide the dock initially
         self.dockWidget.hide()
+        self._plate_solve_fits_selection = True  # the selected frame is one that can be solved
+        # The actions that start a library writer, with the tooltips they show when it's free.
+        self._writer_action_tips = {action: action.toolTip() for action in (
+            self.action_Scan_Libraries, self.actionCompress_files, self.actionPlate_solve_files)}
 
         self.reporter = UIStatusReporter()
         self.reporter.on_message.connect(self.statusBar().showMessage)
@@ -167,6 +172,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.menuProject_Details.aboutToShow.connect(self.populate_project_details)
         self.menu_File.setToolTipsVisible(True)
         self.menu_File.aboutToShow.connect(self._update_database_actions)
+        self.menu_File.aboutToShow.connect(self.update_writer_actions)
+        self.menu_Tools.setToolTipsVisible(True)
+        self.menu_Tools.aboutToShow.connect(self.update_writer_actions)
+        self.context.signal_bus.library_write_lock_changed.connect(self._on_library_write_lock_changed)
 
     def closeEvent(self, event):
         """The database closes after this, so everything using it has to stop here."""
@@ -348,6 +357,33 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             action.setToolTip(tip)
             action.setStatusTip(tip)
 
+    def _on_library_write_lock_changed(self):
+        """Taken or released in this process. Windows that start a writer listen for this too."""
+        self.update_writer_actions()
+
+    def update_writer_actions(self) -> str | None:
+        """Disable the actions that start a library writer while one holds the write lock,
+        here or in another window, and return what holds it.
+
+        Another window's writer can't be seen without asking the lock, so this runs when a
+        menu opens or the window is activated, and when this process takes or releases it.
+        Starting still asks the lock, as the state shown here can be out of date.
+        """
+        busy = self.context.library_write_lock.busy_with()
+        tip = library_busy_message(busy) if busy else ""
+        self.action_Scan_Libraries.setEnabled(not busy)
+        self.actionCompress_files.setEnabled(not busy)
+        self.actionPlate_solve_files.setEnabled(not busy and self._plate_solve_fits_selection)
+        for action, own_tip in self._writer_action_tips.items():
+            action.setToolTip(tip or own_tip)
+            action.setStatusTip(tip)
+        return busy
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self.update_writer_actions()
+
     def _refuse_database_switch(self, title: str) -> bool:
         """The disabled menu items only update when the menu opens, so check again here."""
         blockers = self._database_switch_blockers()
@@ -431,12 +467,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._start_scan(lambda: LibraryScanWorker(self.context, roots=roots))
 
     def _start_scan(self, create_worker) -> bool:
-        """Start a library scan unless another library writer (Compress Files, here or in
-        another PhotonFinder window) holds the write lock. The lock is held until the scan
-        finishes."""
-        if not self.context.library_write_lock.acquire(blocking=False):
-            self.context.status_reporter.update_status(
-                "Library scan not started: compression is running on this library.")
+        """Start a library scan unless another library writer (such as Compress Files or a
+        plate solve, here or in another PhotonFinder window) holds the write lock. The lock is
+        held until the scan finishes."""
+        if not self.context.library_write_lock.acquire(blocking=False, holder=self.SCAN_WRITER):
+            busy = self.context.library_write_lock.busy_with() or "Another job"
+            self.context.status_reporter.update_status(f"Library scan not started: {library_busy_message(busy)}")
             return False
         self.context.writers.begin(self.SCAN_WRITER)
         try:
@@ -785,7 +821,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.actionFind_matching_darks.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
             self.actionFind_matching_flats.setEnabled(current_type == "LIGHT")
             is_light = not current_type or "LIGHT" in current_type
-            self.actionPlate_solve_files.setEnabled(is_light)
+            self._plate_solve_fits_selection = is_light
+            self.actionPlate_solve_files.setEnabled(is_light and self.context.library_write_lock.holder is None)
 
         self.actionExposure.setChecked(AdvancedFilter.EXPOSURE in current_panel.advanced_options)
         self.actionCoordinates.setChecked(AdvancedFilter.COORDINATES in current_panel.advanced_options)

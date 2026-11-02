@@ -3,16 +3,16 @@ import copy
 import dataclasses
 import logging
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSpinBox,
     QVBoxLayout,
 )
 
-from photonfinder.core import ApplicationContext
+from photonfinder.core import ApplicationContext, library_busy_message
 from photonfinder.models import DIAGNOSIS_BAD_VALUES, DIAGNOSIS_MISSING_METRICS, SearchCriteria
 from photonfinder.quality_diagnosis import (
-    DiagnosisResult, DiagnosisScope, DiagnosisSettings, Metric, MetricRule, RuleMode, diagnose,
+    SAVING_DIAGNOSIS, DiagnosisResult, DiagnosisScope, DiagnosisSettings, Metric, MetricRule, RuleMode, diagnose,
     frames_needing_analysis, load_scope, save_diagnoses,
 )
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase, MissingFramesAnalysisTask
@@ -24,8 +24,6 @@ _MODE_NAMES = {RuleMode.OFF: "Off", RuleMode.MAD: "× MAD", RuleMode.PERCENT: "%
 _DEFAULT_LIMITS = {RuleMode.MAD: 3.0, RuleMode.PERCENT: 20.0}
 # Recalculating a very large scope takes most of a second, too slow for every keystroke.
 _PREVIEW_DELAY_MS = 150
-_LIBRARY_BUSY = "another job (a scan, compression or analysis) is writing to this library. " \
-                "Try again when it has finished."
 
 
 def scope_criteria(search_criteria: SearchCriteria) -> SearchCriteria:
@@ -56,7 +54,7 @@ class _DiagnosisLoader(BackgroundLoaderBase):
             self.load_failed.emit(str(exc), criteria)
 
     def save(self, verdicts: dict):
-        self.run_writer_in_thread("Saving diagnosis", self._save, verdicts)
+        self.run_writer_in_thread(SAVING_DIAGNOSIS, self._save, verdicts)
 
     def _save(self, verdicts: dict):
         try:
@@ -109,6 +107,7 @@ class DiagnoseQualityDialog(QDialog):
     stored results and must not change target because the grid was filtered meanwhile.
     """
     writer_window_label = "Diagnose Quality"  # see MainWindow._database_switch_blockers
+    _ANALYSE_TIP = "Analyse the frames in this scope that have no statistics, skipping groups too small to judge"
 
     def __init__(self, context: ApplicationContext, main_window, parent=None):
         super().__init__(parent)
@@ -123,6 +122,7 @@ class DiagnoseQualityDialog(QDialog):
         self._settings_being_saved: DiagnosisSettings | None = None
         self._saving = False
         self._analysing = False
+        self._library_busy: str | None = None  # what holds the library write lock, if anything else does
         self.analysis_dialog: ImageAnalysisDialog | None = None
 
         self._loader = _DiagnosisLoader(context)
@@ -137,6 +137,8 @@ class DiagnoseQualityDialog(QDialog):
         self._preview_timer.timeout.connect(self._update_preview)
 
         self._build_ui()
+        context.signal_bus.library_write_lock_changed.connect(self._refresh_library_busy)
+        self._refresh_library_busy()
         self._set_settings(DiagnosisSettings.from_json(context.settings.get_quality_diagnosis_settings()))
 
         main_window.tabWidget.currentChanged.connect(self._on_tab_changed)
@@ -160,8 +162,7 @@ class DiagnoseQualityDialog(QDialog):
         counts_row = QHBoxLayout()
         self.counts_label = QLabel()
         self.analyse_button = QPushButton("Analyse missing")
-        self.analyse_button.setToolTip("Analyse the frames in this scope that have no statistics, "
-                                       "skipping groups too small to judge")
+        self.analyse_button.setToolTip(self._ANALYSE_TIP)
         self.analyse_button.clicked.connect(self._analyse_missing)
         counts_row.addWidget(self.counts_label, 1)
         counts_row.addWidget(self.analyse_button)
@@ -299,21 +300,36 @@ class DiagnoseQualityDialog(QDialog):
         self._set_actions_enabled()
 
     def _set_actions_enabled(self):
+        """Saving and analysing need the library write lock. While this dialog's own save or
+        analysis holds it, they're off anyway; Close never is."""
         ready = self._scope is not None and self._scope.frame_count > 0 and not self._analysing
-        self.save_button.setEnabled(ready and not self._saving)
-        self.save_and_hide_button.setEnabled(ready and not self._saving)
+        busy = None if self._saving or self._analysing else self._library_busy
+        tip = library_busy_message(busy) if busy else ""
+        self.save_button.setEnabled(ready and not self._saving and not busy)
+        self.save_and_hide_button.setEnabled(ready and not self._saving and not busy)
         missing = frames_needing_analysis(self._scope, self.current_settings()) if self._scope else []
         self.analyse_button.setText(f"Analyse missing ({len(missing)})")
-        self.analyse_button.setEnabled(ready and not self._saving and bool(missing))
+        self.analyse_button.setEnabled(ready and not self._saving and bool(missing) and not busy)
+        for button in (self.save_button, self.save_and_hide_button):
+            button.setToolTip(tip)
+        self.analyse_button.setToolTip(tip or self._ANALYSE_TIP)
+
+    def _refresh_library_busy(self):
+        """Ask the lock, which for another window's writer means taking it for a moment. So
+        only when it changes here or the window is activated, not on every preview."""
+        self._library_busy = self.context.library_write_lock.busy_with()
+        self._set_actions_enabled()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self._refresh_library_busy()
 
     # --- Analysing missing frames --------------------------------------------------------
 
     def _analyse_missing(self):
         file_ids = frames_needing_analysis(self._scope, self.current_settings())
         if not file_ids:
-            return
-        if not self.context.library_write_lock.acquire(blocking=False):
-            QMessageBox.warning(self, "Diagnose Quality", f"Nothing was analysed: {_LIBRARY_BUSY}")
             return
         try:
             task = MissingFramesAnalysisTask(self.context, file_ids)
@@ -326,13 +342,12 @@ class DiagnoseQualityDialog(QDialog):
             progress.setAttribute(Qt.WA_DeleteOnClose)
         except Exception as exc:
             logging.error("Could not start the analysis", exc_info=True)
-            self.context.library_write_lock.release()  # no task to release it
             QMessageBox.warning(self, "Diagnose Quality", f"Could not start the analysis: {exc}")
             return
         self._analysing = True
         self._set_actions_enabled()
         self.analysis_dialog = progress
-        progress.show()  # starts the task, which releases the lock when it ends
+        progress.show()  # starts the task, which holds the library write lock until it ends, or refuses to start
 
     def _on_analysis_ended(self):
         self._analysing = False
@@ -356,7 +371,8 @@ class DiagnoseQualityDialog(QDialog):
         self._set_actions_enabled()
         if not stored:
             self.status_label.clear()
-            QMessageBox.warning(self, "Diagnose Quality", f"Nothing was saved: {_LIBRARY_BUSY}")
+            busy = self.context.library_write_lock.busy_with() or "Another job"
+            QMessageBox.warning(self, "Diagnose Quality", f"Nothing was saved: {library_busy_message(busy)}")
             return
         self.context.settings.set_quality_diagnosis_settings(self._settings_being_saved.to_json())
         self.status_label.setText("Saved.")

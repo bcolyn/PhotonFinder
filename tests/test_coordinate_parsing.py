@@ -88,6 +88,7 @@ def test_rebuild_index_corrects_a_stored_position(sample):
     wrong = hp.skycoord_to_healpix(SkyCoord(90.0, 0.0, unit=u.deg, frame="icrs"))
     Image.update(coord_ra=90.0, coord_dec=0.0, coord_pix256=int(wrong)).where(Image.file == objs["dark"]).execute()
 
+    assert context.library_write_lock.acquire(holder="Rebuild index")  # as reindex_images does; the task releases it
     ImageReindexWorker(context)._reindex_images_task()
 
     image = Image.get(Image.file == objs["dark"])

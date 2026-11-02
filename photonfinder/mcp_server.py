@@ -14,8 +14,8 @@ the application running -- regenerate with ``scripts/build_mcp_manifest.py`` aft
 or re-describing a tool. It must therefore not vary with settings, which is why
 ``plate_solve_files`` is always registered and checks its setting when called.
 
-Plate solving is guarded by ``ApplicationContext.solve_lock``, so a solve triggered by an
-agent cannot overlap one started from the GUI.
+Plate solving holds ``ApplicationContext.library_write_lock``, so a solve triggered by an
+agent cannot overlap one started from the GUI, or any other library writer such as a scan.
 
 Blocking database work is offloaded to worker threads with ``anyio.to_thread.run_sync``
 and wrapped in ``context.database.bind_ctx(CORE_MODELS)`` -- the same pattern the Qt
@@ -45,7 +45,7 @@ from peewee import JOIN
 from pydantic import BaseModel, Field
 
 from photonfinder import reports, solve_service
-from photonfinder.core import ApplicationContext, LibraryBusyError, mcp_port_file
+from photonfinder.core import ApplicationContext, LibraryBusyError, library_busy_message, mcp_port_file
 from photonfinder.models import (
     CORE_MODELS, CATALOG_MODELS, SearchCriteria, SORTABLE_FIELDS, File, Image, LibraryRoot,
     Project, ProjectFile, FitsHeader, FileWCS, CatalogEntry,
@@ -557,10 +557,10 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
         context.writers.begin(MCP_SOLVE_WRITER)
     except LibraryBusyError as e:
         return {"error": f"{e} Try again shortly."}
-    if not context.solve_lock.acquire(blocking=False):
+    if not context.library_write_lock.acquire(blocking=False, holder=MCP_SOLVE_WRITER):
         context.writers.end(MCP_SOLVE_WRITER)
-        return {"error": "A plate-solve is already running (from this application or "
-                          "another MCP request); try again shortly."}
+        busy = context.library_write_lock.busy_with() or "Another job"
+        return {"error": f"Plate solving not started: {library_busy_message(busy)}"}
     try:
         try:
             primary = _build_solver(context, primary_index)
@@ -608,7 +608,7 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
                     })
         return {"results": results, "solved": solved, "failed": failed}
     finally:
-        context.solve_lock.release()
+        context.library_write_lock.release()
         context.writers.end(MCP_SOLVE_WRITER)
 
 
@@ -1037,8 +1037,9 @@ def build_mcp(context: ApplicationContext):
             "Returns {results, solved, failed}. `results` is a list of per-file dicts "
             "with `rowid`, `path`, `success`, and on success `ra`/`dec`/`scale_arcsec`/`solver`, "
             "or on failure `error`. One file's failure does not abort the rest of the batch. "
-            'Returns {"error": ...} if the batch is empty, too large, if a plate-solve is '
-            "already running (from this application or another request), or if the user "
+            'Returns {"error": ...} if the batch is empty, too large, if another job is '
+            "writing to the library (a plate-solve, scan, compression or analysis, here or in "
+            "another PhotonFinder window), or if the user "
             "has not enabled agent-triggered plate solving in Settings."
         ),
         # The one tool that writes, runs an external program, and can upload frames to

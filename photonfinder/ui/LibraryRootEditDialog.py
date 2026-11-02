@@ -5,6 +5,7 @@ from typing import Optional
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
 
+from photonfinder.core import library_busy_message
 from photonfinder.models import LibraryRoot, norm_db_path
 from photonfinder.ui.generated.LibraryRootEditDialog_ui import Ui_LibraryRootEditDialog
 
@@ -14,11 +15,14 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
     Dialog for creating or updating a LibraryRoot entity.
     """
 
-    def __init__(self, library_root: Optional[LibraryRoot] = None, parent=None):
+    def __init__(self, library_root: Optional[LibraryRoot] = None, parent=None, write_lock=None):
+        """*write_lock* is the library write lock, taken to change an existing root: a writer
+        running under a changed path would work on the wrong files."""
         super(LibraryRootEditDialog, self).__init__(parent)
         self.setupUi(self)
 
         self.library_root = library_root
+        self.write_lock = write_lock
         self.is_new = library_root is None
 
         # Set up the dialog based on whether we're creating or editing
@@ -102,10 +106,19 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
                             return
 
                 # Update existing library root
-                self.library_root.name = name
-                self.library_root.path = path
-                self.library_root.description = description
-                self.library_root.save()
+                if self.write_lock is not None and not self.write_lock.acquire(blocking=False,
+                                                                                holder="Library root change"):
+                    busy = self.write_lock.busy_with() or "Another job"
+                    QMessageBox.warning(self, "Library Busy", f"Not saved: {library_busy_message(busy)}")
+                    return
+                try:
+                    self.library_root.name = name
+                    self.library_root.path = path
+                    self.library_root.description = description
+                    self.library_root.save()
+                finally:
+                    if self.write_lock is not None:
+                        self.write_lock.release()
                 logging.info(f"Updated library root: {name} at {path}")
 
             # Close the dialog

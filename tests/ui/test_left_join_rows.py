@@ -55,6 +55,7 @@ def _wcs_blob(ra, dec):
 
 
 def _reindex(context):
+    assert context.library_write_lock.acquire(holder="Rebuild index")  # as reindex_images does; the task releases it
     ImageReindexWorker(context)._reindex_images_task()
     return {image.file.name: image for image in Image.select()}
 

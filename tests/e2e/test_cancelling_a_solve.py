@@ -72,7 +72,7 @@ def test_cancelling_updates_the_grid_with_the_solutions_found(sandbox, solve, qt
     assert _solved_column(sandbox)[1:] == ["False", "False", "False"]
 
     # The solve is still running, so nothing else may start one until it has stopped.
-    assert not context.solve_lock.acquire(blocking=False)
+    assert not context.library_write_lock.acquire(blocking=False)
 
     destroyed = []
     solve.dialog.destroyed.connect(lambda: destroyed.append(True))
@@ -84,8 +84,8 @@ def test_cancelling_updates_the_grid_with_the_solutions_found(sandbox, solve, qt
     assert _solved_column(sandbox) == ["True", "True", "False", "False"]
     assert len(solve.solver.solved) == 2
     assert context.writers.running() == []
-    assert context.solve_lock.acquire(blocking=False)
-    context.solve_lock.release()
+    assert context.library_write_lock.acquire(blocking=False)
+    context.library_write_lock.release()
     assert solve.panel.findChildren(PlateSolveDialog) == []
     assert QApplication.activeModalWidget() is None
 

@@ -1,6 +1,6 @@
 import logging
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QEvent, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QGridLayout, QLabel, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
 
-from photonfinder.core import ApplicationContext, decompress
+from photonfinder.core import ApplicationContext, decompress, library_busy_message
 from photonfinder.filesystem import decode_header_blob
 from peewee import JOIN
 from photonfinder.models import File, FileWCS, FitsHeader, Image, SearchCriteria
@@ -108,7 +108,8 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.search_criteria = search_criteria
         self._task: PlateSolveTask | None = None
         self._pending_retry_files = None
-        self._solve_lock_held = False
+        self._lock_held = False  # the library write lock, from start until the task has stopped
+        self._start_available = True  # Start (or Retry Failed) applies, if the library is free
         self._cancelling = False
 
         self._populate_combos()
@@ -123,6 +124,8 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.start_button.clicked.connect(self._start_solving)
         self.close_button.clicked.connect(self._on_close_clicked)
         self.direct_copy_button.clicked.connect(self._on_direct_copy)
+        context.signal_bus.library_write_lock_changed.connect(self._update_start_button)
+        self._update_start_button()
 
         self.hint_ra_edit.textChanged.connect(self._update_hms_dms)
         self.hint_dec_edit.textChanged.connect(self._update_hms_dms)
@@ -363,13 +366,11 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self._run_task(files)
 
     def _run_task(self, files):
-        if not self.context.solve_lock.acquire(blocking=False):
-            QMessageBox.warning(
-                self, "Plate solving busy",
-                "A plate-solve is already running (from this application or an MCP "
-                "request); try again shortly.")
+        if not self.context.library_write_lock.acquire(blocking=False, holder=PlateSolveTask.writer_name):
+            busy = self.context.library_write_lock.busy_with() or "Another job"
+            QMessageBox.warning(self, "Library busy", f"Plate solving not started: {library_busy_message(busy)}")
             return
-        self._solve_lock_held = True
+        self._lock_held = True
 
         primary_index = self.primary_solver_combo.currentIndex()
         backup_index = self.backup_solver_combo.currentIndex() - 1  # -1 = None
@@ -378,7 +379,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
             primary_solver = self._build_solver(primary_index)
             backup_solver = self._build_solver(backup_index) if backup_index >= 0 else None
         except Exception as e:
-            self._release_solve_lock()
+            self._release_write_lock()
             QMessageBox.critical(self, "Configuration error", str(e))
             return
 
@@ -403,6 +404,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
 
         self.progressBar.setValue(0)
         self.log_edit.clear()
+        self._start_available = False
         self.start_button.setEnabled(False)
         self.direct_copy_button.setEnabled(False)
         self.start_button.setText("Start")
@@ -410,10 +412,22 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
 
         self._task.start()
 
-    def _release_solve_lock(self):
-        if self._solve_lock_held:
-            self.context.solve_lock.release()
-            self._solve_lock_held = False
+    def _release_write_lock(self):
+        if self._lock_held:
+            self._lock_held = False
+            self.context.library_write_lock.release()
+
+    def _update_start_button(self):
+        """Start is disabled while another writer holds the library. Not while this dialog's
+        own solve holds it: Start is off then anyway, and Cancel and Close never are."""
+        busy = None if self._lock_held else self.context.library_write_lock.busy_with()
+        self.start_button.setEnabled(self._start_available and not busy)
+        self.start_button.setToolTip(library_busy_message(busy) if busy else "")
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self._update_start_button()
 
     def _cleanup_results(self):
         self.layout().removeWidget(self._results_scroll)
@@ -428,7 +442,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         task = self._task
         assert task is not None
         self._task = None
-        self._release_solve_lock()
+        self._release_write_lock()
         self.solving_complete.emit(task)
         if self._cancelling:
             self.close()
@@ -451,7 +465,8 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         if failed_files:
             self._pending_retry_files = failed_files
             self.start_button.setText("Retry Failed")
-            self.start_button.setEnabled(True)
+            self._start_available = True
+            self._update_start_button()
 
         results_widget = QWidget()
         grid = QGridLayout(results_widget)
@@ -506,21 +521,22 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
     def _on_error(self, error_message: str):
         task = self._task
         self._task = None
-        self._release_solve_lock()
+        self._release_write_lock()
         self.solving_complete.emit(task)  # the files solved before the error are stored
         if self._cancelling:
             self.close()
             return
         self._append_log(f"Error: {error_message}")
         QMessageBox.critical(self, "Plate solving error", error_message)
-        self.start_button.setEnabled(True)
+        self._start_available = True
+        self._update_start_button()
         self.direct_copy_button.setEnabled(True)
         self.close_button.setText("Close")
 
     def closeEvent(self, event):
         """Cancelling only stops the task between files, and the current one can take minutes.
         So report what's been solved now, and stay alive, hidden, until the task ends: that's
-        when the last result arrives and when the solve lock can really be released."""
+        when the last result arrives and when the library write lock can really be released."""
         if self._task is None:
             super().closeEvent(event)
             return

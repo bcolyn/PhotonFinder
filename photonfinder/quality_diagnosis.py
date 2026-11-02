@@ -285,9 +285,12 @@ def load_scope(context: ApplicationContext, criteria: SearchCriteria,
                           selected_lights=len(scope_ids) if selected_file_ids else 0)
 
 
+SAVING_DIAGNOSIS = "Saving diagnosis"
+
+
 def save_diagnoses(context: ApplicationContext, verdicts: dict[int, Optional[str]]) -> bool:
     """Store the verdicts. Returns False, writing nothing, if another writer holds the library."""
-    if not context.library_write_lock.acquire(blocking=False):
+    if not context.library_write_lock.acquire(blocking=False, holder=SAVING_DIAGNOSIS):
         return False
     try:
         by_verdict: dict[Optional[str], list[int]] = {}

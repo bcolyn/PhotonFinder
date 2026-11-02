@@ -91,8 +91,8 @@ def file_context(tmp_path):
 
 
 def test_compression_does_not_start_while_a_scan_holds_the_library(qtbot, file_context, tmp_path, monkeypatch):
-    """Ticket 28: one library writer at a time. Start is refused while a scan holds the write
-    lock, and a finished compression run releases it."""
+    """Tickets 28 and 29: one library writer at a time. Start is disabled and refused while a
+    scan holds the write lock, and a finished compression run releases it."""
     from photonfinder.ui import CompressFilesDialog as dialog_module
     context = file_context
     root = LibraryRoot.create(name="Main", path=str(tmp_path).replace("\\", "/") + "/")
@@ -104,11 +104,16 @@ def test_compression_does_not_start_while_a_scan_holds_the_library(qtbot, file_c
     dialog = dialog_module.CompressFilesDialog(context, files=[file], search_criteria=None)
     qtbot.addWidget(dialog)
 
-    assert context.library_write_lock.acquire(blocking=False)  # a scan is running
-    dialog.start_button.click()
+    assert dialog.start_button.isEnabled()
+    assert context.library_write_lock.acquire(blocking=False, holder="Library scan")  # a scan is running
+    assert not dialog.start_button.isEnabled()
+    assert dialog.start_button.toolTip() == ("Library scan is writing to this library. "
+                                             "Try again when it has finished.")
+    dialog._start()  # as if clicked before the button caught up
     assert shown == ["Library Busy"]
     assert sorted(p.name for p in tmp_path.glob("light.fits*")) == ["light.fits"]
     context.library_write_lock.release()
+    assert dialog.start_button.isEnabled()
 
     with qtbot.waitSignal(dialog.compression_complete, timeout=10_000):
         dialog.start_button.click()
