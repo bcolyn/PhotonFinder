@@ -385,6 +385,7 @@ class FileProcessingTask(ProgressBackgroundTask):
                     if self.cancelled:
                         break
                     self._process_file(file, i)
+                    self.progress.emit(i + 1)  # files done, so the last one fills the bar
             else:
                 with self.context.database.bind_ctx([File, Image]):
                     # A list, as iterating lazily holds a read snapshot open: once anything else
@@ -396,6 +397,7 @@ class FileProcessingTask(ProgressBackgroundTask):
                         if self.cancelled:
                             break
                         self._process_file(file, i)
+                        self.progress.emit(i + 1)  # files done, so the last one fills the bar
 
             self.finished.emit()
         except Exception as e:
@@ -412,7 +414,7 @@ class FileProcessingTask(ProgressBackgroundTask):
         return query
 
     def _process_file(self, file, index):
-        self.progress.emit(index)
+        """Process one file. The loop reports progress once it returns."""
 
     def _open_output(self, path: str, **kwargs):
         """Open the task's output file for writing, or emit error and return None. Tasks open it
@@ -485,6 +487,7 @@ class PlateSolveTask(FileProcessingTask):
                     if self.cancelled:
                         break
                     self._process_file(file, i)
+                    self.progress.emit(i + 1)  # files done, so the last one fills the bar
             else:
                 with self.context.database.bind_ctx([File, Image]):
                     # A list, as iterating lazily holds a read snapshot open: once anything else
@@ -496,6 +499,7 @@ class PlateSolveTask(FileProcessingTask):
                         if self.cancelled:
                             break
                         self._process_file(file, i)
+                        self.progress.emit(i + 1)  # files done, so the last one fills the bar
             solved = len(self.solved_files)
             self.message.emit("")
             if self.total == 0:
@@ -607,7 +611,6 @@ class FileListTask(FileProcessingTask):
     def _process_file(self, file, index):
         self.message.emit(f"Processing file {index + 1}/{self.total}:\n {file.full_filename()}")
         self.fd.write(f"{str(Path(file.full_filename()))}\n")
-        self.progress.emit(index)
 
 
 class ImageAnalysisTask(FileProcessingTask):
