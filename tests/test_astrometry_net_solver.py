@@ -7,8 +7,11 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from photonfinder.platesolver import AstrometryNetSolver, SolverCancelled, _CancellableAstrometryNet
+from photonfinder.models import File, Image, LibraryRoot
+from photonfinder.platesolver import AstrometryNetSolver, SolverCancelled, SolverFailure, _CancellableAstrometryNet
+from photonfinder.solve_service import solve_file
 from tests.conftest import fixed_solution_header
+from tests.test_solve_service import FakeSolver
 
 
 class Response:
@@ -95,6 +98,52 @@ def test_a_cancel_stops_polling_and_abandons_the_job(image_file, nova):
     assert time.monotonic() - cancelled_at[0] < 0.5  # well within one poll interval
     assert all(when <= cancelled_at[0] for when, _ in fake.requests)  # nothing sent after it
     assert time.monotonic() - started < 5
+
+
+def test_a_failed_job_is_a_solver_failure(image_file, nova):
+    nova(polls_before_result=1, result="failure")
+
+    with pytest.raises(SolverFailure, match="could not solve frame.fits"):
+        _solve(image_file)
+
+
+def test_a_job_that_runs_too_long_is_a_solver_failure(image_file, nova, monkeypatch):
+    nova()  # never finishes
+    monkeypatch.setattr(AstrometryNetSolver, "SOLVE_TIMEOUT_SECONDS", 1)
+
+    with pytest.raises(SolverFailure, match="timed out after 1s"):
+        _solve(image_file)
+
+
+class TestThroughTheSolveService:
+    @pytest.fixture
+    def file(self, context, image_file):
+        root = LibraryRoot.create(name="r", path=str(image_file.parent).replace("\\", "/") + "/")
+        file = File.create(root=root, path="", name=image_file.name, size=1, mtime_millis=1)
+        file.image = Image.create(file=file, image_type="LIGHT")
+        return file
+
+    @pytest.mark.parametrize("unsolved", [
+        dict(polls_before_result=1, result="failure"),
+        dict(),  # never finishes, so it times out
+    ], ids=["failed_job", "timeout"])
+    def test_an_unsolved_job_falls_back_to_the_backup(self, file, nova, monkeypatch, unsolved):
+        nova(**unsolved)
+        monkeypatch.setattr(AstrometryNetSolver, "SOLVE_TIMEOUT_SECONDS", 1)
+        backup = FakeSolver()
+
+        outcome = solve_file(file, AstrometryNetSolver("key"), backup_solver=backup)
+
+        assert outcome.success
+        assert backup.solved == ["frame.fits"]
+
+    def test_without_a_backup_the_failure_is_reported(self, file, nova):
+        nova(polls_before_result=1, result="failure")
+
+        outcome = solve_file(file, AstrometryNetSolver("key"))
+
+        assert not outcome.success
+        assert "Astrometry.net could not solve frame.fits" in outcome.error
 
 
 def test_without_a_cancel_the_solution_is_returned(image_file, nova):

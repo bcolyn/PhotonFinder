@@ -425,9 +425,9 @@ class AstrometryNetSolver(SolverBase):
         self.ast.cancelled = cancelled or _never_cancelled
         temp_image = self._create_temp_fits(image_path, file_wcs)
         if self.force_image_upload:
-            wcs_header: Header = self.ast.solve_from_image(
-                temp_image, verbose=False, crpix_center=True, solve_timeout=5 * 60,
-            )
+            wcs_header = self._submit(image_path, lambda: self.ast.solve_from_image(
+                temp_image, verbose=False, crpix_center=True, solve_timeout=self.SOLVE_TIMEOUT_SECONDS,
+            ))
             original_header = fits.getheader(temp_image)
             result = extract_wcs_cards(wcs_header)
             result['NAXIS1'] = original_header['NAXIS1']
@@ -436,14 +436,29 @@ class AstrometryNetSolver(SolverBase):
             x, y, _flux, width, height = extract_sources(temp_image)
             if len(x) == 0:
                 raise SolverError(f"No sources detected in {image_path.name}")
-            wcs_header = self.ast.solve_from_source_list(
+            wcs_header = self._submit(image_path, lambda: self.ast.solve_from_source_list(
                 x, y, width, height,
-                verbose=False, crpix_center=True, solve_timeout=5 * 60,
-            )
+                verbose=False, crpix_center=True, solve_timeout=self.SOLVE_TIMEOUT_SECONDS,
+            ))
             result = extract_wcs_cards(wcs_header)
             result['NAXIS1'] = width
             result['NAXIS2'] = height
         return result
+
+    SOLVE_TIMEOUT_SECONDS = 5 * 60
+
+    def _submit(self, image_path: Path, submit: typing.Callable[[], Header]) -> Header:
+        """Run an astroquery submission. Its two ways of not solving, an empty result when
+        the job fails and a TimeoutError when it runs too long, become SolverFailure, so the
+        backup solver gets its turn."""
+        try:
+            wcs_header = submit()
+        except AstroqueryTimeoutError:
+            raise SolverFailure(f"Astrometry.net timed out after {self.SOLVE_TIMEOUT_SECONDS}s "
+                                f"on {image_path.name}", None) from None
+        if not isinstance(wcs_header, Header):
+            raise SolverFailure(f"Astrometry.net could not solve {image_path.name}", None)
+        return wcs_header
 
 
 def _to_wsl_path(path: Path, distro: str = "") -> str:
