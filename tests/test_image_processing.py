@@ -99,3 +99,82 @@ def test_is_linear_rgb_shape():
 def test_is_linear_all_zeros():
     data = np.zeros((100, 100), dtype=np.uint16)
     assert is_linear(data)
+
+
+# ---------------------------------------------------------------------------
+# normalize_to_uint16 / loading: every supported pixel layout is visible
+# ---------------------------------------------------------------------------
+
+from photonfinder.image_processing import (  # noqa: E402
+    normalize_to_uint16, detect_image_type, load_image_data, image_cache,
+    stretch_uint16_to_uint8,
+)
+
+
+def test_normalize_float_with_nan_uses_the_other_pixels():
+    data = np.full((8, 8), 0.5, dtype=np.float32)
+    data[0, 0] = np.nan
+    out = normalize_to_uint16(data, {'BITPIX': -32})
+    assert out[0, 0] == 0
+    assert abs(int(out[1, 1]) - 0.5 * 65535) <= 1
+
+
+def test_normalize_float_beyond_unit_range_with_nan():
+    data = np.linspace(0, 40000, 64, dtype=np.float32).reshape(8, 8)
+    data[0, 0] = np.nan
+    out = normalize_to_uint16(data, {'BITPIX': -32})
+    assert out[0, 0] == 0
+    assert out.max() == 65535
+
+
+def test_normalize_signed_int32_uses_its_range():
+    data = np.zeros((8, 8), dtype=np.int32)
+    data[4, 4] = 30000
+    out = normalize_to_uint16(data, {'BITPIX': 32})
+    assert out[4, 4] == 65535
+    assert out[0, 0] == 0
+
+
+def test_normalize_signed_int32_with_negative_values():
+    data = np.array([[-1000, 0], [1000, 3000]], dtype=np.int32)
+    out = normalize_to_uint16(data, {'BITPIX': 32})
+    assert out[0, 0] == 0
+    assert out[1, 1] == 65535
+    assert out[0, 0] < out[0, 1] < out[1, 0] < out[1, 1]
+
+
+def test_normalize_uint8_without_bitpix_uses_8_bits():
+    """XISF headers carry no BITPIX: the dtype, not the 16-bit default, sets the scale."""
+    data = np.array([[0, 128], [200, 255]], dtype=np.uint8)
+    out = normalize_to_uint16(data, {})
+    assert out[1, 1] == 65535
+    assert out[0, 1] == 128 * 257
+
+
+def test_normalize_uint8_of_only_zeros_and_ones_is_not_treated_as_unit_float():
+    data = np.array([[0, 1], [1, 0]], dtype=np.uint8)
+    out = normalize_to_uint16(data, {})
+    assert out.max() == 257
+
+
+def test_normalize_uint32_without_bitpix_does_not_clip():
+    data = np.array([[0, 2 ** 31], [3 * 2 ** 30, 2 ** 32 - 1]], dtype=np.uint32)
+    out = normalize_to_uint16(data, {})
+    assert out[1, 1] == 65535
+    assert 32000 < out[0, 1] < 33000
+    assert out[0, 1] < out[1, 0] < out[1, 1]
+
+
+def test_fits_with_a_single_plane_cube_loads_as_mono(tmp_path):
+    from astropy.io import fits
+    path = tmp_path / "cube.fits"
+    fits.PrimaryHDU(np.arange(64, dtype=np.uint16).reshape(1, 8, 8)).writeto(path)
+    image_cache.clear()
+    try:
+        data, header = load_image_data(path)
+    finally:
+        image_cache.clear()
+    assert data.shape == (8, 8)
+    norm = normalize_to_uint16(data, header)
+    assert detect_image_type(norm, header) == 'mono'
+    assert stretch_uint16_to_uint8(norm, 0.25, 2.8, False).shape == (8, 8)

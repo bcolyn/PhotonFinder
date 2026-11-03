@@ -127,6 +127,10 @@ def load_image_data(filename: str | Path) -> tuple[np.ndarray, dict]:
         result = _load_xisf(filename)
     else:
         result = _load_fits(filename)
+    data, header = result
+    if data.ndim == 3 and data.shape[0] == 1:
+        # A single-plane cube (FITS NAXIS3 = 1, or a one-channel XISF) is monochrome.
+        result = data.squeeze(0), header
     image_cache.put(filename, *result)
     return result
 
@@ -192,8 +196,6 @@ def _load_xisf(filename: str) -> tuple[np.ndarray, dict]:
         if exc.args == ('value',):
             raise ValueError("Image format not supported (XISF embedded data block)") from exc
         raise
-    if data.ndim == 3 and data.shape[0] == 1:
-        data = data.squeeze(0)  # (1, H, W) monochrome → (H, W)
     fits_keywords = metadata_list[0].get('FITSKeywords', {})
     header = {}
     for key, entries in fits_keywords.items():
@@ -211,6 +213,11 @@ def normalize_to_uint16(data: np.ndarray, header: dict) -> np.ndarray:
 
     Fast path: uint16 input with no PEDESTAL is returned as-is (zero-copy).
     All other cases go through a float32 intermediate for correct scaling.
+
+    Floats: NaN pixels become 0 and the range ignores them. Data within [0, 1] is scaled from
+    that range; other float data by its maximum (BITPIX -32/-64) or the BITPIX range.
+    Integers: unsigned and 8/16-bit signed data use the full range of their dtype, which also
+    covers XISF, whose headers carry no BITPIX. 32/64-bit signed data uses its actual range.
     """
     pedestal = float(header.get('PEDESTAL', 0))
 
@@ -221,18 +228,24 @@ def normalize_to_uint16(data: np.ndarray, header: dict) -> np.ndarray:
     if pedestal != 0.0:
         f -= pedestal
 
-    if float(f.max()) <= 1.0 and float(f.min()) >= 0.0:
-        return (np.clip(f, 0.0, 1.0) * 65535.0).astype(np.uint16)
-
-    bitpix = abs(int(header.get('BITPIX', 16)))
-    bzero  = float(header.get('BZERO', 0))
-
-    if data.dtype.kind == 'f' and bitpix in (32, 64):
-        max_val = float(f.max())
-    elif bzero == 32768.0 and bitpix == 16:
-        max_val = 65535.0
+    kind = data.dtype.kind
+    if kind == 'f':
+        finite = np.isfinite(f)
+        if not finite.all():
+            if not finite.any():
+                return np.zeros(f.shape, dtype=np.uint16)
+            f[~finite] = 0.0
+        lo, hi = float(f.min()), float(f.max())
+        if lo >= 0.0 and hi <= 1.0:
+            return (f * 65535.0).astype(np.uint16)
+        bitpix = abs(int(header.get('BITPIX', 16)))
+        max_val = hi if bitpix in (32, 64) else float(2 ** bitpix - 1)
+    elif kind == 'i' and data.dtype.itemsize >= 4:
+        lo, hi = min(float(f.min()), 0.0), float(f.max())
+        f -= lo
+        max_val = hi - lo
     else:
-        max_val = float(2 ** bitpix - 1)
+        max_val = float(2 ** (data.dtype.itemsize * 8) - 1)
 
     if max_val > 0:
         f *= (65535.0 / max_val)
