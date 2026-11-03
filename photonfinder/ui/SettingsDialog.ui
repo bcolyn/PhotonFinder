@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>673</width>
-    <height>681</height>
+    <width>600</width>
+    <height>420</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -24,400 +24,456 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
    <item>
-    <widget class="QGroupBox" name="groupBox">
-     <property name="minimumSize">
-      <size>
-       <width>0</width>
-       <height>20</height>
-      </size>
+    <widget class="QTabWidget" name="tab_widget">
+     <property name="currentIndex">
+      <number>0</number>
      </property>
-     <property name="title">
-      <string>File Management</string>
-     </property>
-     <layout class="QVBoxLayout" name="verticalLayout">
-      <item>
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>Ignore Files matching:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="file_ignore_edit"/>
-      </item>
-      <item>
-       <widget class="QLabel" name="label_2">
-        <property name="text">
-         <string>Ignore Folders matching:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="folder_ignore_edit"/>
-      </item>
-      <item>
-       <widget class="QLabel" name="label_3">
-        <property name="text">
-         <string>Multiple patterns can be separated by '|', all matching is case insensitive.</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
+     <widget class="QWidget" name="general_tab">
+      <attribute name="title">
+       <string>General</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="general_layout">
+       <item>
+        <widget class="QGroupBox" name="groupBox">
+         <property name="title">
+          <string>File Management</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout">
+          <item>
+           <widget class="QLabel" name="label">
+            <property name="text">
+             <string>Ignore Files matching:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="file_ignore_edit"/>
+          </item>
+          <item>
+           <widget class="QLabel" name="label_2">
+            <property name="text">
+             <string>Ignore Folders matching:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="folder_ignore_edit"/>
+          </item>
+          <item>
+           <widget class="QLabel" name="label_3">
+            <property name="text">
+             <string>Multiple patterns can be separated by '|', all matching is case insensitive.</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="viewer_group">
+         <property name="title">
+          <string>Image Viewer</string>
+         </property>
+         <layout class="QVBoxLayout" name="viewer_layout">
+          <item>
+           <widget class="QCheckBox" name="internal_viewer_check">
+            <property name="text">
+             <string>Use internal image viewer when double-clicking a file</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="observatory_group">
+         <property name="title">
+          <string>Observatory</string>
+         </property>
+         <layout class="QVBoxLayout" name="observatory_layout">
+          <item>
+           <widget class="QLabel" name="obs_tz_label">
+            <property name="text">
+             <string>Timezone:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="obs_timezone_edit">
+            <property name="toolTip">
+             <string>IANA timezone name used to map UTC capture times to local observing nights (e.g. Europe/Brussels). Leave blank to use the system timezone.</string>
+            </property>
+            <property name="placeholderText">
+             <string>e.g. Europe/Brussels — leave blank for system default</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="general_spacer">
+         <property name="orientation">
+          <enum>Qt::Orientation::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>0</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="platesolver_tab">
+      <attribute name="title">
+       <string>Plate Solving</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="platesolver_layout">
+       <item>
+        <layout class="QHBoxLayout" name="astap_layout">
+         <item>
+          <widget class="QLabel" name="astap_label">
+           <property name="text">
+            <string>ASTAP Path:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="astap_path_edit">
+           <property name="toolTip">
+            <string>Path to the ASTAP executable</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="astap_browse_button">
+           <property name="text">
+            <string>Browse...</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="Line" name="line">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="astrometry_layout">
+         <item>
+          <widget class="QLabel" name="astrometry_label">
+           <property name="text">
+            <string>Astrometry.net API Key:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="astrometry_api_key_edit">
+           <property name="toolTip">
+            <string>API key for astrometry.net</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QVBoxLayout" name="verticalLayout_3">
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QCheckBox" name="astrometry_image_upload_check">
+           <property name="text">
+            <string>Astrometry.net: force upload as image</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_6">
+           <property name="text">
+            <string>By default PhotonFinder extracts star positions locally and submits those. Enable this to upload the full image and let the server run its own source extraction instead.</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="Line" name="line_wsl">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="wsl_hint_label">
+         <property name="text">
+          <string>solve-field is the engine of ANSVR, All Sky Plate Solver or can be installed under the Windows Subsystem for Linux</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="solve_field_path_layout">
+         <item>
+          <widget class="QLabel" name="solve_field_path_label">
+           <property name="text">
+            <string>solve-field Path:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="solve_field_path_edit">
+           <property name="toolTip">
+            <string>Path to solve-field executable (Cygwin). Leave empty to use WSL.</string>
+           </property>
+           <property name="placeholderText">
+            <string>Leave empty to use WSL</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="solve_field_browse_button">
+           <property name="text">
+            <string>Browse...</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="wsl_distro_layout">
+         <item>
+          <widget class="QLabel" name="wsl_distro_label">
+           <property name="text">
+            <string>WSL Distro:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="wsl_distro_edit">
+           <property name="toolTip">
+            <string>WSL distribution name to use for solve-field. Leave empty to use the default WSL distro.</string>
+           </property>
+           <property name="placeholderText">
+            <string>Leave empty for default WSL distro</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="wsl_timeout_layout">
+         <item>
+          <widget class="QLabel" name="wsl_timeout_label">
+           <property name="text">
+            <string>solve-field CPU time limit (seconds):</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="wsl_timeout_spin">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="toolTip">
+            <string>Maximum CPU seconds solve-field may spend per image</string>
+           </property>
+           <property name="minimum">
+            <number>10</number>
+           </property>
+           <property name="maximum">
+            <number>600</number>
+           </property>
+           <property name="value">
+            <number>120</number>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <spacer name="platesolver_spacer">
+         <property name="orientation">
+          <enum>Qt::Orientation::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>0</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="telescopius_tab">
+      <attribute name="title">
+       <string>Telescopius</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="telescopius_layout">
+       <item>
+        <layout class="QHBoxLayout" name="telescopius_key_layout">
+         <item>
+          <widget class="QLabel" name="telescopius_key_label">
+           <property name="text">
+            <string>API Key:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="telescopius_api_key_edit">
+           <property name="toolTip">
+            <string>API key for the Telescopius API, used to fetch your observing lists</string>
+           </property>
+           <property name="echoMode">
+            <enum>QLineEdit::EchoMode::PasswordEchoOnEdit</enum>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QLabel" name="telescopius_hint_label">
+         <property name="text">
+          <string>Request an API key from Telescopius at &lt;a href=&quot;https://telescopius.com/settings/api-keys&quot;&gt;telescopius.com/settings/api-keys&lt;/a&gt;.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+         <property name="openExternalLinks">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="telescopius_spacer">
+         <property name="orientation">
+          <enum>Qt::Orientation::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>0</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="mcp_tab">
+      <attribute name="title">
+       <string>MCP Server</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="mcp_layout">
+       <item>
+        <widget class="QLabel" name="mcp_hint_label">
+         <property name="text">
+          <string>AI agents reach the library through photonfinder-mcp, which your MCP client starts on demand -- PhotonFinder itself does not need to be running. See docs/mcp.md for how to configure your client.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="mcp_port_layout">
+         <item>
+          <widget class="QLabel" name="mcp_port_label">
+           <property name="text">
+            <string>HTTP port:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="mcp_port_spin">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="toolTip">
+            <string>TCP port the MCP server listens on (loopback only)</string>
+           </property>
+           <property name="minimum">
+            <number>1024</number>
+           </property>
+           <property name="maximum">
+            <number>65535</number>
+           </property>
+           <property name="value">
+            <number>8765</number>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QLabel" name="mcp_port_hint_label">
+         <property name="text">
+          <string>MCP clients that connect over HTTP can use http://127.0.0.1:&lt;port&gt;/mcp directly while PhotonFinder is running. If the port is in use, an automatic one is chosen instead (see the log); photonfinder-mcp is not affected. Changes apply after restarting the application.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="line_mcp">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="mcp_allow_plate_solve_check">
+         <property name="text">
+          <string>Allow AI agents to trigger plate solving</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="mcp_plate_solve_hint_label">
+         <property name="text">
+          <string>Lets a connected AI agent run the plate-solving executables configured on the Plate Solving tab and write the resulting WCS/coordinates to the library. Off by default; every other MCP tool is read-only.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="mcp_spacer">
+         <property name="orientation">
+          <enum>Qt::Orientation::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>0</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
     </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="platesolver_group">
-     <property name="title">
-      <string>Plate Solving Settings</string>
-     </property>
-     <layout class="QVBoxLayout" name="platesolver_layout">
-      <item>
-       <layout class="QHBoxLayout" name="astap_layout">
-        <item>
-         <widget class="QLabel" name="astap_label">
-          <property name="text">
-           <string>ASTAP Path:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="astap_path_edit">
-          <property name="toolTip">
-           <string>Path to the ASTAP executable</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="astap_browse_button">
-          <property name="text">
-           <string>Browse...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <widget class="Line" name="line">
-        <property name="orientation">
-         <enum>Qt::Orientation::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="astrometry_layout">
-        <item>
-         <widget class="QLabel" name="astrometry_label">
-          <property name="text">
-           <string>Astrometry.net API Key:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="astrometry_api_key_edit">
-          <property name="toolTip">
-           <string>API key for astrometry.net</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QVBoxLayout" name="verticalLayout_3">
-        <property name="topMargin">
-         <number>0</number>
-        </property>
-        <item>
-         <widget class="QCheckBox" name="astrometry_image_upload_check">
-          <property name="text">
-           <string>Astrometry.net: force upload as image</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_6">
-          <property name="text">
-           <string>By default PhotonFinder extracts star positions locally and submits those. Enable this to upload the full image and let the server run its own source extraction instead.</string>
-          </property>
-          <property name="wordWrap">
-           <bool>true</bool>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <widget class="Line" name="line_wsl">
-        <property name="orientation">
-         <enum>Qt::Orientation::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="wsl_hint_label">
-        <property name="text">
-         <string>solve-field is the engine of ANSVR, All Sky Plate Solver or can be installed under the Windows Subsystem for Linux</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="solve_field_path_layout">
-        <item>
-         <widget class="QLabel" name="solve_field_path_label">
-          <property name="text">
-           <string>solve-field Path:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="solve_field_path_edit">
-          <property name="toolTip">
-           <string>Path to solve-field executable (Cygwin). Leave empty to use WSL.</string>
-          </property>
-          <property name="placeholderText">
-           <string>Leave empty to use WSL</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="solve_field_browse_button">
-          <property name="text">
-           <string>Browse...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="wsl_distro_layout">
-        <item>
-         <widget class="QLabel" name="wsl_distro_label">
-          <property name="text">
-           <string>WSL Distro:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="wsl_distro_edit">
-          <property name="toolTip">
-           <string>WSL distribution name to use for solve-field. Leave empty to use the default WSL distro.</string>
-          </property>
-          <property name="placeholderText">
-           <string>Leave empty for default WSL distro</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="wsl_timeout_layout">
-        <item>
-         <widget class="QLabel" name="wsl_timeout_label">
-          <property name="text">
-           <string>solve-field CPU time limit (seconds):</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="wsl_timeout_spin">
-          <property name="toolTip">
-           <string>Maximum CPU seconds solve-field may spend per image</string>
-          </property>
-          <property name="minimum">
-           <number>10</number>
-          </property>
-          <property name="maximum">
-           <number>600</number>
-          </property>
-          <property name="value">
-           <number>120</number>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="viewer_group">
-     <property name="title">
-      <string>Image Viewer</string>
-     </property>
-     <layout class="QVBoxLayout" name="viewer_layout">
-      <item>
-       <widget class="QCheckBox" name="internal_viewer_check">
-        <property name="text">
-         <string>Use internal image viewer when double-clicking a file</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="observatory_group">
-     <property name="title">
-      <string>Observatory</string>
-     </property>
-     <layout class="QVBoxLayout" name="observatory_layout">
-      <item>
-       <widget class="QLabel" name="obs_tz_label">
-        <property name="text">
-         <string>Timezone:</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLineEdit" name="obs_timezone_edit">
-        <property name="toolTip">
-         <string>IANA timezone name used to map UTC capture times to local observing nights (e.g. Europe/Brussels). Leave blank to use the system timezone.</string>
-        </property>
-        <property name="placeholderText">
-         <string>e.g. Europe/Brussels — leave blank for system default</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="telescopius_group">
-     <property name="title">
-      <string>Telescopius</string>
-     </property>
-     <layout class="QVBoxLayout" name="telescopius_layout">
-      <item>
-       <layout class="QHBoxLayout" name="telescopius_key_layout">
-        <item>
-         <widget class="QLabel" name="telescopius_key_label">
-          <property name="text">
-           <string>API Key:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="telescopius_api_key_edit">
-          <property name="toolTip">
-           <string>API key for the Telescopius API, used to fetch your observing lists</string>
-          </property>
-          <property name="echoMode">
-           <enum>QLineEdit::EchoMode::PasswordEchoOnEdit</enum>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <widget class="QLabel" name="telescopius_hint_label">
-        <property name="text">
-         <string>Request an API key from Telescopius at &lt;a href=&quot;https://telescopius.com/settings/api-keys&quot;&gt;telescopius.com/settings/api-keys&lt;/a&gt;.</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-        <property name="openExternalLinks">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="mcp_group">
-     <property name="title">
-      <string>MCP Server (AI agent access)</string>
-     </property>
-     <layout class="QVBoxLayout" name="mcp_layout">
-      <item>
-       <widget class="QLabel" name="mcp_hint_label">
-        <property name="text">
-         <string>AI agents reach the library through photonfinder-mcp, which your MCP client starts on demand -- PhotonFinder itself does not need to be running. See docs/mcp.md for how to configure your client.</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="mcp_port_layout">
-        <item>
-         <widget class="QLabel" name="mcp_port_label">
-          <property name="text">
-           <string>HTTP port:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSpinBox" name="mcp_port_spin">
-          <property name="toolTip">
-           <string>TCP port the MCP server listens on (loopback only)</string>
-          </property>
-          <property name="minimum">
-           <number>1024</number>
-          </property>
-          <property name="maximum">
-           <number>65535</number>
-          </property>
-          <property name="value">
-           <number>8765</number>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <widget class="QLabel" name="mcp_port_hint_label">
-        <property name="text">
-         <string>MCP clients that connect over HTTP can use http://127.0.0.1:&lt;port&gt;/mcp directly while PhotonFinder is running. If the port is in use, an automatic one is chosen instead (see the log); photonfinder-mcp is not affected. Changes apply after restarting the application.</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Line" name="line_mcp">
-        <property name="orientation">
-         <enum>Qt::Orientation::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="mcp_allow_plate_solve_check">
-        <property name="text">
-         <string>Allow AI agents to trigger plate solving</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="mcp_plate_solve_hint_label">
-        <property name="text">
-         <string>Lets a connected AI agent run the plate-solving executables configured above and write the resulting WCS/coordinates to the library. Off by default; every other MCP tool is read-only.</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>10</height>
-      </size>
-     </property>
-    </spacer>
    </item>
    <item>
     <widget class="QDialogButtonBox" name="buttonBox">

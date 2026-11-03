@@ -152,7 +152,7 @@ Add `-d <name>` after `wsl` to use a distribution that isn't your default, for e
 
 ## 5. Set up PhotonFinder
 
-Open **File → Settings** and find **Plate Solving Settings**:
+Open **File → Settings** and go to the **Plate Solving** tab:
 
 - **solve-field Path:** leave it **empty**. Empty means "use WSL". A path here is only for the
   Windows (Cygwin) builds of solve-field that come with ANSVR or All Sky Plate Solver.
