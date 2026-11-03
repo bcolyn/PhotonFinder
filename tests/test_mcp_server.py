@@ -27,7 +27,7 @@ class _FakeSolver(SolverBase):
     def solver_type(self):
         return SolverType.ASTAP
 
-    def solve(self, image_path, image=None, hint=None, output_callback=None, file_wcs=None):
+    def solve(self, image_path, image=None, hint=None, output_callback=None, file_wcs=None, cancelled=None):
         if self._error:
             raise self._error
         return self._header.copy()

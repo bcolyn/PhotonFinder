@@ -533,9 +533,9 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.close_button.setText("Close")
 
     def closeEvent(self, event):
-        """Cancelling only stops the task between files, and the current one can take minutes.
-        So report what's been solved now, and stay alive, hidden, until the task ends: that's
-        when the last result arrives and when the library write lock can really be released."""
+        """Cancelling stops the running solver within a few seconds, not at once. So report
+        what's been solved now, and stay alive, hidden, until the task ends: that's when the
+        last result arrives and when the library write lock can really be released."""
         if self._task is None:
             super().closeEvent(event)
             return

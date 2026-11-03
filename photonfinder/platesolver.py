@@ -17,7 +17,9 @@ from astropy.io.fits import Header
 from astropy.wcs import WCS
 from PIL import Image
 import numpy as np
-from astroquery.astrometry_net import AstrometryNet
+from astroquery.astrometry_net.core import AstrometryNetClass
+from astroquery.exceptions import TimeoutError as AstroqueryTimeoutError
+from astroquery.utils import url_helpers
 from xisf import XISF
 
 from photonfinder.core import get_default_astap_path, decompress, hp
@@ -100,8 +102,10 @@ class SolverBase(metaclass=ABCMeta):
 
     @abstractmethod
     def solve(self, image_path, image=None, hint: SolverHint = None,
-              output_callback: typing.Callable[[str], None] = None, file_wcs=None):
-        pass
+              output_callback: typing.Callable[[str], None] = None, file_wcs=None,
+              cancelled: typing.Callable[[], bool] = None):
+        """Solve one image. ``cancelled`` is polled while the solver runs; once it returns
+        True the run is stopped and :class:`SolverCancelled` is raised."""
 
     @staticmethod
     def _merge_wcs_into_header(header: Header, file_wcs) -> None:
@@ -157,6 +161,32 @@ class SolverBase(metaclass=ABCMeta):
 
 
 ASTAP_TIMEOUT_SECONDS = 600  # far above a normal solve, which takes seconds even when blind
+_CANCEL_POLL_SECONDS = 0.25
+
+
+def _never_cancelled() -> bool:
+    return False
+
+
+def _wait_or_kill(proc: subprocess.Popen, timeout: float, cancelled: typing.Callable[[], bool]) -> str | None:
+    """Wait for ``proc`` to exit. Returns None when it did, else "timeout" or "cancelled"
+    once the process has been killed and has exited, so its files are no longer in use."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            proc.wait(timeout=min(_CANCEL_POLL_SECONDS, max(deadline - time.monotonic(), 0)))
+            return None
+        except subprocess.TimeoutExpired:
+            pass
+        if cancelled():
+            reason = "cancelled"
+        elif time.monotonic() >= deadline:
+            reason = "timeout"
+        else:
+            continue
+        proc.kill()
+        proc.wait()
+        return reason
 
 
 class ASTAPSolver(SolverBase):
@@ -174,7 +204,8 @@ class ASTAPSolver(SolverBase):
         self._log = True
         self._timeout = timeout
 
-    def _solve(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None) -> Header:
+    def _solve(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None,
+               cancelled: typing.Callable[[], bool] = _never_cancelled) -> Header:
 
         wcs = tmp_image_file.with_suffix(".wcs")
         ini = tmp_image_file.with_suffix(".ini")
@@ -183,7 +214,7 @@ class ASTAPSolver(SolverBase):
         for previous_output in (wcs, ini, log):
             previous_output.unlink(missing_ok=True)
 
-        returncode = self._run_astap(tmp_image_file, hint)
+        returncode = self._run_astap(tmp_image_file, hint, cancelled)
 
         # Only ASTAP's own output counts. The image header can't say: a file that was solved
         # before keeps its old solution there when this run fails.
@@ -199,8 +230,10 @@ class ASTAPSolver(SolverBase):
 
         return result_header
 
-    def _run_astap(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None) -> int:
-        """Execute ASTAP with the given parameters and return its exit code."""
+    def _run_astap(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None,
+                   cancelled: typing.Callable[[], bool] = _never_cancelled) -> int:
+        """Execute ASTAP with the given parameters and return its exit code. Its output goes
+        to the files it writes next to the image, so stdout and stderr are discarded."""
         params = [self._exe, "-f", str(tmp_image_file), "-update", "-platesolve"]
         options = {"--speed": "slow", "-z": "1"}
         if hint is not None:
@@ -209,19 +242,22 @@ class ASTAPSolver(SolverBase):
         if self._log:
             params.append("-log")
 
-        try:
-            result = subprocess.run(params, capture_output=True, text=True, errors="replace", timeout=self._timeout,
-                                    check=False)
-        except subprocess.TimeoutExpired:
-            raise SolverFailure(f"ASTAP timed out after {self._timeout}s on {tmp_image_file.name}", None) from None
-        return result.returncode
+        proc = subprocess.Popen(params, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+        stopped = _wait_or_kill(proc, self._timeout, cancelled)
+        if stopped == "cancelled":
+            raise SolverCancelled(f"ASTAP stopped on {tmp_image_file.name}")
+        if stopped == "timeout":
+            raise SolverFailure(f"ASTAP timed out after {self._timeout}s on {tmp_image_file.name}", None)
+        return proc.returncode
 
     @staticmethod
     def is_pre_solved(header):
         return ASTAPSolver.keep_headers.issubset(header.keys()) and has_valid_scale(header)
 
     def solve(self, image_path: Path, image=None, hint: SolverHint = None,
-              output_callback: typing.Callable[[str], None] = None, file_wcs=None) -> Header:
+              output_callback: typing.Callable[[str], None] = None, file_wcs=None,
+              cancelled: typing.Callable[[], bool] = None) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self._exe:
@@ -258,7 +294,7 @@ class ASTAPSolver(SolverBase):
         user_override_position = hint and hint.mode == 'override' and hint.ra is not None
         astap_hint.setdefault('-r', '30' if (file_has_position or user_override_position) else '180')
 
-        return self._solve(temp_image, astap_hint)
+        return self._solve(temp_image, astap_hint, cancelled or _never_cancelled)
 
     @staticmethod
     def create_hint(ra, dec, fov=None) -> typing.Dict[str, str]:
@@ -312,6 +348,58 @@ class ASTAPSolver(SolverBase):
         raise SolverFailure(f"ASTAP gave no result for {image_file.name} (exit code {returncode})", log)
 
 
+class _CancellableAstrometryNet(AstrometryNetClass):
+    """astroquery's client, polling the submission itself so that it can stop between polls.
+
+    astroquery's ``solve_from_*`` upload the job and then call ``monitor_submission``, which
+    polls until the job ends. This replaces that loop with one that also checks ``cancelled``.
+    A cancelled job is abandoned: nova.astrometry.net has no way to cancel one, so nothing
+    more is sent for it."""
+
+    POLL_SECONDS = 1.0
+
+    def __init__(self):
+        super().__init__()
+        self.cancelled: typing.Callable[[], bool] = _never_cancelled
+
+    def _sleep_unless_cancelled(self, seconds: float):
+        end = time.monotonic() + seconds
+        while (left := end - time.monotonic()) > 0:
+            if self.cancelled():
+                raise SolverCancelled("Astrometry.net job abandoned")
+            time.sleep(min(left, _CANCEL_POLL_SECONDS))
+        if self.cancelled():
+            raise SolverCancelled("Astrometry.net job abandoned")
+
+    def monitor_submission(self, submission_id, *, solve_timeout=AstrometryNetClass.TIMEOUT, verbose=True,
+                           return_submission_id=False):
+        """Same results as astroquery's: the WCS header on success, ``{}`` on failure, and
+        astroquery's ``TimeoutError`` once ``solve_timeout`` has passed."""
+        job_id = None
+        status = ''
+        start = time.monotonic()
+        while True:
+            self._sleep_unless_cancelled(self.POLL_SECONDS)
+            if job_id is None:
+                url = url_helpers.join(self.API_URL, 'submissions', str(submission_id))
+                jobs = self._request('GET', url, cache=False).json()['jobs']
+                if jobs:
+                    job_id = jobs[0]
+            if job_id:
+                url = url_helpers.join(self.API_URL, 'jobs', str(job_id), 'info')
+                status = self._request('GET', url, cache=False).json()['status']
+            if status in ('success', 'failure'):
+                break
+            if time.monotonic() - start > solve_timeout:
+                raise AstroqueryTimeoutError('Solve timed out without success or failure', submission_id)
+        if status == 'success':
+            wcs_url = url_helpers.join(self.URL, 'wcs_file', str(job_id))
+            wcs = fits.Header.fromstring(self._request('GET', wcs_url).text)
+        else:
+            wcs = {}
+        return (wcs, submission_id) if return_submission_id else wcs
+
+
 class AstrometryNetSolver(SolverBase):
 
     @property
@@ -323,16 +411,18 @@ class AstrometryNetSolver(SolverBase):
         if not api_key:
             raise FileNotFoundError("API key not found")
         self.api_key = api_key
-        self.ast = AstrometryNet()
+        self.ast = _CancellableAstrometryNet()
         self.ast.api_key = api_key
         self.force_image_upload = force_image_upload
 
     def solve(self, image_path, image=None, hint: SolverHint = None,
-              output_callback: typing.Callable[[str], None] = None, file_wcs=None) -> Header:
+              output_callback: typing.Callable[[str], None] = None, file_wcs=None,
+              cancelled: typing.Callable[[], bool] = None) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
+        self.ast.cancelled = cancelled or _never_cancelled
         temp_image = self._create_temp_fits(image_path, file_wcs)
         if self.force_image_upload:
             wcs_header: Header = self.ast.solve_from_image(
@@ -439,8 +529,13 @@ class SolveFieldSolver(SolverBase):
         return scale * 0.8, scale * 1.2
 
     def _run_solve_field(self, cmd: list, env: dict,
-                         output_callback: typing.Callable[[str], None] = None) -> list[str]:
-        """Run solve-field, streaming output to callback and returning all output lines."""
+                         output_callback: typing.Callable[[str], None] = None,
+                         cancelled: typing.Callable[[], bool] = _never_cancelled) -> list[str]:
+        """Run solve-field, streaming output to callback and returning all output lines.
+
+        Killing the process we started is enough to stop the whole run: through WSL, the
+        distro ends solve-field and astrometry-engine once wsl.exe is gone, and Cygwin ends
+        the children solve-field forks (both checked by hand on 2026-11-03)."""
         output_lines: list[str] = []
         line_queue: queue.Queue = queue.Queue()
 
@@ -463,11 +558,15 @@ class SolveFieldSolver(SolverBase):
         reader.start()
 
         deadline = time.monotonic() + self._timeout + 15
-        timed_out = False
+        timed_out = was_cancelled = False
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 timed_out = True
+                proc.kill()
+                break
+            if cancelled():
+                was_cancelled = True
                 proc.kill()
                 break
             try:
@@ -485,6 +584,8 @@ class SolveFieldSolver(SolverBase):
         proc.wait()
         reader.join(5)
 
+        if was_cancelled:
+            raise SolverCancelled("solve-field stopped")
         if timed_out:
             logging.error("solve-field timed out:\n%s", "\n".join(output_lines))
             raise SolverFailure(
@@ -494,7 +595,8 @@ class SolveFieldSolver(SolverBase):
         return output_lines
 
     def solve(self, image_path: Path, image=None, hint: SolverHint = None,
-              output_callback: typing.Callable[[str], None] = None, file_wcs=None) -> Header:
+              output_callback: typing.Callable[[str], None] = None, file_wcs=None,
+              cancelled: typing.Callable[[], bool] = None) -> Header:
         if not image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {image_path}")
         if not self.tmp_dir:
@@ -577,7 +679,7 @@ class SolveFieldSolver(SolverBase):
         logging.info("solve-field command: %s", cmd_str)
         if output_callback:
             output_callback(f"$ {cmd_str}")
-        output_lines = self._run_solve_field(cmd, env, output_callback)
+        output_lines = self._run_solve_field(cmd, env, output_callback, cancelled or _never_cancelled)
 
         solved_marker = temp_image.with_suffix(".solved")
         if not solved_marker.exists():
@@ -619,6 +721,11 @@ class SolverFailure(Exception):
 
     def __str__(self) -> str:
         return self.message
+
+
+class SolverCancelled(Exception):
+    """The run was stopped because the solve was cancelled. Not a failure: no backup solver
+    or retry follows it."""
 
 
 def get_image_center_coords(header):

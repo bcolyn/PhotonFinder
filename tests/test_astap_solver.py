@@ -11,7 +11,7 @@ from astropy.io import fits
 from photonfinder import platesolver
 from photonfinder.core import compress, decompress, get_default_astap_path
 from photonfinder.models import File, FileWCS, Image, LibraryRoot
-from photonfinder.platesolver import ASTAPSolver, SolverError, SolverFailure
+from photonfinder.platesolver import ASTAPSolver, SolverCancelled, SolverError, SolverFailure
 from photonfinder.solve_service import solve_file
 from tests.test_solve_service import FakeSolver
 
@@ -36,12 +36,20 @@ def _image(path: Path, cards: dict = None) -> Path:
     return path
 
 
+REAL_POPEN = subprocess.Popen
+
+
+def _process(code: str, **kwargs):
+    """A real child process standing in for ASTAP, so waiting, killing and exit codes are real."""
+    return REAL_POPEN([sys.executable, "-c", code], **kwargs)
+
+
 @pytest.fixture
 def fake_astap(monkeypatch):
     """Stands in for the ASTAP process only, writing what the given run would leave behind."""
 
     def install(ini: bytes = None, wcs: bool = False, log: bytes = None, solve_to: tuple = None, returncode=0):
-        def run(params, **kwargs):
+        def popen(params, **kwargs):
             image = Path(params[params.index("-f") + 1])
             if ini is not None:
                 image.with_suffix(".ini").write_bytes(ini)
@@ -53,9 +61,34 @@ def fake_astap(monkeypatch):
                 with fits.open(image, mode="update") as hdul:
                     hdul[0].header["CRVAL1"], hdul[0].header["CRVAL2"] = solve_to
                     hdul[0].header["PLTSOLVD"] = True
-            return subprocess.CompletedProcess(params, returncode, "", "")
-        monkeypatch.setattr(platesolver.subprocess, "run", run)
+            return _process(f"import sys; sys.exit({returncode})", **kwargs)
+        monkeypatch.setattr(platesolver.subprocess, "Popen", popen)
     return install
+
+
+class HungAstap:
+    """An ASTAP that writes its .ini next to the image, as the real one does, then never ends."""
+
+    def __init__(self, monkeypatch):
+        self.processes = []
+        self.images = []
+        monkeypatch.setattr(platesolver.subprocess, "Popen", self._popen)
+
+    def _popen(self, params, **kwargs):
+        image = Path(params[params.index("-f") + 1])
+        image.with_suffix(".ini").write_bytes(b"CMDLINE=astap\r\n")
+        self.images.append(image)
+        process = _process("import time; time.sleep(60)", **kwargs)
+        self.processes.append(process)
+        return process
+
+
+@pytest.fixture
+def hung_astap(monkeypatch):
+    astap = HungAstap(monkeypatch)
+    yield astap
+    for process in astap.processes:
+        process.kill()
 
 
 def _solve(image_file):
@@ -124,22 +157,39 @@ def test_a_failure_without_an_error_carries_the_log(image_file, fake_astap):
     assert "tried 100 stars" in "".join(failure.value.log)
 
 
-def test_a_hung_astap_is_killed_at_the_timeout(image_file, monkeypatch):
-    real_run = subprocess.run
-    timeouts = []
-
-    def run_something_that_hangs(params, **kwargs):
-        timeouts.append(kwargs.get("timeout"))
-        return real_run([sys.executable, "-c", "import time; time.sleep(60)"], **kwargs)
-    monkeypatch.setattr(platesolver.subprocess, "run", run_something_that_hangs)
+def test_a_hung_astap_is_killed_at_the_timeout(image_file, hung_astap):
     started = time.monotonic()
 
     with ASTAPSolver(exe="astap", timeout=1) as solver:
         with pytest.raises(SolverFailure, match="timed out after 1s"):
             solver.solve(image_file)
 
-    assert timeouts == [1]
     assert time.monotonic() - started < 15
+    assert hung_astap.processes[0].poll() is not None
+
+
+def test_a_cancel_stops_a_running_astap_and_its_files_are_removed(image_file, hung_astap):
+    started = time.monotonic()
+    cancel_after_a_second = lambda: time.monotonic() - started > 1
+
+    with ASTAPSolver(exe="astap") as solver:
+        with pytest.raises(SolverCancelled):
+            solver.solve(image_file, cancelled=cancel_after_a_second)
+        tmp_dir = Path(solver.tmp_dir)
+
+    assert time.monotonic() - started < 5
+    assert hung_astap.processes[0].poll() is not None
+    assert hung_astap.images[0].parent == tmp_dir
+    assert not tmp_dir.exists()  # the temp image and the .ini ASTAP wrote next to it
+
+
+def test_without_a_cancel_astap_runs_to_its_result(image_file, fake_astap):
+    fake_astap(ini=SOLVED_INI, wcs=True, solve_to=(150.0, 45.0))
+
+    with ASTAPSolver(exe="astap") as solver:
+        solution = solver.solve(image_file, cancelled=lambda: False)
+
+    assert solution["CRVAL1"] == 150.0
 
 
 def test_astap_has_a_timeout_by_default():
@@ -155,24 +205,16 @@ class TestThroughTheSolveService:
         FileWCS.create(file=file, wcs=compress(b"the stored solution"))
         return file
 
-    def _hang(self, monkeypatch):
-        def run(params, **kwargs):
-            raise subprocess.TimeoutExpired(params, kwargs["timeout"])
-        monkeypatch.setattr(platesolver.subprocess, "run", run)
-
-    def test_a_timeout_reaches_the_backup_solver(self, file, monkeypatch):
-        self._hang(monkeypatch)
+    def test_a_timeout_reaches_the_backup_solver(self, file, hung_astap):
         backup = FakeSolver()
 
-        outcome = solve_file(file, ASTAPSolver(exe="astap"), backup_solver=backup)
+        outcome = solve_file(file, ASTAPSolver(exe="astap", timeout=1), backup_solver=backup)
 
         assert outcome.success
         assert outcome.used_solver == type(backup).__name__
 
-    def test_a_timeout_without_a_backup_keeps_the_stored_solution(self, file, monkeypatch):
-        self._hang(monkeypatch)
-
-        outcome = solve_file(file, ASTAPSolver(exe="astap"))
+    def test_a_timeout_without_a_backup_keeps_the_stored_solution(self, file, hung_astap):
+        outcome = solve_file(file, ASTAPSolver(exe="astap", timeout=1))
 
         assert not outcome.success
         assert "timed out" in outcome.error
@@ -186,6 +228,18 @@ class TestThroughTheSolveService:
         assert not outcome.success
         assert decompress(FileWCS.get(FileWCS.file == file).wcs) == b"the stored solution"
         assert Image.get(Image.file == file).coord_ra == 10.0
+
+    def test_a_cancelled_astap_is_cancelled_and_skips_the_backup(self, file, hung_astap):
+        started = time.monotonic()
+        backup = FakeSolver()
+
+        outcome = solve_file(file, ASTAPSolver(exe="astap"), backup_solver=backup,
+                             cancelled=lambda: time.monotonic() - started > 1)
+
+        assert (outcome.success, outcome.cancelled, outcome.error) == (False, True, None)
+        assert backup.solved == []
+        assert time.monotonic() - started < 5
+        assert decompress(FileWCS.get(FileWCS.file == file).wcs) == b"the stored solution"
 
 
 @pytest.mark.slow

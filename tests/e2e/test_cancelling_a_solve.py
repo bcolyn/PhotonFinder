@@ -1,11 +1,13 @@
 """Cancelling a bulk solve: the grid shows the solutions found so far, including the one that
 was still running when the dialog closed."""
 import threading
+import time
 
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
+from photonfinder.platesolver import SolverCancelled
 from photonfinder.ui.PlateSolveDialog import PlateSolveDialog
 from tests.e2e.test_diagnose_quality import add_frames, search
 from tests.test_solve_service import FakeSolver
@@ -98,3 +100,48 @@ def test_a_solve_that_ends_normally_still_shows_its_results(sandbox, solve, qtbo
     assert solve.dialog.isVisible()
     assert _solved_column(sandbox) == ["True"] * 4
     solve.dialog.close()
+
+
+class StopsWhenCancelled(FakeSolver):
+    """Solves the first file. On the second it runs until cancelled, then stops, as the real
+    solvers now do."""
+
+    def __init__(self):
+        super().__init__()
+        self.reached_second = threading.Event()
+
+    def solve(self, image_path, image=None, hint=None, output_callback=None, file_wcs=None, cancelled=None):
+        if not self.solved:
+            return super().solve(image_path, image, hint, output_callback, file_wcs, cancelled)
+        self.solved.append(image_path.name)
+        self.reached_second.set()
+        deadline = time.monotonic() + 20
+        while not cancelled():
+            assert time.monotonic() < deadline, "never cancelled"
+            time.sleep(0.05)
+        raise SolverCancelled("stopped")
+
+
+def test_cancelling_stops_the_running_solver_and_frees_the_library(sandbox, app, qtbot, monkeypatch):
+    add_frames(sandbox, "M81", [3.0] * 4)
+    search(sandbox, app, object_name="M81")
+    solver = StopsWhenCancelled()
+    monkeypatch.setattr(PlateSolveDialog, "_build_solver", lambda dialog, index: solver)
+    panel = app.get_current_search_panel()
+    panel.plate_solve_files()
+    [dialog] = panel.findChildren(PlateSolveDialog)
+    destroyed = []
+    dialog.destroyed.connect(lambda: destroyed.append(True))
+    dialog.start_button.click()
+    assert solver.reached_second.wait(10)
+
+    dialog.close_button.click()
+
+    # Nothing is released by hand here: the solver stopping is what ends the task.
+    qtbot.waitUntil(lambda: bool(destroyed), timeout=5000)
+    sandbox.wait_idle()
+    assert _solved_column(sandbox) == ["True", "False", "False", "False"]
+    assert len(solver.solved) == 2
+    assert sandbox.context.writers.running() == []
+    assert sandbox.context.library_write_lock.acquire(blocking=False)
+    sandbox.context.library_write_lock.release()

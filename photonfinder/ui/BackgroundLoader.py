@@ -495,8 +495,9 @@ class PlateSolveTask(FileProcessingTask):
             outcome = solve_service.solve_file(
                 file, self.solver, self.backup_solver, hint=attempt_hint, file_wcs=file_wcs,
                 output_callback=lambda line: self.message.emit(f"    {line}"),
+                cancelled=lambda: self.cancelled,
             )
-            if outcome.success or i == len(hints_to_try) - 1:
+            if outcome.success or outcome.cancelled or i == len(hints_to_try) - 1:
                 break
             cached_scale = attempt_hint.scale if attempt_hint else None
             scale_str = f"{cached_scale:.2f}\"/px" if cached_scale else "no scale"
@@ -518,6 +519,8 @@ class PlateSolveTask(FileProcessingTask):
             if self.first_solution is None:
                 self.first_solution = (outcome.ra, outcome.dec, outcome.scale_arcsec)
             self.message.emit(f"  ✓ Solved: RA {outcome.ra:.4f}°  Dec {outcome.dec:.4f}°")
+        elif outcome.cancelled:
+            self.message.emit("  – Cancelled")
         else:
             self.file_results.append((file, False, outcome.error))
             self.message.emit(f"  ✗ {outcome.error}")
