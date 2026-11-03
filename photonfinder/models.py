@@ -783,6 +783,41 @@ class Project(Model):
         return list(query)
 
 
+    @staticmethod
+    def unused_name(name: str, ignore: typing.Collection[int] = ()) -> str:
+        """*name*, or *name* with " (2)", " (3)", ... appended if another project has it.
+        Projects whose rowid is in *ignore* don't count."""
+        def taken(candidate):
+            return Project.select().where((Project.name == candidate)
+                                          & Project.rowid.not_in(list(ignore))).exists()
+        candidate, n = name, 1
+        while taken(candidate):
+            n += 1
+            candidate = f"{name} ({n})"
+        return candidate
+
+    @staticmethod
+    def merge(projects: typing.Sequence['Project']) -> 'Project':
+        """Merge *projects* into the first one, which is named after all of them; the others are
+        deleted. A file linked to several of them ends up linked once. Run it in a transaction."""
+        leader, others = projects[0], projects[1:]
+        other_ids = [p.rowid for p in others]
+        # move each file's links over, but never one the leader (or an earlier link) already has
+        keep = (ProjectFile.select(fn.MIN(ProjectFile.rowid))
+                .where(ProjectFile.project.in_(other_ids))
+                .where(ProjectFile.file.not_in(
+                    ProjectFile.select(ProjectFile.file).where(ProjectFile.project == leader.rowid)))
+                .group_by(ProjectFile.file))
+        (ProjectFile.update(project=leader.rowid)
+         .where(ProjectFile.rowid.in_(keep)).execute())
+        ProjectFile.delete().where(ProjectFile.project.in_(other_ids)).execute()  # the duplicates
+        Project.delete().where(Project.rowid.in_(other_ids)).execute()
+        leader.name = Project.unused_name(",".join(p.name for p in projects), ignore=[leader.rowid])
+        leader.last_change = datetime.now()
+        leader.save()
+        return leader
+
+
 NO_PROJECT = Project(rowid=-1, name="No Project")
 
 

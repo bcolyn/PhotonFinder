@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import List, Collection
 
@@ -224,15 +225,18 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
         projects = self.get_selected_projects()
         leader = projects[0]
         to_merge = projects[1:]
-        to_merge_ids = list(map(lambda p: p.rowid, to_merge))
-        with self.context.database.atomic():
-            leader.name = ",".join(map(lambda p: p.name, projects))
-            leader.last_change = datetime.now()
-            leader.save()
-            ProjectFile.update(project=leader).where(ProjectFile.project.in_(to_merge_ids)).execute()
-            Project.delete().where(Project.rowid.in_(to_merge_ids)).execute()
-            self.context.signal_bus.projects_changed.emit([leader], Change.CREATE_OR_UPDATE)
-            self.context.signal_bus.projects_changed.emit(to_merge, Change.DELETE)
+        old_name = leader.name
+        try:
+            with self.context.database.atomic():
+                Project.merge(projects)
+        except Exception as e:
+            leader.name = old_name
+            logging.error(f"Could not merge projects: {e}", exc_info=True)
+            QMessageBox.warning(self, "Could Not Merge Projects", f"The projects could not be merged:\n{e}")
+            return
+        # only after the commit: listeners re-read the projects
+        self.context.signal_bus.projects_changed.emit([leader], Change.CREATE_OR_UPDATE)
+        self.context.signal_bus.projects_changed.emit(to_merge, Change.DELETE)
 
     def use_as_filter_action(self):
         from photonfinder.ui.SearchPanel import FilterButton, AdvancedFilter

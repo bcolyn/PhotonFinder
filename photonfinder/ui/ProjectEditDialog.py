@@ -7,7 +7,9 @@ from typing import List, Set
 
 from PySide6.QtGui import QAction
 from astropy import units as u
-from peewee import IntegrityError
+import logging
+
+from peewee import IntegrityError, JOIN
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QDialogButtonBox, QTableWidgetItem, QFileDialog, QMessageBox, QMenu
@@ -38,7 +40,9 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         self.links_to_add = set()
         self.project_files = list(ProjectFile.select(ProjectFile, File, LibraryRoot, Image)
                                   .join(File)
-                                  .join_from(File, Image)
+                                  # outer: a link to a file without an Image row must show, or
+                                  # re-adding that file would collide with the hidden link
+                                  .join_from(File, Image, JOIN.LEFT_OUTER)
                                   .join_from(File, LibraryRoot)
                                   .where(ProjectFile.project == self.project.rowid)
                                   .order_by(LibraryRoot.name, File.path, File.name))
@@ -92,29 +96,39 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
     def save_data_and_close(self):
         if self.dirty():
             new_name = self.name_edit.text()
-            old_name = self.project.name
+            ignore = [self.project.rowid] if self.project.rowid else []
+            if Project.unused_name(new_name, ignore=ignore) != new_name:
+                QMessageBox.warning(self, "Could Not Save Project",
+                                    f"A project named \"{new_name}\" already exists. "
+                                    "Please choose a different name.")
+                return
+            old_name, old_change, old_rowid = self.project.name, self.project.last_change, self.project.rowid
             self.project.name = new_name
             self.project.last_change = datetime.now()
             try:
                 with self.context.database.atomic():
                     self.project.save()
-                    self.context.signal_bus.projects_changed.emit([self.project], Change.CREATE_OR_UPDATE)
-
                     for link in self.links_to_delete:
                         link.delete_instance()
-                    if self.links_to_delete:
-                        self.context.signal_bus.project_links_changed.emit(self.links_to_delete, Change.DELETE)
-
                     for link in self.links_to_add:
+                        link.project = self.project  # a new project has its rowid only now
                         link.save(force_insert=True)
-                    if self.links_to_add:
-                        self.context.signal_bus.project_links_changed.emit(self.links_to_add, Change.CREATE_OR_UPDATE)
-            except IntegrityError:
-                self.project.name = old_name
+            except IntegrityError as e:
+                # rolled back: put back what save() changed, so a retry starts from the stored state
+                self.project.name, self.project.last_change = old_name, old_change
+                self.project.rowid = old_rowid
+                for link in self.links_to_add:
+                    link.rowid = None
+                logging.error(f"Could not save project {new_name!r}: {e}", exc_info=True)
                 QMessageBox.warning(self, "Could Not Save Project",
-                                    f"A project named \"{new_name}\" already exists. "
-                                    "Please choose a different name.")
+                                    f"The project could not be saved:\n{e}")
                 return
+            # only after the commit: listeners re-read the projects and their links
+            self.context.signal_bus.projects_changed.emit([self.project], Change.CREATE_OR_UPDATE)
+            if self.links_to_delete:
+                self.context.signal_bus.project_links_changed.emit(self.links_to_delete, Change.DELETE)
+            if self.links_to_add:
+                self.context.signal_bus.project_links_changed.emit(self.links_to_add, Change.CREATE_OR_UPDATE)
         self.close()
 
     def reload_data(self):
@@ -268,10 +282,13 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         self.refresh_table()
 
     def add_file(self, db_file: ProjectFile):
-        if db_file not in self.project_files:
+        # match on the file, not the link object: a new link to a file the project already has
+        # would otherwise be inserted again and hit the unique (project, file) index
+        existing = next((pf for pf in self.project_files if pf.file_id == db_file.file_id), None)
+        if existing is None:
             self.links_to_add.add(db_file)
-        if db_file in self.links_to_delete:  # remove deletion marker
-            self.links_to_delete.remove(db_file)
+        else:
+            self.links_to_delete.discard(existing)  # remove deletion marker
 
     def prompt_add_files(self):
         custom_filter = (
