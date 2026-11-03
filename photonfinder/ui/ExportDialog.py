@@ -8,7 +8,7 @@ import shutil
 import string
 
 from pathlib import Path
-from typing import List, NamedTuple, Optional
+from typing import List, Optional
 
 import numpy as np
 from PySide6.QtCore import Signal, QUrl, Qt
@@ -20,11 +20,11 @@ from astropy.io import fits
 from peewee import JOIN
 
 from photonfinder.calibration import CalibrationMatcher, CalibrationCandidate, SessionKey, session_date_for
+from photonfinder.export_plan import CALIB_TYPES, ExportEntry, ExportPlan
 from photonfinder.core import ApplicationContext, Settings, decompress as decompress_blob, Change
 from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict, repair_header
 from photonfinder.models import Image, File, SearchCriteria, FileWCS, Project, ProjectFile
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
-from photonfinder.ui.common import coerce_value
 from photonfinder.ui.generated.ExportDialog_ui import Ui_ExportDialog
 
 
@@ -119,114 +119,6 @@ def template_filename(file: File, template: string.Template, settings: Settings,
     if image and image.image_type == 'LIGHT':
         settings.set_last_light_path(Path(result).parent.as_posix())
     return result
-
-
-class ExportEntry(NamedTuple):
-    """A file paired with the session date that determines its destination folder."""
-    file: File
-    session_date: Optional[datetime.date]
-
-
-def build_file_session_dates(
-    session_keys: list[SessionKey],
-    sessions: dict[SessionKey, list[File]],
-) -> dict[int, datetime.date]:
-    """Map light-file rowid → session date."""
-    file_session_dates = {}
-    for key in session_keys:
-        d = key.session_date
-        if d is None:
-            continue
-        for f in sessions[key]:
-            if f.rowid is not None:
-                file_session_dates[f.rowid] = d
-    return file_session_dates
-
-
-def collect_calibration_entries(
-    session_keys: list[SessionKey],
-    calib_selections: dict[int, dict[str, Optional[CalibrationCandidate]]],
-    use_master: bool,
-) -> list[ExportEntry]:
-    """Return one ExportEntry per (session, file) pair.
-
-    Unlike collect_calibration_files, the same file may appear multiple times
-    when selected by multiple sessions, each carrying its own session_date.
-    Deduplicates only within the same (rowid, date) to avoid double entries
-    when one session selects the same file via two calib types.
-    """
-    seen: set[tuple] = set()
-    result: list[ExportEntry] = []
-    for row, key in enumerate(session_keys):
-        d = key.session_date
-        for candidate in calib_selections[row].values():
-            if not candidate:
-                continue
-            files = [candidate.master] if use_master and candidate.master else candidate.files
-            for f in files:
-                pair = (f.rowid, d)
-                if pair not in seen:
-                    seen.add(pair)
-                    result.append(ExportEntry(file=f, session_date=d))
-    return result
-
-
-def collect_calibration_files(
-    calib_selections: dict[int, dict[str, Optional[CalibrationCandidate]]],
-    use_master: bool,
-) -> list[File]:
-    """Return all unique calibration files selected in the grid, respecting the Use Master flag."""
-    seen_ids: set[int] = set()
-    result: list[File] = []
-    for row_sel in calib_selections.values():
-        for candidate in row_sel.values():
-            if not candidate:
-                continue
-            files_to_add = [candidate.master] if use_master and candidate.master else candidate.files
-            for f in files_to_add:
-                if f.rowid not in seen_ids:
-                    seen_ids.add(f.rowid)
-                    result.append(f)
-    return result
-
-
-def build_file_headers_map(
-    session_keys: list[SessionKey],
-    sessions: dict[SessionKey, list[File]],
-    calib_selections: dict[int, dict[str, Optional[CalibrationCandidate]]],
-    calib_headers: dict[int, str],
-) -> dict[int, dict]:
-    """Map file rowid → parsed custom FITS headers for each session that has headers set.
-
-    Headers from a session are applied to its light files and selected calibration files
-    (candidate.files only — master is not used here). First-assignment wins for shared files.
-    """
-    file_headers = {}
-    for row, key in enumerate(session_keys):
-        raw = calib_headers.get(row, "")
-        if not raw.strip():
-            continue
-        parsed = {}
-        for line in raw.strip().split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-            if '=' not in line:
-                logging.warning(f"Ignoring malformed custom header line (expected KEY=VALUE): {line!r}")
-                continue
-            k, v = line.split('=', 1)
-            parsed[k.strip()] = coerce_value(v.strip())
-        if not parsed:
-            continue
-        for f in sessions[key]:
-            if f.rowid is not None:
-                file_headers[f.rowid] = parsed
-        for candidate in calib_selections[row].values():
-            if candidate:
-                for f in candidate.files:
-                    if f.rowid is not None and f.rowid not in file_headers:
-                        file_headers[f.rowid] = parsed
-    return file_headers
 
 
 _CALIB_LABEL_FLAGS = {
@@ -559,13 +451,13 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.light_files, self.calib_preselect_files = self._partition_lights(all_files)
         self.first_file = self.light_files[0] if self.light_files else (all_files[0] if all_files else None)
 
-        # Build session grid
+        # Build session grid. The plan holds every choice and applies the rules; this dialog
+        # renders it and forwards what the user changes.
         self.matcher = CalibrationMatcher(context)
         self.sessions = self.matcher.get_sessions(self.light_files)
         self._session_keys: List[SessionKey] = list(self.sessions.keys())
-        self._calib_candidates: dict[int, dict[str, list]] = {}
-        self._calib_selections: dict[int, dict[str, Optional[CalibrationCandidate]]] = {}
-        self._calib_headers: dict[int, str] = {}  # row → raw KEY=VALUE text
+        self.plan = ExportPlan(self.light_files, self.sessions, self._find_dark_flats,
+                               other_files=self.calib_preselect_files)
         self._preselections = self.matcher.preselect_from_existing(self.sessions, self.calib_preselect_files)
 
         self._setup_calibration_table()
@@ -594,6 +486,8 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.setWindowTitle(f"Export {n} {kind}")
 
         self.load_settings()
+        self.plan.set_use_master(self.useMasterCheckBox.isChecked())
+        self.plan.set_shared(self.sharedSessionCheckBox.isChecked())
 
         self.export_worker = ExportWorker(context)
         self.export_worker.progress.connect(self.progressBar.setValue)
@@ -606,7 +500,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.patternComboBox.editTextChanged.connect(self.update_preview)
         self.useRefCheckBox.stateChanged.connect(self.update_preview)
         self.useMasterCheckBox.stateChanged.connect(self._on_use_master_changed)
-        self.sharedSessionCheckBox.stateChanged.connect(self._refresh_all_calib_labels)
+        self.sharedSessionCheckBox.stateChanged.connect(self._on_shared_changed)
         self.variablesButton.clicked.connect(self._open_variables_docs)
         self.createGroupCheckBox.stateChanged.connect(self._on_create_group_changed)
 
@@ -665,9 +559,6 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             session_text = f"{date_str}  {filter_str}  {exp_str}{temp_str}  ({len(lights)} frames)"
             self.calibrationTable.setItem(row, 0, QTableWidgetItem(session_text))
 
-            self._calib_candidates[row] = {}
-            self._calib_selections[row] = {k: None for k in _CALIB_COL_MAP}
-
             for col in range(1, 5):
                 placeholder = QLabel("…")
                 placeholder.setEnabled(False)
@@ -679,35 +570,27 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             btn.clicked.connect(functools.partial(self._open_headers_dialog, row))
             self.calibrationTable.setCellWidget(row, _HEADERS_COL, btn)
 
+    def _find_dark_flats(self, flat_candidate: Optional[CalibrationCandidate]) -> list[CalibrationCandidate]:
+        candidates = self.matcher.dark_flat_candidates(flat_candidate)
+        for candidate in candidates:
+            self.matcher.add_best_master(candidate)
+        return candidates
+
     def _on_row_candidates_ready(self, row: int, candidates: dict):
         """Slot: fills in calibration combo boxes for one row when background queries complete."""
-        presel = self._preselections.get(self._session_keys[row], {})
-        for calib_type, col in _CALIB_COL_MAP.items():
-            cands = candidates.get(calib_type, [])
-            self._calib_candidates[row][calib_type] = cands
-            self._set_calib_cell(row, col, calib_type, cands, presel.get(calib_type))
+        self.plan.set_candidates(row, candidates, self._preselections.get(self._session_keys[row], {}))
+        for calib_type in CALIB_TYPES:
+            self._render_cell(row, calib_type)
+        self._refresh_all_calib_labels()
 
-        # Connect signals after all cells are populated to avoid spurious DarkFlat updates
-        for calib_type, col in _CALIB_COL_MAP.items():
-            widget = self.calibrationTable.cellWidget(row, col)
-            if isinstance(widget, QComboBox):
-                if calib_type == "FLAT":
-                    widget.currentIndexChanged.connect(
-                        functools.partial(self._on_flat_changed, row))
-                else:
-                    widget.currentIndexChanged.connect(
-                        functools.partial(self._on_calib_combo_changed, row, calib_type))
-
-        # Seed the DarkFlat column based on the initially selected flat
-        self._on_flat_changed(row, 0)
-
-    def _set_calib_cell(self, row: int, col: int, calib_type: str,
-                        candidates: list, preselection: Optional[CalibrationCandidate] = None):
+    def _render_cell(self, row: int, calib_type: str):
+        """Show the plan's candidates and selection for one row and type."""
+        col = _CALIB_COL_MAP[calib_type]
+        candidates = self.plan.candidates[row][calib_type]
         if not candidates:
             widget = QLabel("—")
             widget.setEnabled(False)
             self.calibrationTable.setCellWidget(row, col, widget)
-            self._calib_selections[row][calib_type] = None
             return
 
         combo = QComboBox()
@@ -718,19 +601,25 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             first_file = c.files[0] if c.files else None
             if first_file:
                 combo.setItemData(combo.count() - 1, first_file.full_filename(), Qt.ItemDataRole.ToolTipRole)
-
-        # Pre-select: use preselection date match or default to most-recent (index 1)
-        selected_idx = 1
-        if preselection:
-            for i, c in enumerate(candidates):
-                if c.session_date == preselection.session_date:
-                    selected_idx = i + 1
-                    break
-        combo.setCurrentIndex(selected_idx)
+        combo.setCurrentIndex(self._combo_index(row, calib_type))
         combo.blockSignals(False)
-
-        self._calib_selections[row][calib_type] = combo.currentData()
+        combo.currentIndexChanged.connect(functools.partial(self._on_calib_combo_changed, row, calib_type))
         self.calibrationTable.setCellWidget(row, col, combo)
+
+    def _combo_index(self, row: int, calib_type: str) -> int:
+        selected = self.plan.selections[row][calib_type]
+        for i, c in enumerate(self.plan.candidates[row][calib_type]):
+            if c is selected:
+                return i + 1
+        return 0  # (none)
+
+    def _show_selection(self, row: int, calib_type: str):
+        """Move an existing combo to the plan's selection, without it reporting a change."""
+        widget = self.calibrationTable.cellWidget(row, _CALIB_COL_MAP[calib_type])
+        if isinstance(widget, QComboBox):
+            widget.blockSignals(True)
+            widget.setCurrentIndex(self._combo_index(row, calib_type))
+            widget.blockSignals(False)
 
     def _update_calib_cell_label(self, row: int, calib_type: str,
                                   shared_cand: Optional[CalibrationCandidate] = None):
@@ -739,11 +628,9 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         widget = self.calibrationTable.cellWidget(row, col)
         if not isinstance(widget, QComboBox):
             return
-        use_master = self.useMasterCheckBox.isChecked()
-        show_shared = self.sharedSessionCheckBox.isChecked()
-
+        use_master = self.plan.use_master
         shared_file_ids = (frozenset(f.rowid for f in shared_cand.files if f.rowid is not None)
-                           if (shared_cand and show_shared) else frozenset())
+                           if shared_cand else frozenset())
 
         current_is_shared = False
         for i in range(widget.count()):
@@ -770,99 +657,31 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             widget.setToolTip("")
 
     def _refresh_all_calib_labels(self):
-        shared = self._compute_shared_candidates()
+        shared = self.plan.shared_candidates()
         for row in range(len(self._session_keys)):
             for calib_type in _CALIB_COL_MAP:
                 self._update_calib_cell_label(row, calib_type, shared.get(calib_type))
 
     def _on_calib_combo_changed(self, row: int, calib_type: str, index: int):
-        col = _CALIB_COL_MAP[calib_type]
-        widget = self.calibrationTable.cellWidget(row, col)
+        widget = self.calibrationTable.cellWidget(row, _CALIB_COL_MAP[calib_type])
         if isinstance(widget, QComboBox):
-            self._calib_selections[row][calib_type] = widget.currentData()
+            self.plan.select(row, calib_type, widget.currentData())
+        if calib_type == "FLAT":
+            self._render_cell(row, "DARKFLAT")  # the plan found the dark-flats for the new flat
         self._refresh_all_calib_labels()
-
-    def _on_flat_changed(self, row: int, index: int):
-        flat_widget = self.calibrationTable.cellWidget(row, _CALIB_COL_MAP["FLAT"])
-        flat_candidate = flat_widget.currentData() if isinstance(flat_widget, QComboBox) else \
-            self._calib_selections[row].get("FLAT")
-        self._calib_selections[row]["FLAT"] = flat_candidate
-
-        df_cands = self.matcher.dark_flat_candidates(flat_candidate)
-        self._calib_candidates[row]["DARKFLAT"] = df_cands
-        self._set_calib_cell(row, 4, "DARKFLAT", df_cands, None)
-
-        for cand in df_cands:
-            self.matcher.add_best_master(cand)
-
-        df_widget = self.calibrationTable.cellWidget(row, 4)
-        if isinstance(df_widget, QComboBox):
-            df_widget.currentIndexChanged.connect(
-                functools.partial(self._on_calib_combo_changed, row, "DARKFLAT"))
-        self._apply_master_flat_darkflat_rule(row)
-        self._refresh_all_calib_labels()
-
-    def _apply_master_flat_darkflat_rule(self, row: int) -> None:
-        """Auto-clear darkflat selection when a master flat will be used for this session."""
-        flat_candidate = self._calib_selections[row].get("FLAT")
-        if not (self.useMasterCheckBox.isChecked()
-                and flat_candidate is not None
-                and flat_candidate.master is not None):
-            return
-        df_widget = self.calibrationTable.cellWidget(row, _CALIB_COL_MAP["DARKFLAT"])
-        if isinstance(df_widget, QComboBox):
-            df_widget.blockSignals(True)
-            df_widget.setCurrentIndex(0)
-            df_widget.blockSignals(False)
-        self._calib_selections[row]["DARKFLAT"] = None
 
     def _on_use_master_changed(self) -> None:
+        self.plan.set_use_master(self.useMasterCheckBox.isChecked())
         for row in range(len(self._session_keys)):
-            self._apply_master_flat_darkflat_rule(row)
+            self._show_selection(row, "DARKFLAT")
         self._refresh_all_calib_labels()
 
-    def _compute_shared_candidates(self) -> dict:
-        """Returns {calib_type: CalibrationCandidate} for candidates used by 2+ sessions."""
-        if not self.sharedSessionCheckBox.isChecked():
-            return {}
-        type_cand_map = {}  # calib_type → {frozenset_of_file_ids: (candidate, session_count)}
-        for row_sel in self._calib_selections.values():
-            for calib_type, candidate in row_sel.items():
-                if candidate is None:
-                    continue
-                cid = frozenset(f.rowid for f in candidate.files if f.rowid is not None)
-                tc = type_cand_map.setdefault(calib_type, {})
-                if cid in tc:
-                    existing, n = tc[cid]
-                    tc[cid] = (existing, n + 1)
-                else:
-                    tc[cid] = (candidate, 1)
-        result = {}
-        for calib_type, cand_map in type_cand_map.items():
-            multi = [(c, n) for c, n in cand_map.values() if n >= 2]
-            if multi:
-                result[calib_type] = max(multi, key=lambda x: x[1])[0]
-        return result
-
-    def _build_shared_file_ids(self) -> set:
-        """Returns set of file rowids that should use the shared export path."""
-        shared_cands = self._compute_shared_candidates()
-        if not shared_cands:
-            return set()
-        use_master = self.useMasterCheckBox.isChecked()
-        shared_ids = set()
-        for candidate in shared_cands.values():
-            files_to_add = [candidate.master] if use_master and candidate.master else candidate.files
-            for f in files_to_add:
-                if f.rowid is not None:
-                    shared_ids.add(f.rowid)
-        return shared_ids
-
-    def _collect_calibration_files(self) -> List[File]:
-        return collect_calibration_files(self._calib_selections, self.useMasterCheckBox.isChecked())
+    def _on_shared_changed(self) -> None:
+        self.plan.set_shared(self.sharedSessionCheckBox.isChecked())
+        self._refresh_all_calib_labels()
 
     def _open_headers_dialog(self, row: int):
-        dlg = HeadersDialog(self._calib_headers.get(row, ""), parent=self)
+        dlg = HeadersDialog(self.plan.headers.get(row, ""), parent=self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             text = dlg.get_text().strip()
             bad_lines = [l.strip() for l in text.splitlines() if l.strip() and '=' not in l]
@@ -872,48 +691,10 @@ class ExportDialog(QDialog, Ui_ExportDialog):
                     "The following lines were ignored (expected KEY=VALUE format):\n\n"
                     + "\n".join(bad_lines)
                 )
-            self._calib_headers[row] = text
+            self.plan.set_headers(row, text)
             btn = self.calibrationTable.cellWidget(row, _HEADERS_COL)
             if isinstance(btn, QPushButton):
                 btn.setText("✎" if text else "…")
-
-    def _build_file_session_dates(self) -> dict:
-        return build_file_session_dates(self._session_keys, self.sessions)
-
-    def _collect_calibration_entries(self) -> list[ExportEntry]:
-        return collect_calibration_entries(
-            self._session_keys, self._calib_selections, self.useMasterCheckBox.isChecked()
-        )
-
-    def _build_all_entries(self, shared_file_ids: set) -> list[ExportEntry]:
-        """Build the complete ordered list of ExportEntry objects for this export."""
-        if not self.light_files:
-            return [ExportEntry(f, None) for f in self.calib_preselect_files]
-
-        file_session_dates = self._build_file_session_dates()
-        light_entries = [ExportEntry(f, file_session_dates.get(f.rowid)) for f in self.light_files]
-        calib_entries = self._collect_calibration_entries()
-
-        # When shared-session is active, a file that maps to the shared/ path must only
-        # appear once in the list even if multiple sessions selected it.
-        if shared_file_ids:
-            seen_shared: set[int] = set()
-            deduped: list[ExportEntry] = []
-            for entry in calib_entries:
-                if entry.file.rowid in shared_file_ids:
-                    if entry.file.rowid not in seen_shared:
-                        seen_shared.add(entry.file.rowid)
-                        deduped.append(entry)
-                else:
-                    deduped.append(entry)
-            calib_entries = deduped
-
-        return light_entries + calib_entries
-
-    def _build_file_headers_map(self) -> dict:
-        return build_file_headers_map(
-            self._session_keys, self.sessions, self._calib_selections, self._calib_headers
-        )
 
     def _on_create_group_changed(self):
         checked = self.createGroupCheckBox.isChecked()
@@ -984,8 +765,8 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             project.save()
         self.created_project = project
 
-        shared_file_ids = self._build_shared_file_ids()
-        all_entries = self._build_all_entries(shared_file_ids)
+        shared_file_ids = self.plan.shared_file_ids()
+        all_entries = self.plan.entries()
 
         self._exporting = True
         self.export_worker.export_files(
@@ -997,7 +778,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             len(all_entries),
             self.exportXisfAsFitsCheckBox.isChecked(),
             self.overridePlatesolveCheckBox.isChecked(),
-            self._build_file_headers_map(),
+            self.plan.file_headers(),
             project,
             shared_file_ids,
             {f.rowid for f in self.light_files}
@@ -1013,8 +794,8 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         decompress = self.decompressCheckBox.isChecked()
         export_xisf_as_fits = self.exportXisfAsFitsCheckBox.isChecked()
 
-        shared_file_ids = self._build_shared_file_ids()
-        all_entries = self._build_all_entries(shared_file_ids)
+        shared_file_ids = self.plan.shared_file_ids()
+        all_entries = self.plan.entries()
 
         lines = []
         for entry in all_entries:
