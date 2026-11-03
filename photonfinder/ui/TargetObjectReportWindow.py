@@ -1,4 +1,7 @@
-from PySide6.QtCore import Qt, Signal
+import copy
+import logging
+
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import QMainWindow, QTableWidget, QTableWidgetItem, QDialogButtonBox
 
 
@@ -26,6 +29,7 @@ class TargetObjectReportWindow(QMainWindow, Ui_TargetObjectReportWindow, TableWi
         self.loader = TargetReportLoader(self.context)
         self.headers = ["Object Name", "Filter", "Telescope", "Camera", "Total Exposure", "Latest data", "Paths"]
         self.loader.on_result.connect(self.on_complete)
+        self.loader.on_error.connect(self.on_error)
         from .SearchPanel import SearchPanel
         self.search_panel: SearchPanel = self.parent()
         self.search_panel.search_criteria_changed.connect(self.load_report)
@@ -41,6 +45,10 @@ class TargetObjectReportWindow(QMainWindow, Ui_TargetObjectReportWindow, TableWi
         self.loader.start(self.tableWidget, self.search_panel.search_criteria)
 
     def on_complete(self, result):
+        self.statusbar.clearMessage()
+        # sorting must be off while filling, otherwise rows move around as items are inserted
+        # and the remaining cells of a row land on other rows
+        self.tableWidget.setSortingEnabled(False)
         self.tableWidget.clearContents()
         self.tableWidget.setRowCount(len(result))
         self.tableWidget.setColumnCount(len(self.headers))
@@ -53,22 +61,53 @@ class TargetObjectReportWindow(QMainWindow, Ui_TargetObjectReportWindow, TableWi
                     item.setFlags(item.flags() & ~ Qt.ItemFlag.ItemIsEditable)
                     item.setTextAlignment(Qt.AlignTop)
                     self.tableWidget.setItem(row, col, item)
+        self.tableWidget.setSortingEnabled(True)
         self.tableWidget.resizeColumnsToContents()
         self.tableWidget.resizeRowsToContents()
 
+    def on_error(self, message: str):
+        # not a message box: the report reloads on every criteria edit, so a failing query
+        # would pop one up per keystroke
+        self.tableWidget.clearContents()
+        self.tableWidget.setRowCount(0)
+        self.statusbar.showMessage(message)
+
 
 class TargetReportLoader(BackgroundLoaderBase):
+    """Loads the target report. Each start supersedes the previous one: only the result
+    (or error) of the latest load is delivered."""
     table: QTableWidget
-    criteria: SearchCriteria
     on_result = Signal(object)
+    on_error = Signal(str)
+    _done = Signal(object, str, int)  # rows or None, error message, generation; worker -> GUI thread
+
+    def __init__(self, context):
+        super().__init__(context)
+        self._generation = 0
+        self._done.connect(self._on_done)
 
     def start(self, table_widget: QTableWidget, criteria: SearchCriteria):
         self.table = table_widget
-        self.criteria = criteria
-        self.run_in_thread(self._query_data)
+        self._generation += 1
+        self.run_in_thread(self._query_data, copy.deepcopy(criteria), self._generation)
 
-    def _query_data(self):
-        self.on_result.emit(rows_to_table_data(reports.target_report(self.criteria)))
+    def _query_data(self, criteria: SearchCriteria, generation: int):
+        try:
+            rows = rows_to_table_data(reports.target_report(criteria))
+        except Exception as e:
+            logging.error(f"Error loading the target report: {e}", exc_info=True)
+            self._done.emit(None, f"Could not load the target report: {e}", generation)
+            return
+        self._done.emit(rows, "", generation)
+
+    @Slot(object, str, int)
+    def _on_done(self, rows, error, generation):
+        if generation != self._generation:
+            return  # a newer load has started since
+        if rows is None:
+            self.on_error.emit(error)
+        else:
+            self.on_result.emit(rows)
 
 
 def rows_to_table_data(rows) -> list:
