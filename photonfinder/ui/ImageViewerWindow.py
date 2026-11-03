@@ -647,22 +647,42 @@ class ImageViewerWindow(QMainWindow):
         rows: if given, navigation is restricted to those model row indices.
               row must be the model row of the initially displayed file.
         """
-        if self._nav_panel is not None and self._nav_panel is not panel:
-            try:
-                self._nav_panel.data_fully_loaded.disconnect(self._on_nav_data_loaded)
-            except RuntimeError:
-                pass
+        if panel is not self._nav_panel:
+            self._unwatch_nav_panel()
+            if panel is not None:
+                panel.data_fully_loaded.connect(self._on_nav_data_loaded)
+                panel.destroyed.connect(self._on_nav_panel_destroyed)
         self._nav_panel = panel
         self._nav_rows = rows if rows and len(rows) > 1 else None
         self._nav_row = self._nav_rows.index(row) if self._nav_rows and row in self._nav_rows else row
         self._pending_nav_row = None
-        if panel is not None:
-            panel.data_fully_loaded.connect(self._on_nav_data_loaded)
         self._update_nav_label()
-        if self._preload_btn:
-            self._preload_btn.setEnabled(True)
-        if self._mark_bad_btn:
-            self._mark_bad_btn.setEnabled(True)
+        self._update_nav_state()
+
+    def _unwatch_nav_panel(self):
+        panel = self._nav_panel
+        if panel is None:
+            return
+        for signal, slot in ((panel.data_fully_loaded, self._on_nav_data_loaded),
+                             (panel.destroyed, self._on_nav_panel_destroyed)):
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass  # the panel is already gone
+
+    def _on_nav_panel_destroyed(self, _obj=None):
+        """The search tab was closed: keep showing the image, but stop navigating it."""
+        self._nav_panel = None
+        self._nav_rows = None
+        self._nav_row = -1
+        self._pending_nav_row = None
+        self._blink_timer.stop()
+        self._blink_combo.blockSignals(True)
+        self._blink_combo.setCurrentText('Off')
+        self._blink_combo.blockSignals(False)
+        self._update_nav_label()
+        self._update_nav_state()
+        self.statusBar().showMessage("The search tab was closed: navigation is off", 5000)
 
     def load_file(self, file: File, preserve_view: bool = False):
         """Load and display the image associated with a File model instance."""
@@ -688,6 +708,10 @@ class ImageViewerWindow(QMainWindow):
         self.statusBar().showMessage(f"Loading {Path(filename).name}…")
         self.setWindowTitle(f"Image Viewer — {Path(filename).name}")
 
+        # Detach any in-flight load first: on a cache hit below it would otherwise still
+        # deliver its older image under this file's title.
+        self._retire_load_worker()
+
         # Check cache first — on a hit we can skip the worker entirely
         from photonfinder.image_processing import image_cache
         cached = image_cache.get(filename)
@@ -696,17 +720,22 @@ class ImageViewerWindow(QMainWindow):
             self._on_raw_loaded(cached[0], cached[1], self._is_fits)
             return
 
-        # Discard any in-flight load worker
-        if self._load_worker and self._load_worker.isRunning():
-            self._load_worker.image_loaded.disconnect()
-            self._load_worker.error.disconnect()
-            self._retired_load_workers.add(self._load_worker)
-            self._load_worker.finished.connect(self._on_retired_load_worker_finished)
-
         self._load_worker = ImageLoadWorker(filename, self._is_fits)
-        self._load_worker.image_loaded.connect(self._on_raw_loaded)
-        self._load_worker.error.connect(self._on_load_error)
+        self._load_worker.image_loaded.connect(self._on_worker_loaded)
+        self._load_worker.error.connect(self._on_worker_load_error)
         self._load_worker.start()
+
+    def _retire_load_worker(self):
+        """Stop listening to the current load; keep it referenced until it finishes, as
+        destroying a running QThread crashes the application."""
+        worker, self._load_worker = self._load_worker, None
+        if worker is None:
+            return
+        worker.image_loaded.disconnect(self._on_worker_loaded)
+        worker.error.disconnect(self._on_worker_load_error)
+        if worker.isRunning():
+            self._retired_load_workers.add(worker)
+            worker.finished.connect(self._on_retired_load_worker_finished)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -737,6 +766,7 @@ class ImageViewerWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._blink_timer.stop()
+        self._unwatch_nav_panel()
         if self._preload_worker and self._preload_worker.isRunning():
             self._preload_worker.cancel()
             self._preload_worker.progress.disconnect()
@@ -900,13 +930,17 @@ class ImageViewerWindow(QMainWindow):
 
     def _update_nav_state(self):
         is_blinking = self._blink_interval_ms() > 0
-        nav_enabled = not self._is_loading and not is_blinking
+        has_panel = self._nav_panel is not None
+        nav_enabled = has_panel and not self._is_loading and not is_blinking
         self._first_btn.setEnabled(nav_enabled)
         self._prev_btn.setEnabled(nav_enabled)
         self._next_btn.setEnabled(nav_enabled)
         self._last_btn.setEnabled(nav_enabled)
-        if self._mark_bad_btn and self._nav_panel is not None:
+        if self._mark_bad_btn:
             self._mark_bad_btn.setEnabled(nav_enabled)
+        if self._preload_btn:
+            preloading = self._preload_worker is not None
+            self._preload_btn.setEnabled(has_panel and not preloading)
         if self._is_loading and not self._cursor_overridden:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             self._cursor_overridden = True
@@ -949,7 +983,7 @@ class ImageViewerWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_preload_clicked(self):
-        if self._nav_panel is None:
+        if self._nav_panel is None or self._preload_worker is not None:
             return
         if self._nav_rows is None and self._nav_panel.has_more_results:
             self._nav_panel.load_all_remaining_data()
@@ -968,16 +1002,16 @@ class ImageViewerWindow(QMainWindow):
         self._preload_worker.progress.connect(self._on_preload_progress)
         self._preload_worker.finished.connect(self._on_preload_finished)
         self._preload_worker.start()
-        self._preload_btn.setEnabled(False)
         self._preload_btn.setText("Preloading…")
+        self._update_nav_state()
 
     def _on_preload_progress(self, done: int, total: int):
         self.statusBar().showMessage(f"Preloading {done} / {total}…")
 
     def _on_preload_finished(self):
         self._preload_worker = None
-        self._preload_btn.setEnabled(True)
         self._preload_btn.setText("Preload")
+        self._update_nav_state()
         self.statusBar().showMessage("Preload complete", 3000)
 
     # ------------------------------------------------------------------
@@ -1413,6 +1447,16 @@ class ImageViewerWindow(QMainWindow):
 
         self._run_processing()
 
+    def _on_worker_loaded(self, raw_data: np.ndarray, header: dict, is_fits: bool):
+        if self.sender() is not self._load_worker:
+            return  # queued before that load was retired
+        self._on_raw_loaded(raw_data, header, is_fits)
+
+    def _on_worker_load_error(self, msg: str):
+        if self.sender() is not self._load_worker:
+            return
+        self._on_load_error(msg)
+
     def _on_retired_load_worker_finished(self):
         self._retired_load_workers.discard(self.sender())
 
@@ -1468,17 +1512,33 @@ class ImageViewerWindow(QMainWindow):
             locked_params=self._locked_stretch,
         )
         worker.result.connect(self._on_processed)
-        worker.error.connect(lambda msg: self.statusBar().showMessage(f"Processing error: {msg}"))
+        worker.error.connect(self._on_process_error)
         worker.finished.connect(self._on_process_finished)
         self._process_worker = worker
         worker.start()
 
+    def _is_stale_process(self) -> bool:
+        """A result from a worker that is no longer current, or for an image the viewer has
+        already moved past (a newer run is pending), must not be shown."""
+        return self.sender() is not self._process_worker or self._pending_process
+
     def _on_process_finished(self):
+        if self.sender() is not self._process_worker:
+            return
         self._process_worker = None
         if self._pending_process:
             self._run_processing()
 
+    def _on_process_error(self, msg: str):
+        if self._is_stale_process():
+            return
+        self._is_loading = False
+        self._update_nav_state()
+        self.statusBar().showMessage(f"Processing error: {msg}")
+
     def _on_processed(self, display_uint8: np.ndarray, src_uint16: np.ndarray, stretch_params):
+        if self._is_stale_process():
+            return
         was_annotating = bool(self._annotate_btn and self._annotate_btn.isChecked()) or self._pending_annotate
         self._pending_annotate = False
         self._clear_annotations()

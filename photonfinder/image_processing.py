@@ -6,6 +6,7 @@ All internal pixel data is represented as uint16 [0, 65535].  Float32 is used on
 for the statistics samples (sub-sampled, so small) and the LUT build step.
 """
 import logging
+import os
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -44,16 +45,28 @@ def _ram_budget() -> int:
         return 2 * 1024 ** 3  # 2 GB fallback
 
 
-class _ImageCache:
-    """Thread-safe LRU cache bounded by RAM (uncompressed bytes).
+def _file_stamp(filename: str) -> tuple[int, int] | None:
+    """(modification time, size) of the file, or None if it can't be read."""
+    try:
+        st = os.stat(filename)
+    except OSError:
+        return None
+    return st.st_mtime_ns, st.st_size
 
-    Pixel arrays are stored LZ4-compressed to maximise the number of images
-    that fit within the budget.  The budget is checked against uncompressed
-    sizes so eviction decisions are free of extra decompression work.
+
+class _ImageCache:
+    """Thread-safe LRU cache bounded by RAM (compressed bytes).
+
+    Pixel arrays are stored zstd-compressed to maximise the number of images
+    that fit within the budget.
+
+    Each entry remembers the file's modification time and size when it was read; a lookup
+    misses (and drops the entry) once the file on disk no longer matches, so a replaced
+    file is never shown with the old pixels.
     """
 
-    # Store layout per entry: (compressed_bytes, dtype, shape, header, uncompressed_size)
-    _store: OrderedDict[str, tuple[bytes, np.dtype, tuple, dict, int]]
+    # Store layout per entry: (compressed_bytes, dtype, shape, header, compressed_size, stamp)
+    _store: OrderedDict[str, tuple[bytes, np.dtype, tuple, dict, int, tuple[int, int]]]
 
     def __init__(self) -> None:
         self._store = OrderedDict()
@@ -63,17 +76,29 @@ class _ImageCache:
 
     def get(self, filename: str) -> tuple[np.ndarray, dict] | None:
         import zstd
+        stamp = _file_stamp(filename)
         with self._lock:
             entry = self._store.get(filename)
             if entry is None:
                 return None
+            if stamp is None or entry[5] != stamp:
+                del self._store[filename]
+                self._total_bytes -= entry[4]
+                logger.debug("Cache stale: %s changed on disk", filename)
+                return None
             self._store.move_to_end(filename)
-            compressed, dtype, shape, header, _ = entry
+            compressed, dtype, shape, header, _, _ = entry
         raw = zstd.decompress(compressed)
         return np.frombuffer(raw, dtype=dtype).reshape(shape), header
 
-    def put(self, filename: str, data: np.ndarray, header: dict) -> None:
+    def put(self, filename: str, data: np.ndarray, header: dict,
+            stamp: tuple[int, int] | None = None) -> None:
+        """Store *data*; *stamp* is the file's (mtime, size) from before it was read."""
         import zstd
+        if stamp is None:
+            stamp = _file_stamp(filename)
+        if stamp is None:
+            return  # the file is gone: nothing a later lookup could match
         raw = np.ascontiguousarray(data).tobytes()
         compressed = zstd.compress(raw, 1)
         compressed_size = len(compressed)
@@ -81,7 +106,7 @@ class _ImageCache:
             if filename in self._store:
                 self._total_bytes -= self._store[filename][4]
                 del self._store[filename]
-            self._store[filename] = (compressed, data.dtype, data.shape, header, compressed_size)
+            self._store[filename] = (compressed, data.dtype, data.shape, header, compressed_size, stamp)
             self._total_bytes += compressed_size
             logger.debug(
                 "Cache put: %s (%.1f MB compressed) — total %.1f / %.1f MB",
@@ -123,6 +148,7 @@ def load_image_data(filename: str | Path) -> tuple[np.ndarray, dict]:
     if cached is not None:
         logger.debug("Cache hit: %s", filename)
         return cached
+    stamp = _file_stamp(filename)  # before reading: a change during the read must not be cached
     if Importer.is_xisf_by_name(filename):
         result = _load_xisf(filename)
     else:
@@ -131,7 +157,7 @@ def load_image_data(filename: str | Path) -> tuple[np.ndarray, dict]:
     if data.ndim == 3 and data.shape[0] == 1:
         # A single-plane cube (FITS NAXIS3 = 1, or a one-channel XISF) is monochrome.
         result = data.squeeze(0), header
-    image_cache.put(filename, *result)
+    image_cache.put(filename, *result, stamp=stamp)
     return result
 
 

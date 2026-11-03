@@ -178,3 +178,35 @@ def test_fits_with_a_single_plane_cube_loads_as_mono(tmp_path):
     norm = normalize_to_uint16(data, header)
     assert detect_image_type(norm, header) == 'mono'
     assert stretch_uint16_to_uint8(norm, 0.25, 2.8, False).shape == (8, 8)
+
+
+def test_a_replaced_file_is_not_served_from_the_cache(tmp_path):
+    import os
+    from astropy.io import fits
+    path = tmp_path / "replaced.fits"
+    fits.PrimaryHDU(np.full((8, 8), 100, dtype=np.uint16)).writeto(path)
+    image_cache.clear()
+    try:
+        first, _ = load_image_data(path)
+        stat = os.stat(path)
+        fits.PrimaryHDU(np.full((8, 8), 200, dtype=np.uint16)).writeto(path, overwrite=True)
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))  # same size
+        assert image_cache.get(str(path)) is None
+        second, _ = load_image_data(path)
+    finally:
+        image_cache.clear()
+    assert int(first[0, 0]) == 100
+    assert int(second[0, 0]) == 200
+
+
+def test_a_deleted_file_is_not_served_from_the_cache(tmp_path):
+    from astropy.io import fits
+    path = tmp_path / "gone.fits"
+    fits.PrimaryHDU(np.zeros((8, 8), dtype=np.uint16)).writeto(path)
+    image_cache.clear()
+    try:
+        load_image_data(path)
+        path.unlink()
+        assert image_cache.get(str(path)) is None
+    finally:
+        image_cache.clear()
