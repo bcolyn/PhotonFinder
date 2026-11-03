@@ -13,6 +13,7 @@ own, so nothing here opens one.
 Progress is reported through a plain callable rather than a Qt signal; the report windows
 pass their bound ``Signal.emit``, so no Qt type crosses the boundary.
 """
+import json
 import logging
 import os
 from dataclasses import dataclass
@@ -21,7 +22,7 @@ from pathlib import Path
 from typing import Callable, NamedTuple, Optional
 
 from astropy.io.fits import Header
-from peewee import JOIN, fn
+from peewee import JOIN, OP, SQL, Expression, fn
 
 from photonfinder.core import decompress
 from photonfinder.filesystem import decode_header_blob
@@ -152,12 +153,18 @@ class CatalogReportResult:
     images_considered: int   # plate-solved images the criteria matched
 
 
+def _in_json(column, values) -> Expression:
+    """`column IN (values)` as one bound JSON array, so a long list doesn't exceed SQLite's
+    limit on bound variables the way `.in_(values)` would (one variable per value)."""
+    return Expression(column, OP.IN, SQL("(SELECT value FROM json_each(?))", [json.dumps(list(values))]))
+
+
 def _catalog_entries(catalog: str, limit: Optional[int], offset: int,
                      rowids: Optional[list] = None) -> list:
     query = (CatalogEntry.select(CatalogEntry.rowid, CatalogEntry.catalog_id,
                                  CatalogEntry.magnitude, CatalogEntry.size)
              .order_by(CatalogEntry.catalog_id.cast('INTEGER'), CatalogEntry.catalog_id))
-    query = query.where(CatalogEntry.rowid.in_(rowids)) if rowids is not None \
+    query = query.where(_in_json(CatalogEntry.rowid, rowids)) if rowids is not None \
         else query.where(CatalogEntry.catalog == catalog)
     if limit is not None:
         query = query.limit(limit).offset(offset)
@@ -180,7 +187,6 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
     """
     # Imported here rather than at module scope: numpy/astropy.wcs are expensive and this
     # is the only report that needs them.
-    import json
     import time
     import numpy as np
     from astropy.wcs import WCS
@@ -309,7 +315,7 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
 
     # Batch-load all representative WCS blobs in one query (avoids N round-trips).
     rep_ids = [g['rep_file_id'] for g in groups_with_candidates]
-    wcs_blobs = {r.file_id: r.wcs for r in FileWCS.select().where(FileWCS.file.in_(rep_ids))}  # pylint: disable=not-an-iterable  # Peewee query
+    wcs_blobs = {r.file_id: r.wcs for r in FileWCS.select().where(_in_json(FileWCS.file, rep_ids))}  # pylint: disable=not-an-iterable  # Peewee query
     logger.debug("Phase 3: fetched %d WCS blobs in %.2fs", len(wcs_blobs), time.monotonic() - t3)
 
     for i, group in enumerate(groups_with_candidates):

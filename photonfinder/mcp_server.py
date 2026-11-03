@@ -37,7 +37,7 @@ import logging
 import threading
 import time
 import typing
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import anyio
@@ -47,7 +47,7 @@ from pydantic import BaseModel, Field
 from photonfinder import reports, solve_service
 from photonfinder.core import ApplicationContext, LibraryBusyError, library_busy_message, mcp_port_file
 from photonfinder.models import (
-    CORE_MODELS, CATALOG_MODELS, SearchCriteria, SORTABLE_FIELDS, File, Image, LibraryRoot,
+    CORE_MODELS, CATALOG_MODELS, SearchCriteria, InvalidCriteria, SORTABLE_FIELDS, File, Image, LibraryRoot,
     Project, ProjectFile, FitsHeader, FileWCS, CatalogEntry,
     search_files as run_search_files, serialize_search_row, _SERIALIZED_IMAGE_FIELDS,
 )
@@ -185,7 +185,23 @@ def _criteria_from_dict(criteria: Optional[dict], tool: str = "search") -> Searc
     if dropped:
         logger.debug("%s: dropping unknown criteria fields: %s", tool, sorted(dropped))
     logger.debug("%s: criteria=%s", tool, clean)
-    return SearchCriteria.from_json(json.dumps(clean))
+    try:
+        sc = SearchCriteria.from_json(json.dumps(clean))
+    except Project.DoesNotExist:
+        raise InvalidCriteria("project", clean.get("project"),
+                              "the rowid of an existing project (see list_projects)") from None
+    sc.start_datetime = _naive_utc(sc.start_datetime)
+    sc.end_datetime = _naive_utc(sc.end_datetime)
+    sc.validate()
+    return sc
+
+
+def _naive_utc(value: Optional[datetime]) -> Optional[datetime]:
+    """DATE-OBS is stored as naive UTC: convert a value with an offset to that, and take one
+    without an offset as UTC already."""
+    if value is None or value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 class NoLibraryOpen(Exception):
@@ -299,7 +315,7 @@ def query_file_details(context: ApplicationContext, rowid: int) -> dict:
         if image is not None and image.rowid is not None:
             image_data = {name: getattr(image, name) for name in _SERIALIZED_IMAGE_FIELDS}
             date_obs = image.date_obs
-            image_data["date_obs"] = date_obs.isoformat() if date_obs else None
+            image_data["date_obs"] = date_obs.isoformat() if isinstance(date_obs, datetime) else date_obs
             details["image"] = image_data
         else:
             details["image"] = None
@@ -670,11 +686,13 @@ class SearchCriteriaInput(BaseModel):
         default=None, description="Cone search radius in decimal degrees (used with "
                                    "`coord_ra`/`coord_dec`); defaults to 0.5.")
     start_datetime: Optional[datetime] = Field(
-        default=None, description="Only images observed at or after this time (ISO 8601, "
-                                   "compared with the header's DATE-OBS, normally UTC).")
+        default=None, description="Only images observed at or after this time (ISO 8601). "
+                                   "Compared with DATE-OBS in UTC: a value with an offset "
+                                   "is converted to UTC, one without is taken as UTC.")
     end_datetime: Optional[datetime] = Field(
-        default=None, description="Only images observed at or before this time (ISO 8601, "
-                                   "compared with the header's DATE-OBS, normally UTC).")
+        default=None, description="Only images observed at or before this time (ISO 8601). "
+                                   "Compared with DATE-OBS in UTC: a value with an offset "
+                                   "is converted to UTC, one without is taken as UTC.")
     header_text: Optional[str] = Field(
         default=None, description='FITS header match: "KEYWORD=value", "KEYWORD<value" or '
                                    '"KEYWORD>value" compares one keyword numerically, e.g. '
@@ -837,7 +855,7 @@ def build_mcp(context: ApplicationContext):
                 started = time.monotonic()
                 try:
                     text = _to_text(await fn(**kw))
-                except NoLibraryOpen as e:
+                except (NoLibraryOpen, InvalidCriteria) as e:
                     logger.info("MCP %s(%s): %s", fn.__name__, args, e)
                     return _to_text({"error": str(e)})
                 except Exception:
@@ -1091,8 +1109,11 @@ class McpServerController:
         self.host = host
         self.requested_port = requested_port
         self.port: Optional[int] = None
+        self._published_port: Optional[int] = None  # what this server wrote to the port file
         self._thread: Optional[threading.Thread] = None
         self._server = None
+
+    STARTUP_TIMEOUT = 15  # seconds for uvicorn to start accepting
 
     @property
     def running(self) -> bool:
@@ -1142,37 +1163,60 @@ class McpServerController:
 
         # Only advertise the port once uvicorn is actually accepting, or a stub that
         # launched us could connect to a socket nothing is serving yet.
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + self.STARTUP_TIMEOUT
         while time.monotonic() < deadline:
             if getattr(self._server, "started", False):
                 break
             if not self._thread.is_alive():
                 logger.error("MCP server thread died during startup")
+                self._abandon_start()
                 return
             time.sleep(0.05)
         else:
-            logger.error("MCP server did not start within 15s; not publishing its port")
+            logger.error("MCP server did not start within %ds; stopping it", self.STARTUP_TIMEOUT)
+            self._abandon_start()
             return
 
         self._write_port_file()
         logger.info("MCP server listening on http://%s:%d/mcp", self.host, self.port)
+
+    def _abandon_start(self) -> None:
+        """Stop a server that didn't come up, so `running` is False and `start()` can retry."""
+        if self._server is not None:
+            self._server.should_exit = True
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+            if self._thread.is_alive():
+                logger.warning("MCP server thread did not stop after a failed start")
+        self._thread = None
+        self._server = None
+        self.port = None
 
     def _write_port_file(self) -> None:
         try:
             path = mcp_port_file()
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(str(self.port), encoding="utf-8")
+            self._published_port = self.port
         except OSError:
             logger.warning("Could not publish the MCP port to %s", mcp_port_file(),
                            exc_info=True)
 
     def _remove_port_file(self) -> None:
-        # A stale file is not fatal -- the stub falls back to starting the application
-        # when nothing answers -- but removing it keeps the common case honest.
+        """Remove the port file, but only if it still holds the port this server published:
+        another running instance may have published its own since, and removing that would
+        make it look down. A stale file is not fatal -- the stub probes before trusting it."""
+        if self._published_port is None:
+            return
+        path = mcp_port_file()
         try:
-            mcp_port_file().unlink(missing_ok=True)
+            if path.read_text(encoding="utf-8").strip() == str(self._published_port):
+                path.unlink()
+        except FileNotFoundError:
+            pass
         except OSError:
-            logger.warning("Could not remove %s", mcp_port_file(), exc_info=True)
+            logger.warning("Could not remove %s", path, exc_info=True)
+        self._published_port = None
 
     def stop(self) -> None:
         self._remove_port_file()

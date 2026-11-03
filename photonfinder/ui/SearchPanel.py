@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame
 from photonfinder.core import ApplicationContext, decompress, Change, library_busy_message
 from photonfinder.filesystem import is_compressible, parse_FITS_header, decode_header_blob
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
-    FileWCS, ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, diagnosis_counts, search_row_stat
+    FileWCS, ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, diagnosis_counts, search_row_stat, PROJECT_NAME_SEP
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask, ImageAnalysisTask
 from .DateRangeDialog import DateRangeDialog
 from .HeaderDialog import HeaderDialog
@@ -477,9 +477,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             solved_item = QStandardItem("True" if hasattr(file, 'has_wcs') and file.has_wcs else "False")
             solved_item.setData(solved_item.text(), SORT_ROLE)
 
-            projects = file.projectfile.project_names if (hasattr(file, "projectfile") and
-                                                          hasattr(file.projectfile, "project_names") and
-                                                          file.projectfile.project_names) else ""
+            projects = ", ".join(file.projectfile.project_names.split(PROJECT_NAME_SEP)) \
+                if (hasattr(file, "projectfile") and hasattr(file.projectfile, "project_names")
+                    and file.projectfile.project_names) else ""
             projects_item = QStandardItem(projects)
             projects_item.setData(projects, SORT_ROLE)
 

@@ -527,6 +527,25 @@ class ApplicationContext:
         # etc.
 
 
+class _SynchronizedQSettings:
+    """A QSettings whose calls are serialised. QSettings is reentrant, not thread-safe, and the
+    MCP server and background tasks read settings from worker threads."""
+
+    def __init__(self, qsettings: QSettings):
+        self._qsettings = qsettings
+        self._lock = threading.RLock()
+
+    def __getattr__(self, name):
+        attr = getattr(self._qsettings, name)
+        if not callable(attr):
+            return attr
+
+        def call(*args, **kwargs):
+            with self._lock:
+                return attr(*args, **kwargs)
+        return call
+
+
 class Settings:
     # Declarative spec for plain value-backed settings: (method_suffix, qsettings_key,
     # default, type). A get_<suffix>()/set_<suffix>() pair is generated for each entry by
@@ -575,9 +594,10 @@ class Settings:
         """Settings live in the registry (HKCU) unless *path* names an INI file to use instead,
         which keeps a sandboxed instance -- a test, a ``--data-dir`` run -- off the user's own."""
         if path is not None:
-            self.settings = QSettings(str(path), QSettings.Format.IniFormat)
+            qsettings = QSettings(str(path), QSettings.Format.IniFormat)
         else:
-            self.settings = QSettings(organization_name, application_name)
+            qsettings = QSettings(organization_name, application_name)
+        self.settings = _SynchronizedQSettings(qsettings)
         self._initialize_defaults()
         self.known_fits_keywords = set()
         stored_keywords = str(self.settings.value("known_fits_keywords", "", str))

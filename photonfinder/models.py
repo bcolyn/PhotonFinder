@@ -45,6 +45,20 @@ DIAGNOSIS_BAD_VALUES = (DIAGNOSIS_BAD_FWHM, DIAGNOSIS_BAD_ELONGATION, DIAGNOSIS_
 DIAGNOSIS_VALUES = (DIAGNOSIS_OK, *DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED)
 
 
+class InvalidCriteria(ValueError):
+    """A search criterion whose value can't be used. The GUI search skips such a value; MCP
+    tools report it, so an agent doesn't take an unfiltered result for a filtered one."""
+
+    def __init__(self, field_name: str, value, expected: str):
+        super().__init__(f"Invalid value {value!r} for `{field_name}`: expected {expected}.")
+        self.field_name = field_name
+
+
+# GROUP_CONCAT separator for project names: a comma can be part of a name (merged projects are
+# named "A,B"), the ASCII unit separator can't be typed into one.
+PROJECT_NAME_SEP = "\x1f"
+
+
 @dataclass
 class SearchCriteria:
     paths: list[RootAndPath] = field(default_factory=list)
@@ -102,6 +116,37 @@ class SearchCriteria:
 
     def is_empty(self):
         return self == SearchCriteria()
+
+    def validate(self) -> None:
+        """Raise InvalidCriteria for the first value apply_search_criteria would skip as
+        unparsable. The GUI search never calls this: it ignores such values instead."""
+        for name, parse, expected in (("exposure", float, "a number of seconds"),
+                                      ("binning", int, 'a whole number, e.g. "2"'),
+                                      ("gain", int, "a whole number"),
+                                      ("temperature", float, "a number of degrees Celsius")):
+            value = getattr(self, name)
+            if value:
+                try:
+                    parse(value)
+                except (ValueError, TypeError):
+                    raise InvalidCriteria(name, value, expected) from None
+        if bool(self.coord_ra) != bool(self.coord_dec):
+            missing = "coord_dec" if self.coord_ra else "coord_ra"
+            raise InvalidCriteria(missing, getattr(self, missing),
+                                  "a value, as coord_ra and coord_dec only work together")
+        if self.coord_ra:
+            try:
+                self.cone_center()
+            except Exception:  # astropy raises several types for unparsable input
+                raise InvalidCriteria("coord_ra/coord_dec", f"{self.coord_ra} {self.coord_dec}",
+                                      'RA in hours and Dec in degrees, e.g. "00 42 44" and '
+                                      '"+41 16 09", or "10.68h" and "41.27"') from None
+        if self.coord_radius is not None and not self.coord_radius > 0:
+            raise InvalidCriteria("coord_radius", self.coord_radius, "a radius in degrees above 0")
+
+    def cone_center(self) -> SkyCoord:
+        """The coordinates of a cone search: coord_ra in hours, coord_dec in degrees."""
+        return SkyCoord(self.coord_ra, self.coord_dec, unit=(u.hourangle, u.deg), frame='icrs')
 
     def __str__(self):
         result = []
@@ -580,8 +625,7 @@ class Image(Model):
         # Filter by coordinates
         if criteria.coord_ra and criteria.coord_dec and exclude_ref is not Image.coord_pix256:
             try:
-                # Parse RA and DEC from strings to SkyCoord
-                coords = SkyCoord(criteria.coord_ra, criteria.coord_dec, unit=(u.hourangle, u.deg), frame='icrs')
+                coords = criteria.cone_center()
                 # Get pixels in the cone
                 radius = criteria.coord_radius * u.deg
                 pixels = hp.cone_search_skycoord(coords, radius)
@@ -990,7 +1034,7 @@ def _build_search_query(search_criteria: SearchCriteria):
         ProjectFile
         .select(
             ProjectFile.file.alias('file_id'),
-            fn.GROUP_CONCAT(Project.name).alias('project_names')
+            fn.GROUP_CONCAT(Project.name, PROJECT_NAME_SEP).alias('project_names')
         )
         .join(Project)
         .group_by(ProjectFile.file)
@@ -1088,7 +1132,7 @@ def serialize_search_row(row: 'File') -> dict:
         result["image"] = None
 
     if hasattr(row, "projectfile") and getattr(row.projectfile, "project_names", None):
-        result["projects"] = row.projectfile.project_names.split(",")
+        result["projects"] = row.projectfile.project_names.split(PROJECT_NAME_SEP)
     else:
         result["projects"] = []
 

@@ -256,9 +256,10 @@ def test_data_tool_is_forwarded_when_running(monkeypatch):
     monkeypatch.setattr(mcp_stub, "running_port", lambda: 4321)
     forwarded = {}
 
-    def fake_forward(port, payload):
+    def fake_forward(port, payload, timeout):
         forwarded["port"] = port
         forwarded["payload"] = payload
+        forwarded["timeout"] = timeout
         return ['{"jsonrpc":"2.0","id":1,"result":{"content":[]}}']
 
     monkeypatch.setattr(mcp_stub, "forward", fake_forward)
@@ -267,7 +268,22 @@ def test_data_tool_is_forwarded_when_running(monkeypatch):
                   "params": {"name": "search_files", "arguments": {}}}).one
 
     assert forwarded["port"] == 4321
+    assert forwarded["timeout"] == mcp_stub.REQUEST_TIMEOUT
     assert reply["result"] == {"content": []}
+
+
+def test_a_plate_solve_call_has_no_read_timeout(monkeypatch):
+    """A batch of solves can run far longer than any other call; the solvers time out themselves."""
+    _never_start(monkeypatch)
+    monkeypatch.setattr(mcp_stub, "running_port", lambda: 4321)
+    timeouts = []
+    monkeypatch.setattr(mcp_stub, "forward", lambda port, payload, timeout: timeouts.append(timeout) or
+                        ['{"jsonrpc":"2.0","id":1,"result":{"content":[]}}'])
+
+    send({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+          "params": {"name": "plate_solve_files", "arguments": {"rowids": [1]}}})
+
+    assert timeouts == [None]
 
 
 # --- Port discovery ----------------------------------------------------------------
@@ -525,13 +541,14 @@ class _Response:
 def _capture(monkeypatch, response):
     sent = {}
 
-    def fake_urlopen(request, timeout=None):
+    def fake_open(request, timeout=None):
         sent["url"] = request.full_url
         sent["body"] = request.data
         sent["headers"] = {k.lower(): v for k, v in request.headers.items()}
+        sent["timeout"] = timeout
         return response
 
-    monkeypatch.setattr(mcp_stub.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(mcp_stub._OPENER, "open", fake_open)
     return sent
 
 
@@ -558,6 +575,39 @@ def test_forward_unwraps_an_sse_response(monkeypatch):
 def test_forward_returns_nothing_for_an_empty_response(monkeypatch):
     _capture(monkeypatch, _Response(b"", "application/json"))
     assert mcp_stub.forward(1234, b'{"id":1}') == []
+
+
+def test_requests_to_the_application_bypass_a_configured_proxy(monkeypatch):
+    """A real loopback server, with every proxy variable pointing at a port nothing serves."""
+    import http.server
+    import threading
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):  # pylint: disable=invalid-name  # http.server's naming
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            body = b'{"jsonrpc":"2.0","id":1,"result":{}}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        for name in ("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+            monkeypatch.setenv(name, "http://127.0.0.1:9")  # discard port: refused
+        for name in ("NO_PROXY", "no_proxy"):
+            monkeypatch.delenv(name, raising=False)
+        port = server.server_address[1]
+
+        assert mcp_stub.probe(port)
+        assert mcp_stub.forward(port, b'{"id":1}') == ['{"jsonrpc":"2.0","id":1,"result":{}}']
+    finally:
+        server.shutdown()
 
 
 def test_error_response_is_valid_jsonrpc():

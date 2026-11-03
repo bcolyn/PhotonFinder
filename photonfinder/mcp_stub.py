@@ -35,7 +35,14 @@ from pathlib import Path
 from photonfinder.version import get_version
 
 CONNECT_TIMEOUT = 5
-REQUEST_TIMEOUT = 300  # plate solving can legitimately take minutes
+REQUEST_TIMEOUT = 300  # any tool call but plate solving
+# Plate solving gets no read timeout: a batch of files, each allowed several minutes per solver
+# (and a backup solver), has no useful fixed bound. The solvers' own timeouts end every solve.
+UNBOUNDED_TOOLS = {"plate_solve_files"}
+
+# Requests only ever go to 127.0.0.1, so never through a system or environment proxy, which
+# could refuse, log or delay them.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 STARTUP_TIMEOUT = 90  # cold-starting the application, including its splash and DB open
 POLL_INTERVAL = 0.5
 
@@ -134,7 +141,7 @@ def probe(port: int) -> bool:
             endpoint(port), data=b"{}", method="POST",
             headers={"Content-Type": "application/json",
                      "Accept": "application/json, text/event-stream"})
-        urllib.request.urlopen(request, timeout=CONNECT_TIMEOUT).read()
+        _OPENER.open(request, timeout=CONNECT_TIMEOUT).read()
         return True
     except urllib.error.HTTPError:
         return True  # answered, just not happily -- the server is there
@@ -299,7 +306,7 @@ def start_application() -> tuple[bool, str]:
 
 # --- Relaying ------------------------------------------------------------------------
 
-def forward(port: int, payload: bytes):
+def forward(port: int, payload: bytes, timeout: float | None = REQUEST_TIMEOUT):
     """POST one MCP message and return every JSON-RPC message in the response.
 
     The application's server is stateless, so each request stands on its own -- no
@@ -309,7 +316,7 @@ def forward(port: int, payload: bytes):
         endpoint(port), data=payload, method="POST",
         headers={"Content-Type": "application/json",
                  "Accept": "application/json, text/event-stream"})
-    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+    with _OPENER.open(request, timeout=timeout) as response:
         body = response.read()
         content_type = response.headers.get("Content-Type", "")
 
@@ -408,7 +415,9 @@ def handle(line: str, out) -> None:
         return
 
     try:
-        for response in forward(port, line.encode("utf-8")):
+        tool = (message.get("params") or {}).get("name") if method == "tools/call" else None
+        timeout = None if tool in UNBOUNDED_TOOLS else REQUEST_TIMEOUT
+        for response in forward(port, line.encode("utf-8"), timeout=timeout):
             reply(response)
     except Exception as e:
         log(f"request failed: {e}")
