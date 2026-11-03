@@ -414,6 +414,16 @@ class FileProcessingTask(ProgressBackgroundTask):
     def _process_file(self, file, index):
         self.progress.emit(index)
 
+    def _open_output(self, path: str, **kwargs):
+        """Open the task's output file for writing, or emit error and return None. Tasks open it
+        before the processing loop's own error handling, so a failure must be reported here."""
+        try:
+            return open(path, 'w', **kwargs)  # pylint: disable=consider-using-with  # caller closes it
+        except OSError as e:
+            logging.error(f"Could not open {path} for writing: {e}")
+            self.error.emit(f"Could not write {path}:\n{e}")
+            return None
+
     def get_tables(self) -> List:
         return [File, Image, LibraryRoot]
 
@@ -587,7 +597,10 @@ class FileListTask(FileProcessingTask):
     def _process_files(self):
         if self.output_filename is None:
             return
-        with open(self.output_filename, 'w', encoding='utf-8') as fd:
+        fd = self._open_output(self.output_filename, encoding='utf-8')
+        if fd is None:
+            return
+        with fd:
             self.fd = fd
             super()._process_files()
 

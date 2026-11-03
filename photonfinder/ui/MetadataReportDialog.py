@@ -43,7 +43,10 @@ class MetadataReportTask(FileProcessingTask):
 
     def _process_files(self):
         # newline='' as the csv module requires, or every row ends in CR CR LF on Windows.
-        with open(self.output_filename, 'w', newline='', encoding='utf-8-sig') as f:
+        f = self._open_output(self.output_filename, newline='', encoding='utf-8-sig')
+        if f is None:
+            return
+        with f:
             self.writer = csv.writer(f, dialect=csv.excel_tab if self.export_format == 'tsv' else csv.excel)
             self.writer.writerow(map(lambda tup: tup[0], self.field_list))
             super()._process_files()
@@ -272,7 +275,7 @@ class MetadataReportDialog(QDialog, Ui_MetadataReportDialog):
         # Clear and re-add all items
         combo_box.clear()
         combo_box.addItems(items)
-        self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(len(items) > 0)
+        self._update_button_states()
 
     def _move_items_up(self):
         """Move selected items up in the list."""
@@ -323,7 +326,11 @@ class MetadataReportDialog(QDialog, Ui_MetadataReportDialog):
         self.upButton.setEnabled(has_selection)
         self.downButton.setEnabled(has_selection)
 
-        self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(self.selectedItemsListWidget.count() > 0)
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
+            self.selectedItemsListWidget.count() > 0 and not self.export_running())
+
+    def export_running(self) -> bool:
+        return getattr(self, "worker", None) is not None  # set only at the end of _initialize_dialog
 
     def get_selected_fields(self) -> list:
         """
@@ -363,6 +370,8 @@ class MetadataReportDialog(QDialog, Ui_MetadataReportDialog):
         self.cancel_export()
 
     def start_export(self):
+        if self.export_running():
+            return  # one export at a time; OK is disabled meanwhile
         export_format = self.get_export_format()
         if export_format == 'csv':
             file_filter = "Comma Separated Values (*.csv);;All Files (*)"
@@ -375,6 +384,7 @@ class MetadataReportDialog(QDialog, Ui_MetadataReportDialog):
             return  # User cancelled
         self.progressBar.setVisible(True)
         self.worker = MetadataReportTask(self.context, self.search_criteria, self.files)
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
         self.worker.finished.connect(self.accept)
         self.worker.total_found.connect(self.progressBar.setMaximum)
         self.worker.progress.connect(self.progressBar.setValue)
