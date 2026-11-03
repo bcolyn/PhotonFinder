@@ -29,7 +29,10 @@ class HeaderDialog(QWidget, Ui_HeaderDialog):
         self.wcsHeaderTextEdit.setPlainText(wcs_content)
 
         wcs_model = WCS(wcs_header)
-        shape = get_shape_from_header(header, wcs_header)
+        try:
+            shape = get_shape_from_header(header, wcs_header)
+        except ValueError:
+            return  # image size unknown: show the WCS header without the summary
         results = analyze_wcs(wcs_model, shape)
         self.wcsSummary.setRowCount(1)
         self.wcsSummary.setItem(0, 0, QTableWidgetItem(f"{results['arcsec_per_pixel'][0]:.2f}\"/px"))
@@ -72,9 +75,22 @@ def analyze_wcs(wcs, shape):
 
 
 def get_shape_from_header(header, wcs):
+    """(rows, columns) of the image: NAXISn from the header, else from the WCS, else twice the
+    reference pixel. Raises ValueError if none of them is there."""
     if header.get('NAXIS', wcs.get('NAXIS', 2)) >= 2:
-        nx = int(header.get('NAXIS1', wcs.get('NAXIS1', int(wcs.get("CRPIX1")*2))))  # number of columns (x-axis)
-        ny = int(header.get('NAXIS2', wcs.get('NAXIS2', int(wcs.get("CRPIX2")*2))))  # number of rows (y-axis)
+        nx = _axis_length(header, wcs, 1)  # number of columns (x-axis)
+        ny = _axis_length(header, wcs, 2)  # number of rows (y-axis)
         return ny, nx
     else:
         raise ValueError("Header does not contain 2D image information.")
+
+
+def _axis_length(header, wcs, axis: int) -> int:
+    for source in (header, wcs):
+        value = source.get(f'NAXIS{axis}')
+        if value is not None:
+            return int(value)
+    crpix = wcs.get(f'CRPIX{axis}')
+    if crpix is None:
+        raise ValueError(f"Neither NAXIS{axis} nor CRPIX{axis} is known.")
+    return int(crpix * 2)

@@ -1,7 +1,8 @@
 import csv
+import logging
 from copy import deepcopy
 
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, Slot
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import QMainWindow, QTreeWidgetItem, QMenu, QHeaderView, QFileDialog, QMessageBox
 
@@ -18,25 +19,48 @@ HEADERS = ["ID / Path / File", "Mag", "Size (')", "Images"]
 
 
 class CatalogReportLoader(BackgroundLoaderBase):
+    """Loads a catalog report. Each start supersedes the previous one: progress, results and
+    errors of an older load are dropped, so switching catalogs mid-load can't show the old one."""
     on_result = Signal(object)   # (list[CatalogReportEntry], dict[int, list[MatchedFile]], bool only_matching)
     on_progress = Signal(int, int)
+    on_error = Signal(str)
+    _done = Signal(object, str, int)   # result or None, error, generation; worker -> GUI thread
+    _progress = Signal(int, int, int)  # done, total, generation
 
     def __init__(self, context: ApplicationContext):
         super().__init__(context)
-        self._catalog = ""
-        self._criteria = None
-        self._only_matching = False
+        self._generation = 0
+        self._done.connect(self._on_done)
+        self._progress.connect(self._on_progress)
 
     def start(self, catalog: str, criteria: SearchCriteria, only_matching: bool = False):
-        self._catalog = catalog
-        self._criteria = criteria
-        self._only_matching = only_matching
-        self.run_in_thread(self._query_data)
+        self._generation += 1
+        self.run_in_thread(self._query_data, catalog, deepcopy(criteria), only_matching, self._generation)
 
-    def _query_data(self):
-        result = reports.catalog_report(self.context, self._catalog, self._criteria,
-                                        self._only_matching, progress=self.on_progress.emit)
-        self.on_result.emit((result.entries, result.matches, result.only_matching))
+    def _query_data(self, catalog, criteria, only_matching, generation):
+        try:
+            result = reports.catalog_report(
+                self.context, catalog, criteria, only_matching,
+                progress=lambda done, total: self._progress.emit(done, total, generation))
+        except Exception as e:
+            logging.error(f"Error loading the {catalog} catalog report: {e}", exc_info=True)
+            self._done.emit(None, f"Could not load the {catalog} report: {e}", generation)
+            return
+        self._done.emit((result.entries, result.matches, result.only_matching), "", generation)
+
+    @Slot(int, int, int)
+    def _on_progress(self, done, total, generation):
+        if generation == self._generation:
+            self.on_progress.emit(done, total)
+
+    @Slot(object, str, int)
+    def _on_done(self, result, error, generation):
+        if generation != self._generation:
+            return  # a newer load has started since
+        if result is None:
+            self.on_error.emit(error)
+        else:
+            self.on_result.emit(result)
 
 
 _FILE_DATA_ROLE = Qt.ItemDataRole.UserRole
@@ -53,6 +77,7 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
         self.loader = CatalogReportLoader(context)
         self.loader.on_result.connect(self.on_load_complete)
         self.loader.on_progress.connect(self.on_progress)
+        self.loader.on_error.connect(self.statusbar.showMessage)
 
         from .SearchPanel import SearchPanel
         self.search_panel: SearchPanel = search_panel

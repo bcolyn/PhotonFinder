@@ -32,13 +32,14 @@ class TelescopiusTarget:
 class TelescopiusMatch:
     target: TelescopiusTarget
     paths: List[str]
+    error: str = ""  # why this target couldn't be checked; it then has no paths
 
     def display_values(self) -> List[str]:
         return [self.target.name,
                 Angle(self.target.ra_hr * u.hourangle).to_string(unit=u.hourangle, sep=':', pad=True, precision=0),
                 Angle(self.target.dec * u.deg).to_string(unit=u.deg, sep=':', pad=True, precision=0,
                                                          alwayssign=True),
-                "\n".join(self.paths)]
+                f"Could not check: {self.error}" if self.error else "\n".join(self.paths)]
 
     def sort_keys(self) -> list:
         """Per-column sort keys: sexagesimal RA/Dec strings don't sort correctly as text (e.g. negative Dec)."""
@@ -131,6 +132,7 @@ def enrich_telescopius_data(targets: List[TelescopiusTarget],
             results.append(TelescopiusMatch(target, sorted(paths)))
         except Exception as e:
             logging.error(f"Error processing target {target.name}: {e}", exc_info=True)
+            results.append(TelescopiusMatch(target, [], error=str(e)))
     return results
 
 
@@ -279,7 +281,7 @@ class TelescopiusCompareDialog(QDialog, Ui_TelescopiusCompareDialog, TableWidget
     def _initialize_dialog(self):
         self.buttonBox.button(QDialogButtonBox.StandardButton.Save).setEnabled(False)
         self.copy_names_button.setEnabled(False)
-        self.tolerance_edit.setValidator(QIntValidator(0, 180, self))
+        self.tolerance_edit.setValidator(QIntValidator(1, 180, self))
         self._show_applied_filters()
         self.fetch_button.setEnabled(False)
         self.lists_task.start(self.api_key)
@@ -317,8 +319,21 @@ class TelescopiusCompareDialog(QDialog, Ui_TelescopiusCompareDialog, TableWidget
         list_id = self.list_combo.currentData()
         if not list_id:
             return
+        tolerance = self.tolerance_arcmin()
+        if tolerance is None:
+            QMessageBox.warning(self, "Invalid Tolerance",
+                                "Enter a tolerance between 1 and 180 arcminutes.")
+            return
         self.fetch_button.setEnabled(False)
-        self.task.start(self.api_key, list_id, self.search_criteria, float(self.tolerance_edit.text()) / 60.0)
+        self.task.start(self.api_key, list_id, self.search_criteria, tolerance / 60.0)
+
+    def tolerance_arcmin(self):
+        """The tolerance in arcminutes, or None if the field doesn't hold an accepted value."""
+        try:
+            value = float(self.tolerance_edit.text())
+        except ValueError:
+            return None
+        return value if 0 < value <= 180 else None
 
     def on_complete(self):
         results = self.task.results
