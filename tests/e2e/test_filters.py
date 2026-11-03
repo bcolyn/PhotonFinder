@@ -15,7 +15,7 @@ from photonfinder.ui.DateRangeDialog import DateRangeDialog
 from photonfinder.ui.ExposureDialog import ExposureDialog
 from photonfinder.ui.GainDialog import GainDialog
 from photonfinder.models import CORE_MODELS, DIAGNOSIS_BAD_VALUES, File, ImageStats, SearchCriteria
-from photonfinder.ui.RangeFilterDialogs import DiagnosisFilterDialog, ImageSizeDialog
+from photonfinder.ui.RangeFilterDialogs import DiagnosisFilterDialog, ImageQualityDialog, ImageSizeDialog
 from photonfinder.ui.SearchPanel import AdvancedFilter
 from photonfinder.ui.TelescopeDialog import TelescopeDialog
 from photonfinder.ui.TemperatureDialog import TemperatureDialog
@@ -204,6 +204,52 @@ def test_filters_combine_with_the_type_box_and_come_off_again(sandbox, app, moda
 
     remove_filter(sandbox, grid, AdvancedFilter.EXPOSURE)
     assert shown(grid) == matching(libraries, lambda f: f.image_type == "LIGHT")
+
+
+ROW_STATS = dict(star_count=480, fwhm_median=3.2547, background_median=1012.53, background_rms=14.75,
+                 elongation_median=1.1234)  # more digits than the dialog shows, as analysis gives
+
+
+def test_image_statistics_from_the_selected_row(sandbox, app, modals, libraries, grid):
+    names = shown(grid)
+    analysed, other = names[0], names[1]
+    with sandbox.context.database.bind_ctx(CORE_MODELS):
+        ImageStats.create(file=File.get(File.name == analysed), **ROW_STATS)
+        ImageStats.create(file=File.get(File.name == other), star_count=900, fwhm_median=2.0,
+                          background_median=800.0, background_rms=10.0, elongation_median=1.0)
+    grid.panel.update_search_criteria()
+    sandbox.wait_idle()
+    grid.select("File name", analysed)
+
+    def check_prefill(dialog: ImageQualityDialog):
+        """Each range is as tight as its spinbox shows, and still holds the row's own value."""
+        q = dialog.get_quality_criteria()
+        assert (q["star_count_min"], q["star_count_max"]) == (480, 480)
+        for criterion, stat, decimals in (("fwhm", "fwhm_median", 2), ("background", "background_median", 1),
+                                          ("background_rms", "background_rms", 1),
+                                          ("elongation", "elongation_median", 2)):
+            low, high, value = q[f"{criterion}_min"], q[f"{criterion}_max"], ROW_STATS[stat]
+            assert low <= value <= high, (criterion, low, value, high)
+            assert high - low <= 10 ** -decimals + 1e-9, (criterion, low, high)
+
+    add_filter(sandbox, modals, app.actionImageQuality, ImageQualityDialog, check_prefill)
+
+    assert shown(grid) == [analysed]
+    remove_filter(sandbox, grid, AdvancedFilter.IMAGE_QUALITY)
+    assert grid.row_count() == len(libraries.files)
+
+
+def test_image_statistics_without_stats_on_the_row_shows_the_current_filter(sandbox, app, modals, libraries,
+                                                                           grid):
+    grid.panel.search_criteria.fwhm_max = 4.0
+    grid.select("File name", shown(grid)[0])  # nothing analysed: the row has no stats
+
+    def check_prefill(dialog: ImageQualityDialog):
+        q = dialog.get_quality_criteria()
+        assert q["fwhm_max"] == 4.0
+        assert q["star_count_min"] is None
+
+    add_filter(sandbox, modals, app.actionImageQuality, ImageQualityDialog, check_prefill)
 
 
 def test_quality_diagnosis_filter(sandbox, app, modals, libraries, grid):

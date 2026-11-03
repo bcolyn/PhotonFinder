@@ -1,3 +1,5 @@
+import math
+
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QGroupBox,
                                QHBoxLayout, QCheckBox, QPushButton, QSpinBox, QDoubleSpinBox,
                                QLabel, QVBoxLayout)
@@ -59,6 +61,15 @@ def _make_range_row(parent, label: str, is_int: bool, suffix: str = "", decimals
 def _get_optional(cb, spin):
     """Return spinbox value if checkbox is checked, else None."""
     return spin.value() if cb.isChecked() else None
+
+
+def _bracket(value, spin) -> tuple:
+    """(low, high): ``value`` rounded down and up to what ``spin`` shows, so the range holds it."""
+    if not isinstance(spin, QDoubleSpinBox):
+        return value, value
+    scale = 10 ** spin.decimals()
+    scaled = round(value * scale, 6)  # 3.25 * 100 must stay 325, not become 324.99999
+    return math.floor(scaled) / scale, math.ceil(scaled) / scale
 
 
 def _set_optional(cb, spin, value):
@@ -261,20 +272,19 @@ class ImageQualityDialog(QDialog):
         _set_optional(self._elong_max_cb, self._elong_max, criteria.elongation_max)
 
     def set_from_stats(self, stats):
+        """Ranges around one frame's statistics, as tight as the spinboxes show while still
+        holding the frame itself: its values usually have more digits than the spinboxes."""
         if stats is None:
             return
-        if stats.star_count is not None:
-            _set_optional(self._stars_min_cb, self._stars_min, stats.star_count)
-            _set_optional(self._stars_max_cb, self._stars_max, stats.star_count)
-        if stats.fwhm_median is not None:
-            _set_optional(self._fwhm_min_cb, self._fwhm_min, stats.fwhm_median)
-            _set_optional(self._fwhm_max_cb, self._fwhm_max, stats.fwhm_median)
-        if stats.background_median is not None:
-            _set_optional(self._bg_min_cb, self._bg_min, stats.background_median)
-            _set_optional(self._bg_max_cb, self._bg_max, stats.background_median)
-        if stats.background_rms is not None:
-            _set_optional(self._bgrms_min_cb, self._bgrms_min, stats.background_rms)
-            _set_optional(self._bgrms_max_cb, self._bgrms_max, stats.background_rms)
-        if stats.elongation_median is not None:
-            _set_optional(self._elong_min_cb, self._elong_min, stats.elongation_median)
-            _set_optional(self._elong_max_cb, self._elong_max, stats.elongation_median)
+        for value, min_cb, min_spin, max_cb, max_spin in (
+                (stats.star_count, self._stars_min_cb, self._stars_min, self._stars_max_cb, self._stars_max),
+                (stats.fwhm_median, self._fwhm_min_cb, self._fwhm_min, self._fwhm_max_cb, self._fwhm_max),
+                (stats.background_median, self._bg_min_cb, self._bg_min, self._bg_max_cb, self._bg_max),
+                (stats.background_rms, self._bgrms_min_cb, self._bgrms_min, self._bgrms_max_cb, self._bgrms_max),
+                (stats.elongation_median, self._elong_min_cb, self._elong_min, self._elong_max_cb,
+                 self._elong_max)):
+            if value is None:
+                continue
+            low, high = _bracket(value, min_spin)
+            _set_optional(min_cb, min_spin, low)
+            _set_optional(max_cb, max_spin, high)

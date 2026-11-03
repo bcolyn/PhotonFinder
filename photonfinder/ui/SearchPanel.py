@@ -5,7 +5,8 @@ import sys
 from datetime import datetime, timezone
 from enum import Enum
 from logging import DEBUG
-from typing import Collection, List
+from types import SimpleNamespace
+from typing import Collection, List, Optional
 
 from PySide6.QtCore import (QByteArray, QEvent, QItemSelectionModel, QMimeData, QModelIndex,
                             QSortFilterProxyModel, QUrl, Qt, Signal)
@@ -1259,10 +1260,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def add_image_quality_filter(self):
         from .RangeFilterDialogs import ImageQualityDialog
         dialog = ImageQualityDialog(self)
-        selected_file = self.get_selected_file()
-        stats = None
-        if selected_file is not None and hasattr(selected_file, 'imagestats'):
-            stats = selected_file.imagestats if selected_file.imagestats else None
+        stats = self._selected_row_stats()
         if stats is not None:
             dialog.set_from_stats(stats)
         else:
@@ -1277,6 +1275,17 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             for key, value in q.items():
                 setattr(self.search_criteria, key, value)
             self.update_search_criteria()
+
+    def _selected_row_stats(self) -> Optional[SimpleNamespace]:
+        """The selected row's image statistics, or None when there is no row or it has none.
+        A search row carries them as the query's stats_* columns (see search_row_stat), not as
+        ImageStats fields."""
+        selected_file = self.get_selected_file()
+        if selected_file is None:
+            return None
+        stats = SimpleNamespace(**{field: search_row_stat(selected_file, f"stats_{field}") for field in (
+            "star_count", "fwhm_median", "background_median", "background_rms", "elongation_median")})
+        return stats if any(v is not None for v in vars(stats).values()) else None
 
     def reset_image_quality_criteria(self):
         for attr in ["star_count_min", "star_count_max", "fwhm_min", "fwhm_max",
