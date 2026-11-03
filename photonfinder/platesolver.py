@@ -478,13 +478,25 @@ class AstrometryNetSolver(SolverBase):
         return wcs_header
 
 
+def _decode_wsl_output(data: bytes) -> str:
+    """Programs run in the distro write UTF-8; wsl.exe's own messages (no such distro, WSL not
+    installed) are UTF-16, on stdout."""
+    if b"\x00" in data:
+        return data.decode("utf-16-le", errors="replace")
+    return data.decode("utf-8", errors="replace")
+
+
 def _to_wsl_path(path: Path, distro: str = "") -> str:
     cmd = ["wsl"]
     if distro:
         cmd += ["-d", distro]
     cmd += ["wslpath", str(path).replace("\\", "/")]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
-    return result.stdout.strip()
+    result = subprocess.run(cmd, capture_output=True, timeout=30, check=False)
+    output = _decode_wsl_output(result.stdout).strip()
+    if result.returncode != 0 or not output:
+        message = " ".join(part for part in (_decode_wsl_output(result.stderr).strip(), output) if part)
+        raise SolverError(f"WSL could not translate {path}: {message or f'exit code {result.returncode}'}")
+    return output
 
 
 def _to_cygwin_path(path: Path, cygpath_exe: str = "", env: dict = None) -> str:
@@ -572,9 +584,11 @@ class SolveFieldSolver(SolverBase):
         line_queue: queue.Queue = queue.Queue()
 
         try:
+            # solve-field writes UTF-8, through WSL and Cygwin alike. A stray byte must not end
+            # the reader thread, which would silently stop the log.
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, env=env,
+                text=True, encoding="utf-8", errors="replace", env=env,
             )
         except Exception as e:
             raise SolverFailure(f"Failed to launch solve-field: {e}", None) from e
@@ -614,7 +628,19 @@ class SolveFieldSolver(SolverBase):
                 output_callback(line)
 
         proc.wait()
+        # The process can exit before the reader has passed on its last lines, the ones
+        # that say why it didn't solve. Wait for the end of its output and keep those too.
         reader.join(5)
+        while True:
+            try:
+                line = line_queue.get_nowait()
+            except queue.Empty:
+                break
+            if line is None:
+                continue
+            output_lines.append(line)
+            if output_callback and line.strip():
+                output_callback(line)
 
         if was_cancelled:
             raise SolverCancelled("solve-field stopped")

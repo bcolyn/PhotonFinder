@@ -1,5 +1,5 @@
-"""Stopping a solve-field run: a stand-in process for the loop itself, the real solve-field
-through WSL and Cygwin for what is left running afterwards."""
+"""Running solve-field: a stand-in process for reading its output and stopping it, the real
+solve-field through WSL and Cygwin for what is left running afterwards, and wslpath."""
 import os
 import subprocess
 import sys
@@ -10,7 +10,8 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from photonfinder.platesolver import SolveFieldSolver, SolverCancelled, SolverFailure, _to_wsl_path
+from photonfinder import platesolver
+from photonfinder.platesolver import SolveFieldSolver, SolverCancelled, SolverError, SolverFailure, _to_wsl_path
 from tests.test_platesolver import _CYGWIN_SOLVE_FIELD, wsl_available
 
 _ASPS_SOLVE_FIELD = Path(os.path.expandvars(
@@ -50,6 +51,47 @@ def test_the_timeout_still_applies():
 
     with pytest.raises(SolverFailure, match="timed out"):
         solver._run_solve_field(_python("import time; time.sleep(60)"), None)
+
+
+def test_a_byte_that_is_not_utf8_does_not_stop_the_log():
+    lines = []
+    writes_a_stray_byte = "import sys; sys.stdout.buffer.write(b'first\\n\\x81 odd\\nlast\\n')"
+
+    output = SolveFieldSolver()._run_solve_field(_python(writes_a_stray_byte), None, output_callback=lines.append)
+
+    assert output == ["first", "\ufffd odd", "last"]
+    assert lines == output
+
+
+def test_lines_written_after_the_process_exits_are_kept():
+    """The last lines, which say why a run didn't solve, can still be on their way when the
+    process has already exited. Here a child that shares the output writes them later."""
+    exits_first = ("import subprocess, sys; subprocess.Popen([sys.executable, '-c', "
+                   "'import time; time.sleep(1); print(\"Did not solve\", flush=True)'])")
+
+    output = SolveFieldSolver()._run_solve_field(_python(exits_first), None)
+
+    assert output == ["Did not solve"]
+
+
+def test_a_failing_wslpath_is_a_solver_error_with_wsls_message(monkeypatch):
+    message = "There is no distribution with the supplied name.\r\n".encode("utf-16-le")
+    monkeypatch.setattr(platesolver.subprocess, "run", lambda cmd, **kwargs: subprocess.CompletedProcess(
+        cmd, 4294967295, stdout=message, stderr=b""))
+
+    with pytest.raises(SolverError, match="There is no distribution with the supplied name"):
+        _to_wsl_path(Path("C:/data/frame.fits"), "NoSuchDistro")
+
+
+@wsl_available
+def test_a_missing_distro_is_reported_by_the_real_wsl():
+    with pytest.raises(SolverError, match="NoSuchDistro|no distribution"):
+        _to_wsl_path(Path("C:/data/frame.fits"), "NoSuchDistro")
+
+
+@wsl_available
+def test_wslpath_translates_a_windows_path():
+    assert _to_wsl_path(Path("C:/Users")) == "/mnt/c/Users"
 
 
 def _unsolvable_frame(path: Path) -> Path:
