@@ -112,6 +112,48 @@ class TestDarkFlats:
         assert plan.selections[0]["DARKFLAT"] is None
         assert [e.file.rowid for e in plan.calibration_entries()] == [29]
 
+    def _master_flat_row(self, dark_flats=None, other_files=None):
+        flat = _candidate([_file(20)], master=_file(29))
+        dark_flats = dark_flats or [_candidate([_file(30)])]
+        plan = _plan({_key(D1): [_file(1)]}, DarkFlats({id(flat): dark_flats}), other_files=other_files)
+        plan.set_candidates(0, {"FLAT": [flat]})
+        return plan, dark_flats
+
+    def test_turning_use_master_off_brings_the_dark_flat_back(self):
+        plan, [dark_flat] = self._master_flat_row()
+        plan.set_use_master(True)
+
+        plan.set_use_master(False)
+
+        assert plan.selections[0]["DARKFLAT"] is dark_flat
+
+    def test_the_dark_flat_that_comes_back_is_the_default(self):
+        picked = _calib(31, "DARK")
+        plan, dark_flats = self._master_flat_row([_candidate([_file(30)]), _candidate([picked])], [picked])
+        plan.set_use_master(True)
+
+        plan.set_use_master(False)
+
+        assert plan.selections[0]["DARKFLAT"] is dark_flats[1]
+
+    def test_a_dark_flat_set_to_none_by_the_user_stays_none(self):
+        plan, _ = self._master_flat_row()
+        plan.select(0, "DARKFLAT", None)
+        plan.set_use_master(True)
+
+        plan.set_use_master(False)
+
+        assert plan.selections[0]["DARKFLAT"] is None
+
+    def test_a_dark_flat_picked_while_use_master_is_on_is_kept(self):
+        plan, [dark_flat] = self._master_flat_row()
+        plan.set_use_master(True)
+        plan.select(0, "DARKFLAT", dark_flat)
+
+        plan.set_use_master(False)
+
+        assert plan.selections[0]["DARKFLAT"] is dark_flat
+
     def test_a_flat_without_master_keeps_its_dark_flat_with_use_master(self):
         flat = _candidate([_file(20)])
         dark_flat = _candidate([_file(30)])

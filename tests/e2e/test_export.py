@@ -79,6 +79,22 @@ def _combo(dialog, row, col) -> QComboBox:
     return widget
 
 
+def test_unchecking_use_master_brings_the_dark_flat_back(export_dialog):
+    dialog = export_dialog
+    dialog.useMasterCheckBox.setChecked(False)
+    rows = _session_rows(dialog)
+    row = next(i for i, text in enumerate(rows) if text.startswith("2026-10-14  Ha"))
+    darkflat = _combo(dialog, row, DARKFLAT_COL)
+    default = darkflat.currentData()
+    assert default is not None and _combo(dialog, row, FLAT_COL).currentData().master is not None
+
+    dialog.useMasterCheckBox.setChecked(True)
+    assert darkflat.currentData() is None  # the master flat is already dark-flat corrected
+
+    dialog.useMasterCheckBox.setChecked(False)
+    assert darkflat.currentData() is default
+
+
 def test_calibration_frames_that_fit_no_session_are_reported(sandbox, app, modals, boundary, libraries, qtbot):
     """Exporting a whole camera's files: its lights, and calibration frames chosen with them.
     The -20 C darks and the gain 0 bias fit none of the -10 C / gain 100 sessions."""

@@ -84,6 +84,7 @@ class ExportPlan:
         self.selections: dict[int, dict[str, Optional[CalibrationCandidate]]] = {
             row: {t: None for t in CALIB_TYPES} for row in range(len(self.session_keys))}
         self.headers: dict[int, str] = {}  # row → raw KEY=VALUE text
+        self._dark_flat_cleared_for_master: set[int] = set()  # rows the master-flat rule emptied
 
     # --- changes -----------------------------------------------------------------------------
 
@@ -102,11 +103,19 @@ class ExportPlan:
         self.selections[row][calib_type] = candidate
         if calib_type == "FLAT":
             self._match_dark_flats(row)
+        elif calib_type == "DARKFLAT":
+            self._dark_flat_cleared_for_master.discard(row)  # the user's choice stands
 
     def set_use_master(self, use_master: bool):
+        """On, a master flat clears its row's dark-flat; off again, those rows get their
+        default dark-flat back."""
         self.use_master = use_master
         for row in self.selections:
             self._apply_master_flat_rule(row)
+        if not use_master:
+            for row in self._dark_flat_cleared_for_master:
+                self.selections[row]["DARKFLAT"] = self._default(self.candidates[row]["DARKFLAT"])
+            self._dark_flat_cleared_for_master.clear()
 
     def set_shared(self, shared: bool):
         self.shared = shared
@@ -134,12 +143,15 @@ class ExportPlan:
         cands = list(self._find_dark_flats(self.selections[row]["FLAT"]))
         self.candidates[row]["DARKFLAT"] = cands
         self.selections[row]["DARKFLAT"] = self._default(cands)
+        self._dark_flat_cleared_for_master.discard(row)
         self._apply_master_flat_rule(row)
 
     def _apply_master_flat_rule(self, row: int):
         """A master flat is already dark-flat corrected: no dark-flat when it will be used."""
         flat = self.selections[row]["FLAT"]
         if self.use_master and flat is not None and flat.master is not None:
+            if self.selections[row]["DARKFLAT"] is not None:
+                self._dark_flat_cleared_for_master.add(row)
             self.selections[row]["DARKFLAT"] = None
 
     # --- results -----------------------------------------------------------------------------
