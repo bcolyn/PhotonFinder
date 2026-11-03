@@ -416,11 +416,11 @@ class FileProcessingTask(ProgressBackgroundTask):
     def _process_file(self, file, index):
         """Process one file. The loop reports progress once it returns."""
 
-    def _open_output(self, path: str, **kwargs):
+    def _open_output(self, path: str, encoding: str, newline: str | None = None):
         """Open the task's output file for writing, or emit error and return None. Tasks open it
         before the processing loop's own error handling, so a failure must be reported here."""
         try:
-            return open(path, 'w', **kwargs)  # pylint: disable=consider-using-with  # caller closes it
+            return open(path, 'w', encoding=encoding, newline=newline)  # pylint: disable=consider-using-with  # caller closes it
         except OSError as e:
             logging.error(f"Could not open {path} for writing: {e}")
             self.error.emit(f"Could not write {path}:\n{e}")
