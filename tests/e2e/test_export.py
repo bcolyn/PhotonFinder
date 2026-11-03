@@ -79,6 +79,30 @@ def _combo(dialog, row, col) -> QComboBox:
     return widget
 
 
+def test_calibration_frames_that_fit_no_session_are_reported(sandbox, app, modals, boundary, libraries, qtbot):
+    """Exporting a whole camera's files: its lights, and calibration frames chosen with them.
+    The -20 C darks and the gain 0 bias fit none of the -10 C / gain 100 sessions."""
+    add_libraries(sandbox, modals, boundary, libraries.roots, scan=True)
+    search(sandbox, app, camera=MONO)
+    panel = app.get_current_search_panel()
+    panel.export_data()
+    [dialog] = panel.findChildren(ExportDialog)
+    qtbot.waitUntil(lambda: dialog._grid_loaded, timeout=10_000)
+
+    old_set = sorted(p.name for p, f in libraries.files.items()
+                     if f.camera == MONO and f.image_type in ("DARK", "BIAS") and f.set_temp == -20.0)
+    label = dialog.unmatchedCalibrationLabel
+    assert len(old_set) == 6
+    assert label.isVisibleTo(dialog)
+    assert label.text().startswith("6 selected calibration frame(s) fit none of these sessions")
+    assert sorted(f.name for f in dialog.plan.unmatched_calibration()) == old_set
+    dialog.close()
+
+
+def test_nothing_is_reported_for_lights_alone(export_dialog):
+    assert not export_dialog.unmatchedCalibrationLabel.isVisibleTo(export_dialog)
+
+
 def _expected(name: str) -> list[str]:
     return json.loads(EXPECTED.read_text(encoding="utf-8"))[name]
 

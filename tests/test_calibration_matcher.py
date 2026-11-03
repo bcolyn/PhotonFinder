@@ -243,52 +243,6 @@ class TestGetSessions:
         assert key.session_date is None
 
 
-class TestPreselect:
-    """CalibrationMatcher.preselect_from_existing logic."""
-
-    def _make_sessions(self):
-        lights = [
-            _make_file("l1.fit", "LIGHT", "Ha",
-                       date_obs=datetime.datetime(2026, 4, 26, 22, 0, 0)),
-        ]
-        matcher = CalibrationMatcher.__new__(CalibrationMatcher)
-        return matcher, matcher.get_sessions(lights)
-
-    def test_dark_in_selection_preselects(self):
-        matcher, sessions = self._make_sessions()
-        dark_file = _make_file("d1.fit", "DARK", None,
-                               date_obs=datetime.datetime(2026, 4, 26, 14, 0, 0))
-        result = matcher.preselect_from_existing(sessions, [dark_file])
-        key = list(sessions.keys())[0]
-        assert result[key]["DARK"] is not None
-        assert result[key]["DARK"].files[0] is dark_file
-
-    def test_flat_wrong_filter_not_preselected(self):
-        matcher, sessions = self._make_sessions()
-        flat_file = _make_file("f1.fit", "FLAT", "OIII",
-                               date_obs=datetime.datetime(2026, 4, 26, 14, 0, 0))
-        result = matcher.preselect_from_existing(sessions, [flat_file])
-        key = list(sessions.keys())[0]
-        assert result[key]["FLAT"] is None
-
-    def test_flat_matching_filter_preselects(self):
-        matcher, sessions = self._make_sessions()
-        flat_file = _make_file("f1.fit", "FLAT", "Ha",
-                               date_obs=datetime.datetime(2026, 4, 26, 14, 0, 0))
-        result = matcher.preselect_from_existing(sessions, [flat_file])
-        key = list(sessions.keys())[0]
-        assert result[key]["FLAT"] is not None
-
-    def test_light_frames_ignored(self):
-        matcher, sessions = self._make_sessions()
-        light_file = _make_file("l2.fit", "LIGHT", "Ha",
-                                date_obs=datetime.datetime(2026, 4, 26, 22, 0, 0))
-        result = matcher.preselect_from_existing(sessions, [light_file])
-        key = list(sessions.keys())[0]
-        for v in result[key].values():
-            assert v is None
-
-
 def _make_image(image_type, date_obs=None, camera="Cam", filter_name=None,
                 gain=100, binning=1, offset=10, set_temp=-10.0, exposure=60.0):
     root = LibraryRoot(name="root", path="/root")

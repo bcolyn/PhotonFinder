@@ -446,9 +446,9 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.search_criteria = copy.deepcopy(search_criteria)
         self.created_project = None
 
-        # Materialize all files and split into lights vs. calibration preselect
+        # Materialize all files and split into lights vs. the rest (calibration frames chosen with them)
         all_files = self._materialize_files(files)
-        self.light_files, self.calib_preselect_files = self._partition_lights(all_files)
+        self.light_files, self.other_files = self._partition_lights(all_files)
         self.first_file = self.light_files[0] if self.light_files else (all_files[0] if all_files else None)
 
         # Build session grid. The plan holds every choice and applies the rules; this dialog
@@ -457,8 +457,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.sessions = self.matcher.get_sessions(self.light_files)
         self._session_keys: List[SessionKey] = list(self.sessions.keys())
         self.plan = ExportPlan(self.light_files, self.sessions, self._find_dark_flats,
-                               other_files=self.calib_preselect_files)
-        self._preselections = self.matcher.preselect_from_existing(self.sessions, self.calib_preselect_files)
+                               other_files=self.other_files)
 
         self._setup_calibration_table()
         self._setup_calibration_rows()
@@ -481,7 +480,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         if self.search_criteria.reference_file:
             self.useRefCheckBox.setEnabled(True)
             self.useRefCheckBox.setText(self.search_criteria.reference_file.name)
-        n = len(self.light_files) if self.light_files else len(self.calib_preselect_files)
+        n = len(self.light_files) if self.light_files else len(self.other_files)
         kind = "light frames" if self.light_files else "calibration frames"
         self.setWindowTitle(f"Export {n} {kind}")
 
@@ -578,7 +577,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
 
     def _on_row_candidates_ready(self, row: int, candidates: dict):
         """Slot: fills in calibration combo boxes for one row when background queries complete."""
-        self.plan.set_candidates(row, candidates, self._preselections.get(self._session_keys[row], {}))
+        self.plan.set_candidates(row, candidates)
         for calib_type in CALIB_TYPES:
             self._render_cell(row, calib_type)
         self._refresh_all_calib_labels()
@@ -866,7 +865,19 @@ class ExportDialog(QDialog, Ui_ExportDialog):
     def _on_grid_loaded(self):
         self.calibrationTable.resizeColumnsToContents()
         self._grid_loaded = True
+        self._show_unmatched_calibration()
         self._update_export_enabled()
+
+    def _show_unmatched_calibration(self):
+        """Selected calibration frames that fit no session aren't exported: say so."""
+        unmatched = self.plan.unmatched_calibration()
+        if not unmatched:
+            return
+        names = ", ".join(f.name for f in unmatched[:5]) + (", …" if len(unmatched) > 5 else "")
+        self.unmatchedCalibrationLabel.setText(
+            f"{len(unmatched)} selected calibration frame(s) fit none of these sessions and won't be "
+            f"exported: {names}")
+        self.unmatchedCalibrationLabel.setVisible(True)
 
     def _update_export_enabled(self):
         # Until every calibration row has loaded, its selections are still empty and an

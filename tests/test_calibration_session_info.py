@@ -91,12 +91,3 @@ def test_frames_of_one_local_night_stay_together_across_the_fallback_noon(matche
     first.image.date_obs = datetime.datetime(2026, 4, 26, 9, 30)
 
     assert len(matcher.get_sessions([first, second])) == 1
-
-
-def test_preselect_reads_the_header_too(matcher, root, mocker):
-    light = _add(root, "light.fits", cards=HAWAII)
-    dark = _add(root, "dark.fits", "DARK", cards=HAWAII)
-    sessions = matcher.get_sessions([light])
-
-    [key] = sessions
-    assert matcher.preselect_from_existing(sessions, [dark])[key]["DARK"].session_date == HAWAII_NIGHT
