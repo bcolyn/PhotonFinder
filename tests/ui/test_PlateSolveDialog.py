@@ -250,3 +250,43 @@ def test_dedupe_three_distinct_setups_all_kept():
     # Three clearly different focal lengths, all well-used
     result = dedupe({0.50: 30, 1.24: 100, 2.50: 60})
     assert result == [0.50, 1.24, 2.50]
+
+
+# ---------------------------------------------------------------------------
+# Scale hint inferred when the dialog opens
+# ---------------------------------------------------------------------------
+
+def _file_with_focal_length(name, focal_length_mm):
+    """A file whose header implies 206.265 * 3.76 / focal length arcsec/px."""
+    from astropy.io.fits import Header
+    from photonfinder.core import compress
+    from photonfinder.models import File, FitsHeader, Image, LibraryRoot
+    root = LibraryRoot.get_or_create(name="r", path="/data/")[0]
+    file = File.create(root=root, path="", name=name, size=1, mtime_millis=1)
+    Image.create(file=file, image_type="LIGHT")
+    header = Header()
+    header["FOCALLEN"] = focal_length_mm
+    header["YPIXSZ"] = 3.76
+    FitsHeader.create(file=file, header=compress(header.tostring().encode("ascii")))
+    return file
+
+
+def _scale_hint_on_opening(context, qtbot, files):
+    from photonfinder.models import SearchCriteria
+    dialog = PlateSolveDialog(context, files, SearchCriteria())
+    qtbot.addWidget(dialog)
+    return dialog.hint_scale_spin.value()
+
+
+def test_a_scale_beyond_the_hint_maximum_is_skipped_for_the_next_file(context, qtbot):
+    wrong_focal_length = _file_with_focal_length("bad_focallen.fits", 1)  # 775"/px
+    good = _file_with_focal_length("good.fits", 400)
+
+    assert _scale_hint_on_opening(context, qtbot, [wrong_focal_length, good]) == 1.939
+
+
+def test_only_scales_beyond_the_maximum_leave_the_hint_as_it_was(context, qtbot):
+    no_hint = _scale_hint_on_opening(context, qtbot, [])
+    wrong_focal_length = _file_with_focal_length("bad_focallen.fits", 1)
+
+    assert _scale_hint_on_opening(context, qtbot, [wrong_focal_length]) == no_hint

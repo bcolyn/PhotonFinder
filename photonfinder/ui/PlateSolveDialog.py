@@ -190,16 +190,18 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
                 self.hint_dec_edit.setText(f"{file.image.coord_dec:.4f}")
                 break
 
-        # Scale: try WCS then header; fall back to whatever settings restored
+        # Scale: try WCS then header; fall back to whatever settings restored. A scale beyond
+        # the spinner's maximum is almost always a wrong FOCALLEN, and a wrong hint sends the
+        # solver looking at the wrong scale, so such a file is skipped.
         for file in sample_files:
             scale = _infer_scale_from_wcs(file) or _infer_scale_from_header(file)
-            if scale is not None:
-                assert scale <= self.hint_scale_spin.maximum(), (
-                    f"Inferred scale {scale:.4f} arcsec/px exceeds spinner max "
-                    f"({self.hint_scale_spin.maximum()}) for file {file.name!r}"
-                )
-                self.hint_scale_spin.setValue(round(scale, 3))
-                break
+            if scale is None:
+                continue
+            if scale > self.hint_scale_spin.maximum():
+                logging.info("Ignoring inferred scale %.1f\"/px of %s: above the hint maximum", scale, file.name)
+                continue
+            self.hint_scale_spin.setValue(round(scale, 3))
+            break
 
     def _get_sample_files(self, n: int):
         try:
