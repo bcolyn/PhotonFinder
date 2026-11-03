@@ -18,7 +18,6 @@ from photonfinder.calibration import CalibrationCandidate, SessionKey
 from photonfinder.models import File
 
 CALIB_TYPES = ("FLAT", "DARK", "BIAS", "DARKFLAT")
-_CALIBRATION_IMAGE_TYPES = {"DARK", "FLAT", "BIAS", "MASTER DARK", "MASTER FLAT", "MASTER BIAS"}
 
 FindDarkFlats = Callable[[Optional[CalibrationCandidate]], list[CalibrationCandidate]]
 
@@ -27,11 +26,6 @@ class ExportEntry(NamedTuple):
     """A file paired with the session date that determines its destination folder."""
     file: File
     session_date: Optional[datetime.date]
-
-
-def _is_calibration(file: File) -> bool:
-    image = getattr(file, 'image', None)
-    return bool(image and (image.image_type or "").upper() in _CALIBRATION_IMAGE_TYPES)
 
 
 def coerce_value(value: str):
@@ -66,16 +60,12 @@ class ExportPlan:
     def __init__(self, light_files: list[File], sessions: dict[SessionKey, list[File]],
                  find_dark_flats: FindDarkFlats, other_files: Optional[list[File]] = None):
         """``light_files``: the lights in export order. ``sessions``: those lights per session, in
-        display order. ``other_files``: the non-light files of the export selection, exported as
-        they are when there are no lights. With lights, the calibration frames among them choose
-        each row's candidates: a candidate holding a selected frame (or whose master it is) is
-        selected over the most recent one."""
+        display order. ``other_files``: an export that isn't only lights, exported as it is
+        (``light_files`` is then empty)."""
         self.light_files = list(light_files)
         self.sessions = sessions
         self.session_keys: list[SessionKey] = list(sessions)
         self.other_files = list(other_files or [])
-        self.selected_calibration = [f for f in self.other_files if _is_calibration(f)]
-        self._selected_ids = {f.rowid for f in self.selected_calibration if f.rowid is not None}
         self._find_dark_flats = find_dark_flats
         self.use_master = False
         self.shared = False
@@ -89,9 +79,8 @@ class ExportPlan:
     # --- changes -----------------------------------------------------------------------------
 
     def set_candidates(self, row: int, candidates: dict[str, list[CalibrationCandidate]]):
-        """The candidates found for a row. Each type selects the candidate holding a selected
-        calibration frame, else the first (most recent) one; then the dark-flats for the selected
-        flat are found."""
+        """The candidates found for a row. Each type selects the first (most recent) one; then the
+        dark-flats for the selected flat are found."""
         for calib_type in ("FLAT", "DARK", "BIAS"):
             cands = list(candidates.get(calib_type, []))
             self.candidates[row][calib_type] = cands
@@ -125,17 +114,9 @@ class ExportPlan:
 
     # --- rules -------------------------------------------------------------------------------
 
-    def _holds_selected(self, candidate: CalibrationCandidate) -> bool:
-        ids = {f.rowid for f in candidate.files}
-        if candidate.master is not None:
-            ids.add(candidate.master.rowid)
-        return bool(ids & self._selected_ids)
-
-    def _default(self, candidates: list[CalibrationCandidate]) -> Optional[CalibrationCandidate]:
-        """The candidate holding a selected calibration frame, else the first (most recent)."""
-        for c in candidates:
-            if self._holds_selected(c):
-                return c
+    @staticmethod
+    def _default(candidates: list[CalibrationCandidate]) -> Optional[CalibrationCandidate]:
+        """The first, most recent, candidate."""
         return candidates[0] if candidates else None
 
     def _match_dark_flats(self, row: int):
@@ -155,21 +136,6 @@ class ExportPlan:
             self.selections[row]["DARKFLAT"] = None
 
     # --- results -----------------------------------------------------------------------------
-
-    def unmatched_calibration(self) -> list[File]:
-        """Selected calibration frames that no row has as a candidate (its subs or its master),
-        so the export leaves them out. Nothing when there are no lights: then every selected
-        file is exported as it is."""
-        if not self.light_files:
-            return []
-        offered = set()
-        for by_type in self.candidates.values():
-            for cands in by_type.values():
-                for c in cands:
-                    offered.update(f.rowid for f in c.files)
-                    if c.master is not None:
-                        offered.add(c.master.rowid)
-        return [f for f in self.selected_calibration if f.rowid not in offered]
 
     def _exported_files(self, candidate: CalibrationCandidate) -> list[File]:
         return [candidate.master] if self.use_master and candidate.master else candidate.files

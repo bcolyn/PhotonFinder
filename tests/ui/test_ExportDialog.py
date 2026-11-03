@@ -75,5 +75,7 @@ def test_filtered_search_exports_only_the_frames_it_shows(sample, qtbot):
     qtbot.addWidget(everything)
     qtbot.addWidget(filtered)
 
-    assert {f.name for f in everything.light_files} == {"m31.fits", "bad.fits"}
-    assert {f.name for f in filtered.light_files} == {"m31.fits"}
+    exported = lambda dialog: {e.file.name for e in dialog.plan.entries()}
+    assert {"m31.fits", "bad.fits"} <= exported(everything)
+    assert "m31.fits" in exported(filtered)
+    assert "bad.fits" not in exported(filtered)

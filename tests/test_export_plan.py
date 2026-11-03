@@ -4,7 +4,7 @@ from datetime import date
 
 from photonfinder.calibration import CalibrationCandidate, SessionKey
 from photonfinder.export_plan import ExportEntry, ExportPlan, coerce_value
-from photonfinder.models import File, Image, LibraryRoot
+from photonfinder.models import File, LibraryRoot
 
 D1 = date(2023, 1, 15)
 D2 = date(2023, 1, 16)
@@ -112,10 +112,10 @@ class TestDarkFlats:
         assert plan.selections[0]["DARKFLAT"] is None
         assert [e.file.rowid for e in plan.calibration_entries()] == [29]
 
-    def _master_flat_row(self, dark_flats=None, other_files=None):
+    def _master_flat_row(self, dark_flats=None):
         flat = _candidate([_file(20)], master=_file(29))
         dark_flats = dark_flats or [_candidate([_file(30)])]
-        plan = _plan({_key(D1): [_file(1)]}, DarkFlats({id(flat): dark_flats}), other_files=other_files)
+        plan = _plan({_key(D1): [_file(1)]}, DarkFlats({id(flat): dark_flats}))
         plan.set_candidates(0, {"FLAT": [flat]})
         return plan, dark_flats
 
@@ -127,14 +127,14 @@ class TestDarkFlats:
 
         assert plan.selections[0]["DARKFLAT"] is dark_flat
 
-    def test_the_dark_flat_that_comes_back_is_the_default(self):
-        picked = _calib(31, "DARK")
-        plan, dark_flats = self._master_flat_row([_candidate([_file(30)]), _candidate([picked])], [picked])
+    def test_the_dark_flat_that_comes_back_is_the_default_not_the_last_choice(self):
+        plan, dark_flats = self._master_flat_row([_candidate([_file(30)]), _candidate([_file(31)])])
+        plan.select(0, "DARKFLAT", dark_flats[1])
         plan.set_use_master(True)
 
         plan.set_use_master(False)
 
-        assert plan.selections[0]["DARKFLAT"] is dark_flats[1]
+        assert plan.selections[0]["DARKFLAT"] is dark_flats[0]
 
     def test_a_dark_flat_set_to_none_by_the_user_stays_none(self):
         plan, _ = self._master_flat_row()
@@ -297,98 +297,6 @@ class TestCustomHeaders:
         with caplog.at_level(logging.WARNING):
             assert plan.file_headers()[1] == {"VALID": "yes", "ALSO": "ok"}
         assert any("NO_EQUALS" in m for m in caplog.messages)
-
-
-def _calib(rowid, image_type):
-    """A calibration file the user selected along with the lights."""
-    f = _file(rowid, f"{image_type.lower().replace(' ', '_')}_{rowid}.fits")
-    f.image = Image(image_type=image_type)
-    return f
-
-
-class TestSelectedCalibrationWins:
-    """Calibration frames selected with the lights choose their candidate (bug-review 14)."""
-
-    def test_the_candidate_holding_a_selected_file_is_selected(self):
-        picked = _calib(11, "DARK")
-        recent, older = _candidate([_file(10)], session_date=D2), _candidate([picked, _file(12)], session_date=D1)
-        plan = _plan({_key(D1): [_file(1)]}, other_files=[picked])
-
-        plan.set_candidates(0, {"DARK": [recent, older]})
-
-        assert plan.selections[0]["DARK"] is older
-
-    def test_not_just_any_candidate_of_the_same_night(self):
-        """Two groups on one night (0.2 s and 0.4 s flats): the one holding the file wins."""
-        picked = _calib(21, "FLAT")
-        short, long = _candidate([_file(20)], session_date=D1), _candidate([picked], session_date=D1)
-        plan = _plan({_key(D1): [_file(1)]}, other_files=[picked])
-
-        plan.set_candidates(0, {"FLAT": [short, long]})
-
-        assert plan.selections[0]["FLAT"] is long
-
-    def test_a_row_takes_the_selected_file_it_has_a_candidate_for(self):
-        dark_1, dark_2 = _calib(11, "DARK"), _calib(12, "DARK")
-        cand_1, cand_2 = _candidate([dark_1]), _candidate([dark_2])
-        plan = _plan({_key(D1): [_file(1)], _key(D2): [_file(2)]}, other_files=[dark_1, dark_2])
-
-        plan.set_candidates(0, {"DARK": [_candidate([_file(9)]), cand_1]})
-        plan.set_candidates(1, {"DARK": [_candidate([_file(9)]), cand_2]})
-
-        assert (plan.selections[0]["DARK"], plan.selections[1]["DARK"]) == (cand_1, cand_2)
-
-    def test_a_selected_master_selects_its_candidate(self):
-        master = _calib(99, "MASTER DARK")
-        recent, older = _candidate([_file(10)]), _candidate([_file(11)], master=master)
-        plan = _plan({_key(D1): [_file(1)]}, other_files=[master])
-
-        plan.set_candidates(0, {"DARK": [recent, older]})
-
-        assert plan.selections[0]["DARK"] is older
-
-    def test_a_selected_dark_flat_is_selected_when_its_flat_is(self):
-        flat = _candidate([_file(20)])
-        picked = _calib(31, "DARK")
-        df_recent, df_picked = _candidate([_file(30)]), _candidate([picked])
-        plan = _plan({_key(D1): [_file(1)]}, DarkFlats({id(flat): [df_recent, df_picked]}), other_files=[picked])
-
-        plan.set_candidates(0, {"FLAT": [flat]})
-
-        assert plan.selections[0]["DARKFLAT"] is df_picked
-
-    def test_rows_without_a_selected_file_keep_the_most_recent(self):
-        picked = _calib(11, "DARK")
-        recent = _candidate([_file(10)])
-        plan = _plan({_key(D1): [_file(1)]}, other_files=[picked])
-
-        plan.set_candidates(0, {"DARK": [recent], "BIAS": [_candidate([_file(40)])]})
-
-        assert plan.selections[0]["DARK"] is recent
-        assert plan.selections[0]["BIAS"].files[0].rowid == 40
-
-    def test_selected_files_that_fit_no_row_are_reported(self):
-        used, unused = _calib(11, "DARK"), _calib(50, "FLAT")
-        plan = _plan({_key(D1): [_file(1)]}, other_files=[used, unused, _file(60)])
-
-        plan.set_candidates(0, {"DARK": [_candidate([used])], "FLAT": [_candidate([_file(20)])]})
-
-        assert plan.unmatched_calibration() == [unused]
-
-    def test_a_file_in_a_candidate_counts_as_matched_even_when_not_selected(self):
-        """It fits the row, so the user can still pick it; only files no row can use are reported."""
-        a, b = _calib(11, "DARK"), _calib(12, "DARK")
-        cand_a, cand_b = _candidate([a]), _candidate([b])
-        plan = _plan({_key(D1): [_file(1)]}, other_files=[a, b])
-
-        plan.set_candidates(0, {"DARK": [cand_a, cand_b]})
-
-        assert plan.unmatched_calibration() == []
-
-    def test_without_lights_nothing_is_reported(self):
-        plan = ExportPlan([], {}, DarkFlats(), other_files=[_calib(11, "DARK")])
-
-        assert plan.unmatched_calibration() == []
 
 
 def test_coerce_value():

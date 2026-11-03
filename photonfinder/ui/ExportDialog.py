@@ -446,7 +446,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.search_criteria = copy.deepcopy(search_criteria)
         self.created_project = None
 
-        # Materialize all files and split into lights vs. the rest (calibration frames chosen with them)
+        # Materialize all files: only lights get calibration matched, a mixed export goes as it is
         all_files = self._materialize_files(files)
         self.light_files, self.other_files = self._partition_lights(all_files)
         self.first_file = self.light_files[0] if self.light_files else (all_files[0] if all_files else None)
@@ -481,7 +481,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             self.useRefCheckBox.setEnabled(True)
             self.useRefCheckBox.setText(self.search_criteria.reference_file.name)
         n = len(self.light_files) if self.light_files else len(self.other_files)
-        kind = "light frames" if self.light_files else "calibration frames"
+        kind = "light frames" if self.light_files else "files"
         self.setWindowTitle(f"Export {n} {kind}")
 
         self.load_settings()
@@ -519,17 +519,16 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             query = Image.apply_search_criteria(query, self.search_criteria)
             return list(query)
 
-    def _partition_lights(self, files: List[File]) -> tuple:
-        lights = []
-        others = []
-        for f in files:
+    @staticmethod
+    def _partition_lights(files: List[File]) -> tuple:
+        """(lights, others). Only an export of nothing but light frames gets its calibration
+        matched; with anything else in it, every file is exported as it is, as (no lights, all)."""
+        def is_light(f):
             image = f.image if hasattr(f, 'image') else None
-            itype = (image.image_type or "").upper() if image else ""
-            if itype == "LIGHT":
-                lights.append(f)
-            else:
-                others.append(f)
-        return lights, others
+            return bool(image) and (image.image_type or "").upper() == "LIGHT"
+        if files and all(is_light(f) for f in files):
+            return list(files), []
+        return [], list(files)
 
     def _setup_calibration_table(self):
         self.calibrationTable.setColumnCount(len(_CALIB_COL_LABELS))
@@ -865,19 +864,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
     def _on_grid_loaded(self):
         self.calibrationTable.resizeColumnsToContents()
         self._grid_loaded = True
-        self._show_unmatched_calibration()
         self._update_export_enabled()
-
-    def _show_unmatched_calibration(self):
-        """Selected calibration frames that fit no session aren't exported: say so."""
-        unmatched = self.plan.unmatched_calibration()
-        if not unmatched:
-            return
-        names = ", ".join(f.name for f in unmatched[:5]) + (", …" if len(unmatched) > 5 else "")
-        self.unmatchedCalibrationLabel.setText(
-            f"{len(unmatched)} selected calibration frame(s) fit none of these sessions and won't be "
-            f"exported: {names}")
-        self.unmatchedCalibrationLabel.setVisible(True)
 
     def _update_export_enabled(self):
         # Until every calibration row has loaded, its selections are still empty and an

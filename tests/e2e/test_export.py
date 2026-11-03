@@ -6,6 +6,7 @@ series (use-master, and a master flat clearing the dark-flat). The expected outp
 the export wrote before the Export plan refactor (architecture-deepening 16)."""
 import dataclasses
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -95,9 +96,9 @@ def test_unchecking_use_master_brings_the_dark_flat_back(export_dialog):
     assert darkflat.currentData() is default
 
 
-def test_calibration_frames_that_fit_no_session_are_reported(sandbox, app, modals, boundary, libraries, qtbot):
-    """Exporting a whole camera's files: its lights, and calibration frames chosen with them.
-    The -20 C darks and the gain 0 bias fit none of the -10 C / gain 100 sessions."""
+def test_a_mixed_export_goes_out_as_it_is(sandbox, app, modals, boundary, libraries, qtbot, tmp_path):
+    """Exporting a whole camera's files, lights and calibration: no calibration matching, every
+    file once, at the night it was taken."""
     add_libraries(sandbox, modals, boundary, libraries.roots, scan=True)
     search(sandbox, app, camera=MONO)
     panel = app.get_current_search_panel()
@@ -105,18 +106,22 @@ def test_calibration_frames_that_fit_no_session_are_reported(sandbox, app, modal
     [dialog] = panel.findChildren(ExportDialog)
     qtbot.waitUntil(lambda: dialog._grid_loaded, timeout=10_000)
 
-    old_set = sorted(p.name for p, f in libraries.files.items()
-                     if f.camera == MONO and f.image_type in ("DARK", "BIAS") and f.set_temp == -20.0)
-    label = dialog.unmatchedCalibrationLabel
-    assert len(old_set) == 6
-    assert label.isVisibleTo(dialog)
-    assert label.text().startswith("6 selected calibration frame(s) fit none of these sessions")
-    assert sorted(f.name for f in dialog.plan.unmatched_calibration()) == old_set
+    assert not dialog.calibrationTable.isVisibleTo(dialog)
+    mono = sorted(p.name for p, f in libraries.files.items() if f.camera == MONO)
+    decompressed = sorted(re.sub(r"\.(gz|bz2|xz)$", "", name) for name in mono)
+    assert dialog.decompressCheckBox.isChecked()
+    assert dialog.windowTitle() == f"Export {len(mono)} files"
+    paths = _export(dialog, qtbot, tmp_path / "out", use_master=False, shared=False)
     dialog.close()
 
+    assert sorted(p.rsplit("/", 1)[1] for p in paths) == decompressed
+    nights = {f.session_date.isoformat() for f in libraries.files.values() if f.camera == MONO}
+    assert {p.split("/", 1)[0] for p in paths} == nights
 
-def test_nothing_is_reported_for_lights_alone(export_dialog):
-    assert not export_dialog.unmatchedCalibrationLabel.isVisibleTo(export_dialog)
+
+def test_lights_alone_get_their_calibration_matched(export_dialog):
+    assert export_dialog.calibrationTable.isVisibleTo(export_dialog)
+    assert export_dialog.calibrationTable.rowCount() > 0
 
 
 def _expected(name: str) -> list[str]:
