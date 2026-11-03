@@ -21,10 +21,10 @@ def root(context):
     return LibraryRoot.create(name="r", path="/r/")
 
 
-def _add(root, name, image_type, exposure, minutes=0):
+def _add(root, name, image_type, exposure, minutes=0, set_temp=None):
     file = File.create(root=root, path="", name=name, size=1, mtime_millis=1)
     file.image = Image.create(file=file, image_type=image_type, filter="Ha", exposure=exposure,
-                              date_obs=NIGHT + datetime.timedelta(minutes=minutes))
+                              set_temp=set_temp, date_obs=NIGHT + datetime.timedelta(minutes=minutes))
     return file
 
 
@@ -63,6 +63,25 @@ def test_long_darks_still_group_by_their_exposure(matcher, root):
     _add(root, "d120.fits", "DARK", 120.0, minutes=10)
 
     assert _groups(matcher, "DARK") == [(120.0, ["d120.fits"]), (300.0, ["d300a.fits", "d300b.fits"])]
+
+
+@pytest.mark.parametrize("image_type", ["FLAT", "BIAS"])
+def test_flats_and_bias_of_one_night_group_whatever_their_temperature(matcher, root, image_type):
+    """Their exposures are too short for dark current: a set temperature that varies (or a
+    cooler that was off) must not split one night's frames into groups that fall off the list."""
+    for i, temp in enumerate((-10.0, -10.0, -5.0, 0.0, None)):
+        _add(root, f"{i}.fits", image_type, 2.6, minutes=i, set_temp=temp)
+
+    [(exposure, names)] = _groups(matcher, image_type)
+    assert exposure == 2.6
+    assert len(names) == 5
+
+
+def test_darks_still_group_by_temperature(matcher, root):
+    _add(root, "cold.fits", "DARK", 300.0, set_temp=-10.0)
+    _add(root, "warm.fits", "DARK", 300.0, minutes=5, set_temp=0.0)
+
+    assert _groups(matcher, "DARK") == [(300.0, ["cold.fits"]), (300.0, ["warm.fits"])]
 
 
 def test_the_reference_time_is_the_median_of_the_utc_times(context, root):

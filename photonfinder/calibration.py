@@ -277,8 +277,13 @@ class CalibrationMatcher:
             return list(query)
 
     def find_candidates(self, criteria: SearchCriteria) -> list[CalibrationCandidate]:
-        """Run a calibration search and group results by night into CalibrationCandidate list."""
+        """Run a calibration search and group results by night into CalibrationCandidate list.
+
+        Groups are per night, filter and exposure, and for darks (dark-flats included) per set
+        temperature too: dark current depends on it. Flats and bias are too short for that, and
+        their set temperature often varies or is missing (cooler off), so it doesn't split them."""
         files = self._query_files(criteria)
+        by_temperature = (criteria.type or "").upper() == "DARK"
 
         session_info = self._load_session_info(files)
         fallback_tz = self._fallback_tz()
@@ -296,7 +301,7 @@ class CalibrationMatcher:
             )
             filt = image.filter if image else None
             exp_key = _exposure_key(image.exposure if image else None)
-            temp_key = round(image.set_temp) if image and image.set_temp is not None else None
+            temp_key = round(image.set_temp) if by_temperature and image and image.set_temp is not None else None
             key = (d, filt, exp_key, temp_key)
             if key not in cal_groups:
                 cal_groups[key] = []
