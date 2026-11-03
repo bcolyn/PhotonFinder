@@ -1,5 +1,6 @@
 """Astrometry.net through astroquery, with nova.astrometry.net replaced at the HTTP request:
 astroquery's upload and our polling run for real."""
+import io
 import time
 from pathlib import Path
 
@@ -32,6 +33,7 @@ class FakeNova:
         self.polls_before_result = polls_before_result
         self.result = result
         self.requests = []  # (time, url)
+        self.uploaded = []  # bytes of each uploaded image
         self._polls = 0
 
     def request(self, method, url, **kwargs):
@@ -39,6 +41,9 @@ class FakeNova:
         if url.endswith("/login"):
             return Response({"status": "success", "session": "s1"})
         if url.endswith("/url_upload"):  # a source list
+            return Response({"status": "success", "subid": 7})
+        if url.endswith("/upload"):  # the image itself
+            self.uploaded.append(kwargs["files"]["file"].read())
             return Response({"status": "success", "subid": 7})
         if "/submissions/" in url:
             return Response({"jobs": [42]})
@@ -153,3 +158,34 @@ def test_without_a_cancel_the_solution_is_returned(image_file, nova):
 
     assert solution["CRVAL1"] == 10.68
     assert (solution["NAXIS1"], solution["NAXIS2"]) == (300, 200)
+
+
+class TestForcedImageUpload:
+    def _solve(self, image_file, cancelled=None):
+        with AstrometryNetSolver("key", force_image_upload=True) as solver:
+            return solver.solve(image_file, cancelled=cancelled)
+
+    def test_the_image_is_uploaded_not_a_source_list(self, image_file, nova):
+        fake = nova(polls_before_result=1)
+
+        solution = self._solve(image_file)
+
+        assert solution["CRVAL1"] == 10.68
+        assert (solution["NAXIS1"], solution["NAXIS2"]) == (300, 200)
+        [uploaded] = fake.uploaded
+        assert fits.getdata(io.BytesIO(uploaded)).shape == (200, 300)
+        assert not any(url.endswith("/url_upload") for _, url in fake.requests)
+
+    def test_a_failed_job_is_a_solver_failure(self, image_file, nova):
+        nova(polls_before_result=1, result="failure")
+
+        with pytest.raises(SolverFailure, match="could not solve"):
+            self._solve(image_file)
+
+    def test_nothing_is_uploaded_once_cancelled(self, image_file, nova):
+        fake = nova()
+
+        with pytest.raises(SolverCancelled):
+            self._solve(image_file, cancelled=lambda: True)
+
+        assert fake.requests == []

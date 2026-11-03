@@ -371,6 +371,23 @@ class _CancellableAstrometryNet(AstrometryNetClass):
         if self.cancelled():
             raise SolverCancelled("Astrometry.net job abandoned")
 
+    def solve_by_upload(self, image_path: Path, *, solve_timeout: int, **settings):
+        """Upload the image itself for nova to find the stars. astroquery's ``solve_from_image``
+        only uploads when photutils is missing, and its argument to force it is deprecated."""
+        self._validate_settings(settings)
+        if self.cancelled():
+            raise SolverCancelled("Astrometry.net upload not started")
+        if self._session_id is None:
+            self._login()
+        settings['session'] = self._session_id
+        url = url_helpers.join(self.API_URL, 'upload')
+        with open(image_path, 'rb') as image:
+            response = self._request('POST', url, data=self._construct_payload(settings), cache=False,
+                                     files={'file': image})
+        if response.status_code != 200:
+            raise RuntimeError('Post of job failed')
+        return self.monitor_submission(response.json()['subid'], solve_timeout=solve_timeout, verbose=False)
+
     def monitor_submission(self, submission_id, *, solve_timeout=AstrometryNetClass.TIMEOUT, verbose=True,
                            return_submission_id=False):
         """Same results as astroquery's: the WCS header on success, ``{}`` on failure, and
@@ -425,8 +442,8 @@ class AstrometryNetSolver(SolverBase):
         self.ast.cancelled = cancelled or _never_cancelled
         temp_image = self._create_temp_fits(image_path, file_wcs)
         if self.force_image_upload:
-            wcs_header = self._submit(image_path, lambda: self.ast.solve_from_image(
-                temp_image, verbose=False, crpix_center=True, solve_timeout=self.SOLVE_TIMEOUT_SECONDS,
+            wcs_header = self._submit(image_path, lambda: self.ast.solve_by_upload(
+                temp_image, crpix_center=True, solve_timeout=self.SOLVE_TIMEOUT_SECONDS,
             ))
             original_header = fits.getheader(temp_image)
             result = extract_wcs_cards(wcs_header)
