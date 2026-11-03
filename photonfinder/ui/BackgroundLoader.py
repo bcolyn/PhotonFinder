@@ -1,3 +1,4 @@
+import copy
 import logging
 import math
 from pathlib import Path
@@ -63,19 +64,36 @@ class BackgroundLoaderBase(QObject):
 
 
 class GenericControlLoader(BackgroundLoaderBase):
-    """Generic background loader for arbitrary functions."""
+    """Generic background loader for arbitrary functions.
+
+    Each run_tasks call supersedes the previous one: results of an older run that complete
+    late are dropped, so a slow refresh can't overwrite the options of a newer one."""
     data_ready = Signal(QWidget, list)
+    _task_done = Signal(QWidget, list, int)  # widget, result, generation; worker thread -> GUI thread
+
+    def __init__(self, context: ApplicationContext):
+        super().__init__(context)
+        self._generation = 0
+        self._task_done.connect(self._on_task_done)
 
     def run_tasks(self, tasks: List[tuple[QWidget, Callable]], search_criteria):
-        self.run_in_thread(self._run_tasks, tasks, search_criteria)
+        self._generation += 1
+        self.run_in_thread(self._run_tasks, tasks, copy.deepcopy(search_criteria), self._generation)
 
-    def _run_tasks(self, tasks: List[tuple[QWidget, Callable]], search_criteria: SearchCriteria):
+    def _run_tasks(self, tasks: List[tuple[QWidget, Callable]], search_criteria: SearchCriteria, generation: int):
         for widget, task in tasks:
+            if generation != self._generation:
+                return  # superseded; the newer run will load these
             try:
                 result = task(search_criteria)
-                self.data_ready.emit(widget, result)
+                self._task_done.emit(widget, result, generation)
             except Exception as e:
                 logging.error(f"Error loading data for control {widget.objectName()}: {e}", exc_info=True)
+
+    @Slot(QWidget, list, int)
+    def _on_task_done(self, widget, result, generation):
+        if generation == self._generation:
+            self.data_ready.emit(widget, result)
 
 
 class ProjectsLoader(BackgroundLoaderBase):
@@ -163,47 +181,68 @@ class FilePathsLoader(BackgroundLoaderBase):
 
 
 class SearchResultsLoader(BackgroundLoaderBase):
-    """Helper class for asynchronous loading of search results from the database."""
+    """Helper class for asynchronous loading of search results from the database.
+
+    Every search works on its own snapshot of the criteria, so the UI can keep editing its
+    criteria object while a query runs. A new search supersedes the previous one: pages that
+    arrive late from a superseded search are dropped instead of being shown.
+    """
 
     # Signal emitted when search results are loaded
     results_loaded = Signal(list, int, int, bool)  # results, page, total, has_more
+    # worker thread -> GUI thread: results, page, total, has_more, request id
+    _page_ready = Signal(list, int, int, bool, int)
 
     def __init__(self, context: ApplicationContext):
         super().__init__(context)
         self.page_size = 100
         self.current_page = 0
         self.total_results = 0
-        self.last_criteria = None
-        self.running = False
+        self.last_criteria: Optional[SearchCriteria] = None  # snapshot the current search runs on
+        self._request_id = 0
+        self._in_flight: set[tuple[int, int]] = set()  # (request id, page) not yet delivered
+        self._page_ready.connect(self._on_page_ready)
 
     def search(self, search_criteria, page=0):
-        """Start a search with the given criteria."""
-        if self.running and search_criteria == self.last_criteria and page == self.current_page:
-            return # don't start if we're running the same query already, maybe check timestamp of last tough
-
+        """Start a search with the given criteria. Page 0 starts a new search, superseding any
+        running one; other pages continue the current search."""
+        if page == 0:
+            if (search_criteria == self.last_criteria
+                    and (self._request_id, 0) in self._in_flight):
+                return  # the same query is already running
+            self._request_id += 1
+            self.last_criteria = copy.deepcopy(search_criteria)
+        elif (self._request_id, page) in self._in_flight:
+            return
         self.current_page = page
-        self.last_criteria = search_criteria
-        self.running = True
-        self.run_in_thread(self._search_task, search_criteria, page)
+        self._in_flight.add((self._request_id, page))
+        self.run_in_thread(self._search_task, self.last_criteria, page, self._request_id)
 
     def load_more(self):
         """Load the next page of results using the last search criteria."""
-        if self.last_criteria:
+        if self.last_criteria is not None:
             self.search(self.last_criteria, self.current_page + 1)
 
-    def _search_task(self, search_criteria, page):
+    def is_running(self) -> bool:
+        return bool(self._in_flight)
+
+    def _search_task(self, search_criteria, page, request_id):
         """Background task to search for files matching the criteria."""
         try:
             results, total, has_more = search_files(search_criteria, page, self.page_size)
-            self.total_results = total
-
-            # Emit signal with the results
-            self.results_loaded.emit(results, page, self.total_results, has_more)
         except Exception as e:
             logging.error(f"Error searching files: {e}", exc_info=True)
-            self.results_loaded.emit([], False)
-        finally:
-            self.running = False
+            results, total, has_more = [], 0, False
+        self._page_ready.emit(results, page, total, has_more, request_id)
+
+    @Slot(list, int, int, bool, int)
+    def _on_page_ready(self, results, page, total, has_more, request_id):
+        self._in_flight.discard((request_id, page))
+        if request_id != self._request_id:
+            return  # a newer search has started since; its own pages will follow
+        if page == 0 or total:
+            self.total_results = total
+        self.results_loaded.emit(results, page, self.total_results, has_more)
 
 
 REINDEX_BATCH_SIZE = 1000
