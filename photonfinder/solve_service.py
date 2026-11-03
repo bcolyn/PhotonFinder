@@ -62,8 +62,10 @@ def solve_file(file: File, solver: SolverBase, backup_solver: SolverBase = None,
     failure) and, on success, persist the WCS solution to the database.
 
     ``cancelled`` is asked while solving. Once it returns True the running solver is stopped,
-    no backup is started, and the outcome has ``cancelled`` set. A solution that arrives
-    regardless is still stored: it was expensive to get.
+    no backup is started, and the outcome has ``cancelled`` set. A solver that returns a
+    solution despite the cancel (it finished before noticing) has that solution stored: it was
+    expensive to get. A solution not yet fetched when the cancel is noticed is dropped, e.g. an
+    Astrometry.net job that finished during the wait before the next poll.
 
     Returns a :class:`SolveOutcome` describing the result; never raises for solver
     failures (``SolverError``/``SolverFailure``) or unexpected errors -- those are
