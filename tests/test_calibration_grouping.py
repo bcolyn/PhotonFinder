@@ -65,6 +65,38 @@ def test_long_darks_still_group_by_their_exposure(matcher, root):
     assert _groups(matcher, "DARK") == [(120.0, ["d120.fits"]), (300.0, ["d300a.fits", "d300b.fits"])]
 
 
+@pytest.mark.parametrize("exposures, groups", [
+    ((2.6, 2.61, 2.7, 2.86), [4]),           # within 10% of 2.6 s: one group
+    ((2.6, 2.61, 2.87), [2, 1]),             # 2.87 is beyond 2.6 + 0.26
+    ((10.0, 10.4, 10.5), [3]),               # 10% is 1 s, so the 0.5 s cap applies
+    ((10.0, 10.51), [1, 1]),
+    ((300.0, 300.4), [2]),                   # long frames: within 0.5 s
+    ((300.0, 301.0), [1, 1]),
+], ids=["auto_exposure", "beyond_10pct", "cap_at_10s", "beyond_cap", "long_within", "long_beyond"])
+def test_exposures_close_enough_share_a_group(matcher, root, exposures, groups):
+    """Automatic flat exposures vary a little from frame to frame: they're still one set."""
+    for i, exposure in enumerate(exposures):
+        _add(root, f"{i}.fits", "FLAT", exposure, minutes=i)
+
+    assert sorted((len(names) for _, names in _groups(matcher, "FLAT")), reverse=True) == groups
+
+
+def test_a_group_reports_its_median_exposure(matcher, root):
+    for i, exposure in enumerate((2.6, 2.62, 2.7)):
+        _add(root, f"{i}.fits", "FLAT", exposure, minutes=i)
+
+    [(exposure, _)] = _groups(matcher, "FLAT")
+    assert exposure == 2.62
+
+
+def test_the_leeway_does_not_chain(matcher, root):
+    """Each step is within the leeway of the last, but not of the first: two groups."""
+    for i, exposure in enumerate((10.0, 10.3, 10.6, 10.9)):
+        _add(root, f"{i}.fits", "FLAT", exposure, minutes=i)
+
+    assert [len(names) for _, names in _groups(matcher, "FLAT")] == [2, 2]
+
+
 @pytest.mark.parametrize("image_type", ["FLAT", "BIAS"])
 def test_flats_and_bias_of_one_night_group_whatever_their_temperature(matcher, root, image_type):
     """Their exposures are too short for dark current: a set temperature that varies (or a

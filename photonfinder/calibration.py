@@ -183,9 +183,41 @@ def load_session_info(file_ids: list[int]) -> dict[int, tuple]:
 
 
 def _exposure_key(exposure: Optional[float]) -> Optional[float]:
-    """The exposure calibration frames are grouped by: to the millisecond, so 0.2 s and 0.4 s
-    flats stay apart while float noise (0.2 vs 0.2000001) doesn't split a group."""
+    """An exposure to the millisecond, so float noise (0.2 vs 0.2000001) never splits a group."""
     return round(exposure, 3) if exposure is not None else None
+
+
+_EXPOSURE_LEEWAY_SECONDS = 0.5
+_EXPOSURE_LEEWAY_FRACTION = 0.10
+
+
+def _exposure_clusters(files: list[File]) -> list[tuple[Optional[float], list[File]]]:
+    """Split one night's frames into sets of about the same exposure: (median exposure, files).
+
+    Automatic flat exposures vary a little from frame to frame, yet are one set. A set takes the
+    frames within 0.5 s, or 10% if less, of its shortest exposure: 2.6 s flats allow 0.26 s, long
+    darks 0.5 s, and 0.2 s and 0.4 s flats stay apart. Measured from the shortest, not from the
+    previous frame, so small steps can't chain into a wide set. Frames without an exposure form
+    their own set."""
+    def exposure_of(f):
+        image = getattr(f, 'image', None)
+        return _exposure_key(image.exposure if image else None)
+
+    without = [f for f in files if exposure_of(f) is None]
+    with_exposure = sorted((f for f in files if exposure_of(f) is not None), key=exposure_of)
+    clusters: list[list[File]] = []
+    start = None
+    for f in with_exposure:
+        exposure = exposure_of(f)
+        leeway = min(_EXPOSURE_LEEWAY_SECONDS, _EXPOSURE_LEEWAY_FRACTION * start) if start is not None else 0
+        if start is None or exposure - start > leeway + 1e-9:
+            clusters.append([])
+            start = exposure
+        clusters[-1].append(f)
+    result = [(_exposure_key(statistics.median(exposure_of(f) for f in c)), c) for c in clusters]
+    if without:
+        result.append((None, without))
+    return result
 
 
 @dataclass(frozen=True, eq=True)
@@ -281,7 +313,8 @@ class CalibrationMatcher:
 
         Groups are per night, filter and exposure, and for darks (dark-flats included) per set
         temperature too: dark current depends on it. Flats and bias are too short for that, and
-        their set temperature often varies or is missing (cooler off), so it doesn't split them."""
+        their set temperature often varies or is missing (cooler off), so it doesn't split them.
+        Exposures a little apart share a group (see ``_exposure_clusters``)."""
         files = self._query_files(criteria)
         by_temperature = (criteria.type or "").upper() == "DARK"
 
@@ -300,25 +333,16 @@ class CalibrationMatcher:
                 fallback_tz=fallback_tz,
             )
             filt = image.filter if image else None
-            exp_key = _exposure_key(image.exposure if image else None)
             temp_key = round(image.set_temp) if by_temperature and image and image.set_temp is not None else None
-            key = (d, filt, exp_key, temp_key)
-            if key not in cal_groups:
-                cal_groups[key] = []
-            cal_groups[key].append(f)
+            cal_groups.setdefault((d, filt, temp_key), []).append(f)
 
-        candidates = []
-        for (d, _filt, exp_key, _temp_key), group_files in sorted(
-                cal_groups.items(),
-                key=lambda kv: (kv[0][0] or datetime.date.min, kv[0][1] or "", kv[0][2] or 0, kv[0][3] or 0),
-                reverse=True):
-            candidates.append(CalibrationCandidate(
-                session_date=d,
-                count=len(group_files),
-                files=group_files,
-                exposure=exp_key,  # every file in the group has it
-            ))
-        return candidates
+        groups = []  # (night, filter, exposure, set_temp, files)
+        for (d, filt, temp_key), group_files in cal_groups.items():
+            for exposure, cluster in _exposure_clusters(group_files):
+                groups.append((d, filt, exposure, temp_key, cluster))
+        groups.sort(key=lambda g: (g[0] or datetime.date.min, g[1] or "", g[2] or 0, g[3] or 0), reverse=True)
+        return [CalibrationCandidate(session_date=d, count=len(files), files=files, exposure=exposure)
+                for d, _filt, exposure, _temp_key, files in groups]
 
     @staticmethod
     def _sort_by_exposure_then_date(candidates: list[CalibrationCandidate], ref_exposure: Optional[float],
