@@ -14,8 +14,8 @@ from photonfinder.ui.CoordinatesDialog import CoordinatesDialog
 from photonfinder.ui.DateRangeDialog import DateRangeDialog
 from photonfinder.ui.ExposureDialog import ExposureDialog
 from photonfinder.ui.GainDialog import GainDialog
-from photonfinder.models import CORE_MODELS, DIAGNOSIS_BAD_VALUES, File, ImageStats, SearchCriteria
-from photonfinder.ui.RangeFilterDialogs import DiagnosisFilterDialog, ImageQualityDialog, ImageSizeDialog
+from photonfinder.models import CORE_MODELS, DIAGNOSIS_BAD_VALUES, File, Image, ImageStats, SearchCriteria
+from photonfinder.ui.RangeFilterDialogs import DiagnosisFilterDialog, ImageQualityDialog, ImageSizeDialog, PlateScaleDialog
 from photonfinder.ui.SearchPanel import AdvancedFilter
 from photonfinder.ui.TelescopeDialog import TelescopeDialog
 from photonfinder.ui.TemperatureDialog import TemperatureDialog
@@ -76,6 +76,64 @@ def test_exposure_from_the_selected_row(sandbox, app, modals, libraries, grid):
     assert shown(grid) == matching(libraries, lambda f: f.exposure == 120.0)
     remove_filter(sandbox, grid, AdvancedFilter.EXPOSURE)
     assert grid.row_count() == len(libraries.files)
+
+
+def test_exposure_zero_from_a_bias_row(sandbox, app, modals, libraries, grid):
+    grid.select("File name", name_of(libraries, lambda f: f.image_type == "BIAS"))
+
+    def check_prefill(dialog: ExposureDialog):
+        assert dialog.get_exposure() == 0.0
+
+    add_filter(sandbox, modals, app.actionExposure, ExposureDialog, check_prefill)
+
+    assert shown(grid) == matching(libraries, lambda f: f.exposure == 0.0)
+
+
+def test_plate_scale_from_the_selected_row(sandbox, app, modals, libraries, grid):
+    name = name_of(libraries, lambda f: f.object_name == "M 31")
+    with sandbox.context.database.bind_ctx(CORE_MODELS):
+        Image.update(coord_radius=0.0123457).where(Image.file == File.get(File.name == name)).execute()
+    grid.panel.update_search_criteria()
+    sandbox.wait_idle()
+    grid.select("File name", name)
+
+    def check_prefill(dialog: PlateScaleDialog):
+        low, high = dialog.get_scale_criteria()
+        assert low is not None and low == high
+
+    add_filter(sandbox, modals, app.actionPlateScale, PlateScaleDialog, check_prefill)
+
+    assert shown(grid) == [name]
+
+
+def _no_filter_frames(libraries) -> list[str]:
+    return matching(libraries, lambda f: f.filter is None)
+
+
+def test_a_saved_search_for_an_empty_value_restores_as_empty(sandbox, app, libraries, grid):
+    """filter = None means "files without a filter" (IS NULL), not "any filter"."""
+    saved = SearchCriteria.from_json(SearchCriteria(filter=None).to_json())
+    assert saved.filter is None
+
+    grid.panel.apply_search_criteria(saved)
+    sandbox.wait_idle()
+
+    assert grid.panel.filter_filter_combo.currentText() == "<empty>"
+    assert grid.panel.search_criteria.filter is None
+    assert shown(grid) == _no_filter_frames(libraries)
+
+
+def test_duplicating_a_tab_keeps_an_empty_value(sandbox, app, libraries, grid):
+    grid.panel.apply_search_criteria(SearchCriteria(filter=None))
+    sandbox.wait_idle()
+
+    app.actionDuplicate_Tab.trigger()
+    sandbox.wait_idle()
+
+    copy = app.get_current_search_panel()
+    assert copy is not grid.panel
+    assert copy.search_criteria.filter is None
+    assert shown(sandbox.grid(copy)) == _no_filter_frames(libraries)
 
 
 def test_gain_then_edit_to_gain_and_offset(sandbox, app, modals, libraries, grid):
@@ -206,8 +264,8 @@ def test_filters_combine_with_the_type_box_and_come_off_again(sandbox, app, moda
     assert shown(grid) == matching(libraries, lambda f: f.image_type == "LIGHT")
 
 
-ROW_STATS = dict(star_count=480, fwhm_median=3.2547, background_median=1012.53, background_rms=14.75,
-                 elongation_median=1.1234)  # more digits than the dialog shows, as analysis gives
+ROW_STATS = dict(star_count=480, fwhm_median=3.2547, background_median=-12.53, background_rms=14.75,
+                 elongation_median=1.1234)  # more digits than the dialog shows; a bias-subtracted background
 
 
 def test_image_statistics_from_the_selected_row(sandbox, app, modals, libraries, grid):

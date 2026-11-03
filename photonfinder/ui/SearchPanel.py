@@ -190,6 +190,29 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def on_library_tree_ready(self):
         all_libraries_index = self.library_tree_model.index(0, 0, QModelIndex())
         self.filesystemTreeView.expand(all_libraries_index)
+        self._revalidate_tree_paths()
+
+    def _revalidate_tree_paths(self):
+        """After the library tree is (re)loaded, e.g. once Manage Libraries closes: its reset
+        cleared the tree selection but not the search's folder paths. Drop the paths of library
+        roots that are gone, and show the others selected again."""
+        if not self.search_criteria.paths:
+            return
+        all_libraries = self.library_tree_model.root_node.child(0)
+        root_ids = {n.library_root.rowid for n in all_libraries.children if isinstance(n, LibraryRootNode)}
+        kept = [p for p in self.search_criteria.paths if p.root_id is None or p.root_id in root_ids]
+        dropped = len(kept) != len(self.search_criteria.paths)
+        self.search_criteria.paths = kept
+        was_updating = self.update_in_progress
+        self.update_in_progress = True  # selecting them again must not search once per path
+        try:
+            self.filesystemTreeView.selectionModel().clearSelection()
+            for path in kept:
+                self._find_and_select_node(path)
+        finally:
+            self.update_in_progress = was_updating
+        if dropped:
+            self.update_search_criteria()
 
     def on_paths_loaded(self, library_root, paths):
         """Handle the paths_loaded signal from the FilePathsLoader."""
@@ -351,6 +374,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         if _not_empty(current_text) and not current_text in data:
             target.addItem(current_text)
+        elif current_text == EMPTY_LABEL and target.findText(EMPTY_LABEL) < 0:
+            target.addItem(EMPTY_LABEL)  # keep a chosen "<empty>" even when no file lacks the value
 
         target.setCurrentText(current_text)
         self.update_in_progress = False
@@ -1495,6 +1520,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if value == "":
             combo.setCurrentText(RESET_LABEL)
         elif value is None:
+            if combo.findText(EMPTY_LABEL) < 0:  # the options may not list it (yet)
+                combo.addItem(EMPTY_LABEL)
             combo.setCurrentText(EMPTY_LABEL)
         else:
             # Try to find the exact value
@@ -1520,21 +1547,21 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         import copy
         self.search_criteria = copy.deepcopy(criteria)
         self.update_in_progress = True
-        if len(self.library_tree_model.loaded_library_roots) == 0:
+        # Wait for the list of library roots, not for any root's folders: those load per root
+        # as the tree expands, and _find_and_select_node already defers a path until then.
+        if not self.library_tree_model.root_node.child(0).loaded:
             self.library_tree_model.library_roots_loader.library_roots_loaded.connect(self._apply_pending_path_criteria)
         else:
+            self.filesystemTreeView.selectionModel().clearSelection()
             for path in self.search_criteria.paths:
                 self._find_and_select_node(path)
 
         self.checkBox.setChecked(criteria.paths_as_prefix)
 
-        # Update combo boxes
-        if criteria.type is not None:
-            self._set_combo_value(self.filter_type_combo, criteria.type)
-        if criteria.filter is not None:
-            self._set_combo_value(self.filter_filter_combo, criteria.filter)
-        if criteria.camera is not None:
-            self._set_combo_value(self.filter_cam_combo, criteria.camera)
+        # Update combo boxes. None is a value here: "<empty>", the files that have none.
+        self._set_combo_value(self.filter_type_combo, criteria.type)
+        self._set_combo_value(self.filter_filter_combo, criteria.filter)
+        self._set_combo_value(self.filter_cam_combo, criteria.camera)
 
         # Update text edits
         if criteria.file_name is not None:

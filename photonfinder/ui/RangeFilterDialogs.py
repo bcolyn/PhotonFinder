@@ -227,8 +227,8 @@ class ImageQualityDialog(QDialog):
             _make_range_row(self, "FWHM median", is_int=False, suffix="px",
                             min_val=0.0, max_val=999.0, step=0.1, decimals=2)
         self._bg_g, self._bg_min_cb, self._bg_min, self._bg_max_cb, self._bg_max = \
-            _make_range_row(self, "Background median", is_int=False,
-                            min_val=0.0, max_val=999999.0, step=1.0, decimals=1)
+            _make_range_row(self, "Background median", is_int=False,  # negative once bias-subtracted
+                            min_val=-999999.0, max_val=999999.0, step=1.0, decimals=1)
         self._bgrms_g, self._bgrms_min_cb, self._bgrms_min, self._bgrms_max_cb, self._bgrms_max = \
             _make_range_row(self, "Background RMS", is_int=False,
                             min_val=0.0, max_val=999999.0, step=1.0, decimals=1)

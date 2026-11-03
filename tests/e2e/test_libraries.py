@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 
+from photonfinder.models import CORE_MODELS, LibraryRoot, RootAndPath, SearchCriteria
 from photonfinder.ui.LibraryRootDialog import LibraryRootDialog
 from photonfinder.ui.LibraryRootEditDialog import LibraryRootEditDialog
 from tests.e2e.helpers import YES, NO, add_libraries, fill_in, table_names, wait_for_scan, choose
@@ -122,6 +123,76 @@ def test_delete_library_removes_its_files(sandbox, app, modals, boundary, librar
     assert [name for name, _ in tree_roots(app.get_current_search_panel())] == ["rig"]
     app.get_current_search_panel().update_search_criteria()
     sandbox.wait_idle()
+    assert sorted(sandbox.grid().column("File name")) == names_under(libraries.files, libraries.roots["rig"])
+
+
+def _filter_on_folder(sandbox, app, root_name: str, path: str):
+    with sandbox.context.database.bind_ctx(CORE_MODELS):
+        root = LibraryRoot.get(LibraryRoot.name == root_name)
+    panel = app.get_current_search_panel()
+    panel.apply_search_criteria(SearchCriteria(paths=[RootAndPath(root.rowid, root_name, path)]))
+    sandbox.wait_idle()
+    return panel
+
+
+def _selected_tree_labels(panel) -> list[str]:
+    return [i.data() for i in panel.filesystemTreeView.selectionModel().selectedIndexes()]
+
+
+def test_closing_manage_libraries_keeps_the_folder_filter_and_its_selection(sandbox, app, modals, boundary,
+                                                                           libraries):
+    add_libraries(sandbox, modals, boundary,
+                  {"simple": libraries.roots["simple"], "rig": libraries.roots["rig"]}, scan=True)
+    folder = libraries.roots["simple"] / "2026-08-01"
+    panel = _filter_on_folder(sandbox, app, "simple", "2026-08-01")
+    assert sorted(sandbox.grid().column("File name")) == names_under(libraries.files, folder)
+    assert _selected_tree_labels(panel) == ["2026-08-01"]
+
+    with modals.handle(LibraryRootDialog, lambda dialog: dialog.reject()):
+        app.action_Manage_Libraries.trigger()
+    sandbox.wait_idle()
+
+    # The reloaded tree shows the filter again, once that library's folders have loaded.
+    sandbox.qtbot.waitUntil(lambda: _selected_tree_labels(panel) == ["2026-08-01"], timeout=5000)
+    assert [p.path for p in panel.search_criteria.paths] == ["2026-08-01"]
+    assert sorted(sandbox.grid().column("File name")) == names_under(libraries.files, folder)
+
+
+def test_deleting_the_filtered_library_drops_its_folder_filter(sandbox, app, modals, boundary, libraries):
+    add_libraries(sandbox, modals, boundary,
+                  {"simple": libraries.roots["simple"], "rig": libraries.roots["rig"]}, scan=True)
+    panel = _filter_on_folder(sandbox, app, "simple", "2026-08-01")
+    assert [p.path for p in panel.search_criteria.paths] == ["2026-08-01"]
+    assert sorted(sandbox.grid().column("File name")) == names_under(
+        libraries.files, libraries.roots["simple"] / "2026-08-01")
+
+    def delete_simple(dialog: LibraryRootDialog):
+        select_root(dialog, "simple")
+        dialog.deleteButton.click()
+
+    boundary.answer("question", YES)  # "Are you sure you want to delete...?"
+    boundary.answer("question", NO)  # "Scan libraries now?"
+    with modals.handle(LibraryRootDialog, delete_simple):
+        app.action_Manage_Libraries.trigger()
+    sandbox.wait_idle()
+
+    assert panel.search_criteria.paths == []
+    assert sorted(sandbox.grid().column("File name")) == names_under(libraries.files, libraries.roots["rig"])
+
+
+def test_a_reload_without_the_filtered_library_drops_its_folder_filter(sandbox, app, modals, boundary, libraries):
+    """The same, without the dialog: whatever reloads the tree, a path into a library root that
+    is gone is dropped and the search runs again."""
+    add_libraries(sandbox, modals, boundary,
+                  {"simple": libraries.roots["simple"], "rig": libraries.roots["rig"]}, scan=True)
+    panel = _filter_on_folder(sandbox, app, "simple", "2026-08-01")
+    with sandbox.context.database.bind_ctx(CORE_MODELS):
+        LibraryRoot.get(LibraryRoot.name == "simple").delete_instance(recursive=True)
+
+    app.reload_library_roots_in_all_panels()
+    sandbox.wait_idle()
+
+    assert panel.search_criteria.paths == []
     assert sorted(sandbox.grid().column("File name")) == names_under(libraries.files, libraries.roots["rig"])
 
 
