@@ -9,6 +9,10 @@ custom headers map and the set of files that go under the shared path.
 Rows are the light sessions in display order (``session_keys``). Calibration types are
 ``CALIB_TYPES``. A dark-flat matches the selected flat, so its candidates are found again,
 through ``find_dark_flats``, whenever the flat changes.
+
+Shared-session: per calibration type, the candidate most sessions use goes once to a shared
+folder (``${sess_date}`` becomes ``shared``) as the default; sessions using another candidate
+keep theirs in their own folder. See ``shared_candidates``.
 """
 import datetime
 import logging
@@ -141,8 +145,15 @@ class ExportPlan:
         return [candidate.master] if self.use_master and candidate.master else candidate.files
 
     def shared_candidates(self) -> dict[str, CalibrationCandidate]:
-        """{calib_type: candidate} selected by two or more sessions, when shared-session is on.
-        Per type only the candidate selected by the most sessions is shared."""
+        """{calib_type: candidate} exported once to the shared folder, when shared-session is on.
+
+        By design, one candidate per type at most: the one the most sessions selected (two or
+        more). The shared folder holds the *default* calibration; a session that selected a
+        different candidate keeps that in its own session folder, overriding the default.
+        Sharing every candidate used by several sessions would leave no single default.
+
+        A tie goes to the candidate of the earliest session row (rows are in session order,
+        not load order), so exporting the same selection again gives the same default."""
         if not self.shared:
             return {}
         type_cand_map: dict[str, dict] = {}  # calib_type → {frozenset_of_file_ids: (candidate, session_count)}

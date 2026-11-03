@@ -38,8 +38,13 @@
      </item>
      <item row="1" column="1">
       <widget class="QCheckBox" name="sharedSessionCheckBox">
+       <property name="toolTip">
+        <string>For each calibration type, the frames used by the most sessions are exported once, to a &quot;shared&quot; folder (in place of the session date in the pattern), as the default for all sessions.
+A session that uses different frames keeps its own copy in its own folder, overriding the default.
+Frames that go to the shared folder are marked ☁ in the table.</string>
+       </property>
        <property name="text">
-        <string>Save disk space by using a &quot;shared&quot; session</string>
+        <string>Export the most-used calibration once, to a &quot;shared&quot; folder, as the default</string>
        </property>
       </widget>
      </item>

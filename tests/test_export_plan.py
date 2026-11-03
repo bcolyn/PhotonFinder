@@ -8,6 +8,8 @@ from photonfinder.models import File, LibraryRoot
 
 D1 = date(2023, 1, 15)
 D2 = date(2023, 1, 16)
+D3 = date(2023, 1, 17)
+D4 = date(2023, 1, 18)
 
 
 def _file(rowid, name="f.fits"):
@@ -246,6 +248,30 @@ class TestSharedSession:
 
         assert plan.shared_file_ids() == set()
         assert _ids(plan.entries())[2:] == [(20, D1), (21, D1), (20, D2), (21, D2)]
+
+    def test_only_the_group_most_sessions_use_is_shared_the_rest_stay_with_their_sessions(self):
+        """shared/ holds one default per type; a session with other calibration overrides it."""
+        common, other = [_file(20), _file(21)], [_file(30)]
+        plan = _plan({_key(D1): [_file(1)], _key(D2): [_file(2)], _key(D3): [_file(3)]})
+        _rows(plan, {0: {"FLAT": _candidate(common)}, 1: {"FLAT": _candidate(common)},
+                     2: {"FLAT": _candidate(other)}})
+        plan.set_shared(True)
+
+        assert plan.shared_file_ids() == {20, 21}
+        assert _ids(plan.entries())[3:] == [(20, D1), (21, D1), (30, D3)]
+
+    def test_a_tie_goes_to_the_earliest_session_however_the_rows_load(self):
+        """Re-exporting the same selection must give the same default."""
+        early, late = [_file(20)], [_file(30)]
+        sessions = {_key(D1): [_file(1)], _key(D2): [_file(2)], _key(D3): [_file(3)], _key(D4): [_file(4)]}
+        groups = {0: early, 1: late, 2: early, 3: late}
+        for load_order in ([0, 1, 2, 3], [3, 2, 1, 0], [1, 3, 0, 2]):
+            plan = _plan(sessions)
+            for row in load_order:
+                _rows(plan, {row: {"FLAT": _candidate(groups[row])}})
+            plan.set_shared(True)
+
+            assert plan.shared_file_ids() == {20}, load_order
 
     def test_shared_with_use_master_shares_the_master(self):
         master = _file(99)
