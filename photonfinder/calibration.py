@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import statistics
+import dataclasses
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import lru_cache
@@ -16,6 +17,8 @@ from photonfinder.core import ApplicationContext, decompress
 from photonfinder.fits_handlers import _datetime, _float
 from photonfinder.models import File, Image, FitsHeader, SearchCriteria
 
+
+_log = logging.getLogger(__name__)  # photonfinder.calibration: candidate searches and grouping
 
 _BATCH_SIZE = 500
 _CARD_LENGTH = 80
@@ -182,6 +185,47 @@ def load_session_info(file_ids: list[int]) -> dict[int, tuple]:
     return result
 
 
+def _describe_criteria(criteria: SearchCriteria) -> str:
+    """The criteria fields set away from their defaults, for the log."""
+    parts = []
+    for f in dataclasses.fields(criteria):
+        value = getattr(criteria, f.name)
+        if f.default is not dataclasses.MISSING:
+            default = f.default
+        elif f.default_factory is not dataclasses.MISSING:
+            default = f.default_factory()
+        else:
+            default = None
+        if f.name == "reference_file" or value == default:
+            continue
+        parts.append(f"{f.name}={value}")
+    return ", ".join(parts)
+
+
+def _describe_image(image: Optional[Image]) -> str:
+    if image is None:
+        return "no image"
+    return (f"type={image.image_type} camera={image.camera} filter={image.filter} exposure={image.exposure} "
+            f"gain={image.gain} offset={image.offset} binning={image.binning} set_temp={image.set_temp} "
+            f"date_obs={image.date_obs}")
+
+
+def _range(values) -> str:
+    clean = sorted(v for v in values if v is not None)
+    if not clean:
+        return "?"
+    return f"{clean[0]}" if clean[0] == clean[-1] else f"{clean[0]}..{clean[-1]}"
+
+
+def _log_candidates(what: str, candidates: list['CalibrationCandidate'], shown: int = None):
+    """Which candidates the dropdown gets, in order, and which are cut off."""
+    shown = len(candidates) if shown is None else shown
+    _log.info("%s: %d group(s), %d shown", what, len(candidates), min(shown, len(candidates)))
+    for i, c in enumerate(candidates):
+        _log.info("  %s #%d night=%s exposure=%s: %d files%s", "shown" if i < shown else "NOT SHOWN",
+                  i + 1, c.session_date, c.exposure, c.count, f", master={c.master.name}" if c.master else "")
+
+
 def _exposure_key(exposure: Optional[float]) -> Optional[float]:
     """An exposure to the millisecond, so float noise (0.2 vs 0.2000001) never splits a group."""
     return round(exposure, 3) if exposure is not None else None
@@ -293,10 +337,15 @@ class CalibrationMatcher:
             if key not in groups:
                 groups[key] = []
             groups[key].append(f)
-        return dict(sorted(
+        sessions = dict(sorted(
             groups.items(),
             key=lambda kv: (kv[0].session_date or datetime.date.min, kv[0].filter or "")
         ))
+        _log.info("Light sessions for %d light(s): %d", len(light_files), len(sessions))
+        for key, files in sessions.items():
+            _log.info("  night=%s filter=%s exposure=%s: %d light(s), first %s",
+                      key.session_date, key.filter, key.exposure, len(files), files[0].name)
+        return sessions
 
     def _query_files(self, criteria: SearchCriteria) -> list[File]:
         """Run a SearchCriteria query and return File rows with joined Image data."""
@@ -341,8 +390,18 @@ class CalibrationMatcher:
             for exposure, cluster in _exposure_clusters(group_files):
                 groups.append((d, filt, exposure, temp_key, cluster))
         groups.sort(key=lambda g: (g[0] or datetime.date.min, g[1] or "", g[2] or 0, g[3] or 0), reverse=True)
+        _log.info("  query [%s]: %d file(s) in %d group(s) by (night, filter, exposure, set_temp)",
+                  _describe_criteria(criteria), len(files), len(groups))
+        for d, filt, exposure, temp_key, group_files in groups:
+            images = [g.image for g in group_files if getattr(g, 'image', None)]
+            _log.info("    group night=%s filter=%s exposure=%s set_temp=%s: %d file(s); exposure %s, set_temp %s, "
+                      "gain %s, date_obs %s, first %s",
+                      d, filt, exposure, temp_key, len(group_files),
+                      _range(i.exposure for i in images), _range(i.set_temp for i in images),
+                      _range(i.gain for i in images), _range(i.date_obs for i in images), group_files[0].name)
         return [CalibrationCandidate(session_date=d, count=len(files), files=files, exposure=exposure)
                 for d, _filt, exposure, _temp_key, files in groups]
+
 
     @staticmethod
     def _sort_by_exposure_then_date(candidates: list[CalibrationCandidate], ref_exposure: Optional[float],
@@ -396,22 +455,28 @@ class CalibrationMatcher:
         ref = self._reference_image(session_lights)
         if not ref:
             return []
+        _log.info("Dark candidates for %d light(s), reference %s", len(session_lights), _describe_image(ref))
         results = self.find_candidates(SearchCriteria.find_dark(ref))
         if not results:
+            _log.info("  no darks: relaxed search (exposure ±1 s, set_temp ±5)")
             relaxed = SearchCriteria.find_dark_flat(ref)
             relaxed.exposure_tolerance = 1.0
             relaxed.temperature_tolerance = 5.0
             results = self.find_candidates(relaxed)
         ref_date = ref.date_obs.date() if ref.date_obs else None
-        return self._sort_by_exposure_then_date(results, ref.exposure, ref_date)
+        results = self._sort_by_exposure_then_date(results, ref.exposure, ref_date)
+        _log_candidates("Dark candidates", results)
+        return results
 
     def flat_candidates(self, session_lights: list[File]) -> list[CalibrationCandidate]:
         ref = self._reference_image(session_lights)
         if not ref:
             return []
+        _log.info("Flat candidates for %d light(s), reference %s", len(session_lights), _describe_image(ref))
         ref_date = ref.date_obs.date() if ref.date_obs else None
         results = self.find_candidates(SearchCriteria.find_flat(ref))
         if not results:
+            _log.info("  no flats within the date window: relaxed search without dates")
             relaxed = SearchCriteria.find_flat(ref)
             relaxed.start_datetime = None
             relaxed.end_datetime = None
@@ -419,15 +484,19 @@ class CalibrationMatcher:
         if ref_date:
             results.sort(key=lambda c: abs((c.session_date - ref_date).days)
                          if c.session_date else float('inf'))
+        _log_candidates(f"Flat candidates, sorted by nights from {ref_date}", results, shown=3)
         return results[:3]
 
     def bias_candidates(self, session_lights: list[File]) -> list[CalibrationCandidate]:
         ref = self._reference_image(session_lights)
         if not ref:
             return []
+        _log.info("Bias candidates for %d light(s), reference %s", len(session_lights), _describe_image(ref))
         results = self.find_candidates(SearchCriteria.find_bias(ref))
         ref_date = ref.date_obs.date() if ref.date_obs else None
-        return self._sort_by_exposure_then_date(results, None, ref_date)
+        results = self._sort_by_exposure_then_date(results, None, ref_date)
+        _log_candidates("Bias candidates", results)
+        return results
 
     def dark_flat_candidates(self, flat_candidate: Optional[CalibrationCandidate]) -> list[CalibrationCandidate]:
         if not flat_candidate or not flat_candidate.files:
@@ -436,14 +505,19 @@ class CalibrationMatcher:
         ref_image = ref_file.image if hasattr(ref_file, 'image') else None
         if not ref_image:
             return []
+        _log.info("Dark-flat candidates for a flat group of %d (night %s), reference %s",
+                  flat_candidate.count, flat_candidate.session_date, _describe_image(ref_image))
         results = self.find_candidates(SearchCriteria.find_dark_flat(ref_image))
         if not results:
+            _log.info("  no dark-flats: relaxed search (exposure ±1 s, set_temp ±5)")
             relaxed = SearchCriteria.find_dark_flat(ref_image)
             relaxed.exposure_tolerance = 1.0
             relaxed.temperature_tolerance = 5.0
             results = self.find_candidates(relaxed)
         ref_date = ref_image.date_obs.date() if ref_image.date_obs else None
-        return self._sort_by_exposure_then_date(results, ref_image.exposure, ref_date)
+        results = self._sort_by_exposure_then_date(results, ref_image.exposure, ref_date)
+        _log_candidates("Dark-flat candidates", results)
+        return results
 
     def add_best_master(self, candidate: CalibrationCandidate) -> None:
         masters = self._find_masters(candidate.files)
