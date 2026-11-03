@@ -312,7 +312,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.mainWindow.enable_actions_for_current_tab()
         button.on_remove_filter.emit()
         button.hide()
-        button.destroy()
+        # deleteLater, not destroy(): this can run inside the button's own mouse event, and
+        # destroy() only drops the native window, leaving the widget and its children alive.
+        button.deleteLater()
 
     def get_selected_files(self) -> List[File]:
         """Get the currently selected files in the data grid."""

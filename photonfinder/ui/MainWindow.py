@@ -498,7 +498,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         for panel in self.get_search_panels():
             panel.library_tree_model.refresh_loaded_paths()
-        self.get_current_search_panel().update_search_criteria()
+            panel.update_search_criteria()
 
     def reload_library_roots_in_all_panels(self):
         """
@@ -697,22 +697,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         selected_image = current_panel.get_selected_image()
         if not selected_image:
             return
-        dark_criteria = SearchCriteria.find_dark(selected_image)
-        panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
-        tab = self.tabWidget.addTab(panel, "Loading")
-        panel.apply_search_criteria(dark_criteria)
-        self.tabWidget.setCurrentIndex(tab)
+        self.new_search_tab(SearchCriteria.find_dark(selected_image))
 
     def find_matching_flats(self):
         current_panel = self.get_current_search_panel()
         selected_image = current_panel.get_selected_image()
         if not selected_image:
             return
-        flat_criteria = SearchCriteria.find_flat(selected_image)
-        panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
-        tab = self.tabWidget.addTab(panel, "Loading")
-        panel.apply_search_criteria(flat_criteria)
-        self.tabWidget.setCurrentIndex(tab)
+        self.new_search_tab(SearchCriteria.find_flat(selected_image))
 
     def on_tab_switch(self):
         self.enable_actions_for_current_tab()
