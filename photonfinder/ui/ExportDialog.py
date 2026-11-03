@@ -246,8 +246,9 @@ def _candidate_label(candidate: CalibrationCandidate, calib_type: str) -> str:
     parts = [str(candidate.session_date) if candidate.session_date else "Unknown date"]
     if show_filter and img and img.filter:
         parts.append(img.filter)
-    if show_exposure and img and img.exposure is not None:
-        parts.append(f"{img.exposure:g}s")
+    exposure = candidate.exposure if candidate.exposure is not None else (img.exposure if img else None)
+    if show_exposure and exposure is not None:
+        parts.append(f"{exposure:g}s")
     if show_temperature and img and img.set_temp is not None:
         parts.append(f"{img.set_temp:g}°C")
     parts.append(f"({candidate.count} frames)")

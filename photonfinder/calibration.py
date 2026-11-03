@@ -182,6 +182,12 @@ def load_session_info(file_ids: list[int]) -> dict[int, tuple]:
     return result
 
 
+def _exposure_key(exposure: Optional[float]) -> Optional[float]:
+    """The exposure calibration frames are grouped by: to the millisecond, so 0.2 s and 0.4 s
+    flats stay apart while float noise (0.2 vs 0.2000001) doesn't split a group."""
+    return round(exposure, 3) if exposure is not None else None
+
+
 @dataclass(frozen=True, eq=True)
 class SessionKey:
     session_date: Optional[datetime.date]
@@ -289,7 +295,7 @@ class CalibrationMatcher:
                 fallback_tz=fallback_tz,
             )
             filt = image.filter if image else None
-            exp_key = round(image.exposure) if image and image.exposure is not None else None
+            exp_key = _exposure_key(image.exposure if image else None)
             temp_key = round(image.set_temp) if image and image.set_temp is not None else None
             key = (d, filt, exp_key, temp_key)
             if key not in cal_groups:
@@ -297,16 +303,15 @@ class CalibrationMatcher:
             cal_groups[key].append(f)
 
         candidates = []
-        for (d, _filt, _exp_key, _temp_key), group_files in sorted(
+        for (d, _filt, exp_key, _temp_key), group_files in sorted(
                 cal_groups.items(),
                 key=lambda kv: (kv[0][0] or datetime.date.min, kv[0][1] or "", kv[0][2] or 0, kv[0][3] or 0),
                 reverse=True):
-            img = group_files[0].image if hasattr(group_files[0], 'image') else None
             candidates.append(CalibrationCandidate(
                 session_date=d,
                 count=len(group_files),
                 files=group_files,
-                exposure=img.exposure if img else None,
+                exposure=exp_key,  # every file in the group has it
             ))
         return candidates
 
@@ -338,7 +343,8 @@ class CalibrationMatcher:
             return round(v) if v is not None else None
 
         def _datetime_median(vals):
-            clean = [v for v in vals if v is not None]
+            # date_obs is naive UTC: without a tzinfo, .timestamp() would read it as local time.
+            clean = [v if v.tzinfo else v.replace(tzinfo=datetime.timezone.utc) for v in vals if v is not None]
             if not clean:
                 return None
             ts = statistics.median(v.timestamp() for v in clean)
