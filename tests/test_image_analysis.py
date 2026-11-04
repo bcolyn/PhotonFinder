@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+from astropy.io import fits
 from xisf import XISF
 
 from photonfinder.core import ApplicationContext, StatusReporter
@@ -16,6 +17,7 @@ from photonfinder.image_analysis import (
     _to_float32,
     analyze_file,
     analyze_image,
+    bayer_luminance,
 )
 from photonfinder.models import File, Image, ImageStats, LibraryRoot, SearchCriteria
 from photonfinder.platesolver import select_first_channel
@@ -179,6 +181,99 @@ class TestAnalyzeImage:
         assert "MASTER FLAT" in CALIBRATION_TYPES
         assert "MASTER BIAS" in CALIBRATION_TYPES
         assert "LIGHT" not in CALIBRATION_TYPES
+
+
+def _star_scene(size=512, n_stars=40, sigma=2.0, seed=7) -> np.ndarray:
+    """Noise-free sky of 1000 ADU with well-separated Gaussian stars."""
+    rng = np.random.default_rng(seed)
+    scene = np.full((size, size), 1000.0)
+    y, x = np.mgrid[0:size, 0:size]
+    stars = []
+    while len(stars) < n_stars:
+        cx, cy = rng.uniform(30, size - 30, 2)
+        if all((cx - sx) ** 2 + (cy - sy) ** 2 > 40 ** 2 for sx, sy in stars):
+            stars.append((cx, cy))
+    for cx, cy in stars:
+        scene += rng.uniform(5000, 20000) * np.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (2 * sigma ** 2))
+    return scene
+
+
+def _rggb_gains(shape, red, green, blue) -> np.ndarray:
+    """Per-pixel response of an RGGB colour filter array."""
+    gain = np.empty(shape)
+    gain[0::2, 0::2] = red
+    gain[0::2, 1::2] = gain[1::2, 0::2] = green
+    gain[1::2, 1::2] = blue
+    return gain
+
+
+SKY = 1000.0
+
+
+class TestBayerMosaic:
+    @pytest.fixture
+    def frames(self):
+        """A mono star field and the same field through an RGGB filter array, with a reddish sky
+        and whiter stars, so neither the sky nor the stars are a flat grey checkerboard."""
+        scene = _star_scene()
+        noise = np.random.default_rng(1).normal(0, 30, scene.shape)
+        mono = (scene + noise).astype(np.float32)
+        sky_gain = _rggb_gains(scene.shape, 0.45, 1.0, 0.25)
+        star_gain = _rggb_gains(scene.shape, 0.8, 1.0, 0.6)
+        mosaic = (SKY * sky_gain + (scene - SKY) * star_gain + noise).astype(np.float32)
+        return mono, mosaic
+
+    @pytest.mark.parametrize("dtype", [np.float32, np.uint16])
+    def test_mosaic_stats_match_mono_reference(self, frames, dtype):
+        mono, mosaic = frames
+        ref = analyze_image(mono)
+        result = analyze_image(mosaic.astype(dtype), bayer_pattern="RGGB")
+        assert result.error is None
+        assert result.star_count == ref.star_count == 40
+        assert result.fwhm_median == pytest.approx(ref.fwhm_median, rel=0.08)
+        assert result.elongation_median == pytest.approx(ref.elongation_median, abs=0.05)
+
+    def test_raw_mosaic_is_skewed(self, frames):
+        """The baseline the debayering fixes: the checkerboard shrinks FWHM and inflates the noise."""
+        mono, mosaic = frames
+        ref = analyze_image(mono)
+        raw = analyze_image(mosaic)
+        assert raw.fwhm_median < 0.85 * ref.fwhm_median
+        assert raw.background_rms > 5 * ref.background_rms
+
+    def test_luminance_keeps_input_units(self, frames):
+        _, mosaic = frames
+        result = analyze_image(mosaic, bayer_pattern="RGGB")
+        assert result.background_median == pytest.approx(SKY * (0.45 + 1.0 + 0.25) / 3, rel=0.03)
+
+    def test_mono_without_pattern_unchanged(self, frames):
+        mono, _ = frames
+        assert analyze_image(mono) == analyze_image(mono, bayer_pattern=None)
+
+    def test_background_only_analysis_uses_raw_pixels(self, frames):
+        _, mosaic = frames
+        assert (analyze_image(mosaic, detect_sources=False, bayer_pattern="RGGB")
+                == analyze_image(mosaic, detect_sources=False))
+
+    def test_constant_float_mosaic(self):
+        lum = bayer_luminance(np.full((8, 8), 0.25, dtype=np.float32), "RGGB")
+        assert lum.shape == (8, 8)
+        assert np.allclose(lum, 0.25)
+
+    def test_file_with_bayer_pattern_is_debayered(self, frames, tmp_path):
+        mono, mosaic = frames
+        header = fits.Header()
+        header["BAYERPAT"] = "RGGB"
+        path = tmp_path / "osc.fits"
+        fits.PrimaryHDU(mosaic.astype(np.uint16), header=header).writeto(path)
+        assert analyze_file(path) == analyze_image(mosaic.astype(np.uint16), bayer_pattern="RGGB")
+        assert analyze_file(path).fwhm_median == pytest.approx(analyze_image(mono).fwhm_median, rel=0.08)
+
+    def test_file_without_bayer_pattern_is_not_debayered(self, frames, tmp_path):
+        mono, _ = frames
+        path = tmp_path / "mono.fits"
+        fits.PrimaryHDU(mono).writeto(path)
+        assert analyze_file(path) == analyze_image(mono)
 
 
 def test_analysing_a_search_survives_a_write_from_another_connection(tmp_path, qapp):

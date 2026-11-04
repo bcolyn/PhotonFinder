@@ -8,7 +8,7 @@ from typing import Optional
 import numpy as np
 import sep
 
-from photonfinder.image_processing import load_image_data
+from photonfinder.image_processing import debayer_opencv, detect_bayer_pattern, load_image_data
 from photonfinder.platesolver import select_first_channel
 
 logger = logging.getLogger(__name__)
@@ -34,12 +34,30 @@ def _to_float32(data: np.ndarray) -> np.ndarray:
 CALIBRATION_TYPES = {"DARK", "FLAT", "BIAS", "MASTER DARK", "MASTER FLAT", "MASTER BIAS"}
 
 
+def bayer_luminance(data: np.ndarray, pattern: str) -> np.ndarray:
+    """Debayer a 2D Bayer mosaic and return the mean of its R, G and B planes (float32, same size).
+
+    The raw mosaic's colour checkerboard skews source detection and shape moments; a 2x2
+    super-pixel bin avoids it but undersamples typical stars, which biases FWHM upward
+    by ~20 %. Interpolating keeps full resolution. Values stay in the input's units: integer
+    data is debayered as is, float data is mapped onto 16 bits and back.
+    """
+    if data.dtype.kind in 'ui':
+        return debayer_opencv(data, pattern).mean(axis=0, dtype=np.float32)
+    f = np.nan_to_num(data.astype(np.float32))
+    lo, hi = float(f.min()), float(f.max())
+    span = hi - lo if hi > lo else 1.0
+    lum = debayer_opencv((f - lo) / span, pattern).mean(axis=0, dtype=np.float32)
+    return lum * np.float32(span / 65535.0) + np.float32(lo)
+
+
 def analyze_image(
     data: np.ndarray,
     detection_threshold_sigma: float = 5.0,
     min_area: int = 5,
     max_sources: int = 5000,
     detect_sources: bool = True,
+    bayer_pattern: Optional[str] = None,
 ) -> ImageAnalysisResult:
     """
     Compute background and star-shape statistics for an image array.
@@ -56,9 +74,16 @@ def analyze_image(
         Cap on sources used for shape statistics (brightest-first).
     detect_sources : bool
         When False only background stats are computed (use for calibration frames).
+    bayer_pattern : str, optional
+        For a 2D one-shot-colour mosaic, its Bayer pattern (e.g. 'RGGB'). Sources and
+        background are then measured on the debayered luminance. Background-only analysis
+        (detect_sources=False) still uses the raw pixels.
     """
     try:
-        arr = _to_float32(select_first_channel(data))
+        arr = select_first_channel(data)
+        if bayer_pattern and detect_sources and arr.ndim == 2:
+            arr = bayer_luminance(arr, bayer_pattern)
+        arr = _to_float32(arr)
 
         bkg = sep.Background(arr)
         background_median = float(bkg.globalback)
@@ -112,8 +137,9 @@ def analyze_image(
 def analyze_file(filename: str | Path, detect_sources: bool = True) -> ImageAnalysisResult:
     """Load file via load_image_data (LRU-cached) and run analyze_image."""
     try:
-        data, _header = load_image_data(filename)
-        return analyze_image(data, detect_sources=detect_sources)
+        data, header = load_image_data(filename)
+        pattern = detect_bayer_pattern(header) if data.ndim == 2 else None
+        return analyze_image(data, detect_sources=detect_sources, bayer_pattern=pattern)
     except Exception as exc:
         logger.error("analyze_file(%s) failed: %s", filename, exc, exc_info=True)
         return ImageAnalysisResult(error=str(exc))
