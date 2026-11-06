@@ -235,3 +235,21 @@ def test_xisf_with_an_embedded_data_block_loads(tmp_path):
         image_cache.clear()
     np.testing.assert_array_equal(data, pixels)
     assert header["OBJECT"] == "M42"
+
+
+def test_xisf_with_compressed_subblocks_loads_every_channel():
+    # Saved by the latest PixInsight: each 4 MiB channel is its own zstd subblock. xisf < 1.0
+    # decoded only the first subblock and failed with "cannot reshape array of size 1048576".
+    from pathlib import Path
+    path = Path(__file__).parent / "data-small" / "rev2.xisf"
+    image_cache.clear()
+    try:
+        data, _ = load_image_data(path)
+    finally:
+        image_cache.clear()
+    assert data.shape == (3, 1024, 1024)
+    assert data.dtype == np.float32
+    ramp = np.arange(1024, dtype=np.float32) / 1024
+    np.testing.assert_array_equal(data[0], np.broadcast_to(ramp, (1024, 1024)))  # x gradient
+    np.testing.assert_array_equal(data[2], np.broadcast_to(ramp[:, None], (1024, 1024)))  # y
+    assert data[1].min() < 0.01 and data[1].max() == 1.0
