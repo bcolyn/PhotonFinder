@@ -20,7 +20,7 @@ dependencies = [
     "astroquery~=0.4.11",
     "photutils~=3.1.1",
     "sep>=1.4.0",
-    "xisf~=0.9.7",
+    "xisf~=1.0.1",
     # 1.5.7.3 was yanked upstream: not threadsafe.
     "zstd==1.5.7.2",
     "fs~=2.4.16",

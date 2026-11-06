@@ -1323,7 +1323,7 @@ requires-dist = [
     { name = "timezonefinder", specifier = "~=9.2.0" },
     { name = "tzdata" },
     { name = "uvicorn", specifier = ">=0.49.0" },
-    { name = "xisf", specifier = "~=0.9.7" },
+    { name = "xisf", specifier = "~=1.0.1" },
     { name = "zstd", specifier = "==1.5.7.2" },
 ]
 
@@ -2406,14 +2406,14 @@ wheels = [
 
 [[package]]
 name = "xisf"
-version = "0.9.7"
+version = "1.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "lz4" },
     { name = "numpy" },
     { name = "zstandard" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e5/80/2436f7ee1044f3d6cde1752d84d4b9d9e4ef58c8cf7337de90e427e46480/xisf-0.9.7.tar.gz", hash = "sha256:fcc8d33b3c45461abb0d71b3cd1207c08548ee11f51d4aaa5615f19cc54e1724", size = 30293, upload-time = "2026-06-20T08:50:52.116Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/b1/477236304939ee3f1e0b0410e14a22cbccf42594c1a09ccde99ce94027fa/xisf-1.0.1.tar.gz", hash = "sha256:af9b8cfd285c5a8224cee54709ba8bfcc82bbf1de7c11ec6db05fda492400657", size = 93517, upload-time = "2026-11-05T22:00:52.018Z" }
 
 [[package]]
 name = "zstandard"

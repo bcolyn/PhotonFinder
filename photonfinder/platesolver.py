@@ -145,12 +145,7 @@ class SolverBase(metaclass=ABCMeta):
                     main_header.remove('NAXIS3', ignore_missing=True)
                     if file_wcs is not None:
                         self._merge_wcs_into_header(main_header, file_wcs)
-                    try:
-                        main_image_data = select_first_channel(xisf.read_image(i, 'channels_first'))
-                    except KeyError as exc:
-                        if exc.args == ('value',):
-                            raise SolverError("Image format not supported (XISF embedded data block)") from exc
-                        raise
+                    main_image_data = select_first_channel(xisf.read_image(i, 'channels_first'))
                     hdu = fits.PrimaryHDU(data=main_image_data, header=main_header)
                     hdu.writeto(temp_image, overwrite=False, output_verify='silentfix')
                     return temp_image
@@ -1012,12 +1007,7 @@ def _create_temp_jpeg(input_image, output_dir: Path) -> Path:
         metas = xisf.get_images_metadata()
         for i, meta in enumerate(metas):
             if "FITSKeywords" in meta:
-                try:
-                    main_image_data = xisf.read_image(i, 'channels_first')
-                except KeyError as exc:
-                    if exc.args == ('value',):
-                        raise SolverError("Image format not supported (XISF embedded data block)") from exc
-                    raise
+                main_image_data = xisf.read_image(i, 'channels_first')
 
                 # Convert to 8-bit for JPEG
                 if main_image_data.dtype != np.uint8:

@@ -216,12 +216,7 @@ def _load_xisf(filename: str) -> tuple[np.ndarray, dict]:
     metadata_list = xf.get_images_metadata()
     if not metadata_list:
         raise ValueError(f"No images in {filename}")
-    try:
-        data = xf.read_image(0, 'channels_first')
-    except KeyError as exc:
-        if exc.args == ('value',):
-            raise ValueError("Image format not supported (XISF embedded data block)") from exc
-        raise
+    data = xf.read_image(0, 'channels_first')
     fits_keywords = metadata_list[0].get('FITSKeywords', {})
     header = {}
     for key, entries in fits_keywords.items():

@@ -210,3 +210,28 @@ def test_a_deleted_file_is_not_served_from_the_cache(tmp_path):
         assert image_cache.get(str(path)) is None
     finally:
         image_cache.clear()
+
+
+def test_xisf_with_an_embedded_data_block_loads(tmp_path):
+    # xisf < 1.0 failed on these with KeyError('value'); the viewer reported them as unsupported.
+    import base64
+    import struct
+    pixels = np.arange(12, dtype=np.uint16).reshape(3, 4)
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<xisf version="1.0" xmlns="http://www.pixinsight.com/xisf">'
+        '<Metadata/>'
+        '<Image geometry="4:3:1" sampleFormat="UInt16" colorSpace="Gray" location="embedded">'
+        '<FITSKeyword name="OBJECT" value="\'M42\'" comment=""/>'
+        f'<Data encoding="base64">{base64.b64encode(pixels.tobytes()).decode()}</Data>'
+        '</Image></xisf>'
+    ).encode()
+    path = tmp_path / "embedded.xisf"
+    path.write_bytes(b"XISF0100" + struct.pack("<II", len(xml), 0) + xml)
+    image_cache.clear()
+    try:
+        data, header = load_image_data(path)
+    finally:
+        image_cache.clear()
+    np.testing.assert_array_equal(data, pixels)
+    assert header["OBJECT"] == "M42"
