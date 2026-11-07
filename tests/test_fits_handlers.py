@@ -231,6 +231,10 @@ END                                                                             
         assert image.coord_ra == pytest.approx(15 * 11.1756, abs=0.2)  # 24hr -> 360deg
         assert image.coord_dec == pytest.approx(28.5973, abs=0.2)
         assert has_been_plate_solved(header), "Image is pre-solved"
+        assert image.exposure == 120.0 and image.binning == 1
+        # The solution's numbers are numbers, as the XISF path gives them: 1.24"/px, not astropy's 1 deg/px default
+        from photonfinder.plate_solution import SolvedField
+        assert SolvedField(header).pixel_scale_arcsec() == pytest.approx(1.241, abs=0.005)
 
 
 def test_garbage_numeric_value_only_nulls_that_field():
