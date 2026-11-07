@@ -515,13 +515,6 @@ class Image(Model):
         return SkyCoord(self.coord_ra, self.coord_dec, unit=u.deg,
                         frame='icrs') if self.coord_ra is not None and self.coord_dec is not None else None
 
-    @staticmethod
-    def apply_search_criteria(query, criteria, exclude_ref=None):
-        """Add the criteria's conditions to a query joining File and Image. Kept for the
-        callers not yet on the library query module, which owns the conditions."""
-        from photonfinder.library_query import where_criteria  # pylint: disable=import-outside-toplevel,cyclic-import
-        return where_criteria(query, criteria, exclude_ref)
-
 
 # Remove coord_scale from Peewee's write-path field registry so it is never
 # included in INSERT / UPDATE / bulk_create (SQLite rejects writes to GENERATED columns).

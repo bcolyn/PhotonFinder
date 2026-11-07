@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QDialogButtonBox, QTableWidgetItem, QFileDialog, QMessageBox, QMenu
 from astropy.coordinates import SkyCoord
 
+from photonfinder import library_query
 from photonfinder.core import ApplicationContext, Change
 from photonfinder.models import Project, File, LibraryRoot, ProjectFile, Image, hp, RootAndPath, FileWCS
 from photonfinder.ui.common import _format_timestamp
@@ -204,7 +205,7 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         q = q.where(reduce(operator.or_, any_of_conditions))
         if root:
             q = q.where(File.root == root)
-        q = q.order_by(File.root, File.path, File.name)
+        q = q.order_by(*library_query.DEFAULT_ORDER)
 
         added_count = 0
         for f in q.execute():

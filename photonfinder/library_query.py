@@ -163,7 +163,7 @@ def select_matching(criteria: SearchCriteria, *columns, require_image: bool = Fa
             query = query.join_from(File, model, JOIN.LEFT_OUTER)
     if solved_only:
         query = query.where(File.rowid.in_(FileWCS.select(FileWCS.file)))
-    return where_criteria(query, criteria, exclude)
+    return _where_criteria(query, criteria, exclude)
 
 
 def unsolved_lights(criteria: SearchCriteria) -> list[File]:
@@ -278,7 +278,7 @@ def _result_query(criteria: SearchCriteria):
              .join_from(File, project_names_subq, JOIN.LEFT_OUTER,
                         on=(File.rowid == project_names_subq.c.file_id))
              )
-    return where_criteria(query, criteria), fields
+    return _where_criteria(query, criteria), fields
 
 
 def _ordering(criteria: SearchCriteria, fields: list) -> list:
@@ -298,22 +298,20 @@ def _ordering(criteria: SearchCriteria, fields: list) -> list:
     return [sort_field.desc() if criteria.sorting_desc else sort_field.asc()]
 
 
-def where_criteria(query, criteria: SearchCriteria, exclude=None):
+def _where_criteria(query, criteria: SearchCriteria, exclude=None):
     """Add the criteria's conditions to a query that selects from File joined to Image.
 
-    `exclude` is a field whose criterion is left out (the filter combo boxes list the values
-    still available for their own field). Only for the callers that still build their own
-    joins; it goes private once they have moved onto this module.
+    `exclude` is a field whose criterion is left out (see distinct_values).
     """
-    for condition in criteria_conditions(criteria, exclude):
+    for condition in _criteria_conditions(criteria, exclude):
         query = query.where(condition)
     return query
 
 
-def criteria_conditions(criteria: SearchCriteria, exclude=None) -> list:
+def _criteria_conditions(criteria: SearchCriteria, exclude=None) -> list:
     """The WHERE conditions of the criteria, over File and Image columns. Everything else
-    (headers, plate solutions, stats, projects) is a subquery, so callers that join those
-    tables themselves never end up with them joined twice."""
+    (headers, plate solutions, stats, projects) is a subquery, so a query that joins one of
+    those tables to select its columns never has it joined twice."""
     conditions = []
     _path_conditions(criteria, exclude, conditions)
 
