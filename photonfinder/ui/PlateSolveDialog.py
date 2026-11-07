@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
 
-from photonfinder import library_query
+from photonfinder import library_query, plate_solution
 from photonfinder.core import ApplicationContext, decompress, library_busy_message
 from photonfinder.filesystem import decode_header_blob
 from photonfinder.models import File, FileWCS, FitsHeader, Image, SearchCriteria
@@ -658,39 +658,12 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         return [(f, f.image) for f in query]
 
     def _apply_wcs_copy(self, source_file, overwrite):
-        try:
-            source_wcs = FileWCS.get(FileWCS.file == source_file)
-        except FileWCS.DoesNotExist:
-            return []
-        source_image = source_file.image
-
-        existing_wcs = {
-            fw.file_id
-            for fw in FileWCS.select(FileWCS.file).where(  # pylint: disable=not-an-iterable  # Peewee query
-                FileWCS.file.in_([f.rowid for f in self.files])
-            )
-        }
-
-        copied = []
-        for f in self.files:
-            if f.rowid in existing_wcs and not overwrite:
-                continue
-            FileWCS.insert({
-                FileWCS.file: f,
-                FileWCS.wcs: source_wcs.wcs,
-            }).on_conflict_replace().execute()
-            Image.update(
-                coord_ra=source_image.coord_ra,
-                coord_dec=source_image.coord_dec,
-                coord_pix256=source_image.coord_pix256,
-                coord_radius=source_image.coord_radius,
-            ).where(Image.file == f).execute()
-            f.has_wcs = True
-            img = f.image
-            if img is not None:
-                img.coord_ra = source_image.coord_ra
-                img.coord_dec = source_image.coord_dec
-                img.coord_pix256 = source_image.coord_pix256
-                img.coord_radius = source_image.coord_radius
-            copied.append(f)
-        return copied
+        result = plate_solution.copy(source_file, self.files, overwrite)
+        if result.other_dimensions:
+            names = ", ".join(f.name for f in result.other_dimensions[:5])
+            more = f" and {len(result.other_dimensions) - 5} more" if len(result.other_dimensions) > 5 else ""
+            QMessageBox.information(
+                self, "Direct Copy",
+                f"{len(result.other_dimensions)} file(s) skipped because their dimensions differ from "
+                f"{source_file.name}: {names}{more}.")
+        return result.copied

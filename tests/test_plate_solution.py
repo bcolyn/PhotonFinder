@@ -139,3 +139,133 @@ def test_clearing_an_unsolved_file_changes_nothing_but_stale_coordinates(library
     image = _image(file)
     assert (image.coord_ra, image.coord_dec, image.coord_radius) == (
         pytest.approx(POINTING_RA), pytest.approx(POINTING_DEC), None)
+
+
+# --- store and copy ---------------------------------------------------------------------------
+
+M106_SIZE = (5496, 3672)  # the frame astrometry.net solved; its .wcs.fits leaves the size out
+
+
+def _m106_solution(with_size=True) -> Header:
+    header = Header.fromfile(Path(__file__).parent / "data-small/M106_2020-03-17T024357_60sec_LP__-15C_frame11.wcs.fits")
+    if with_size:
+        header["NAXIS1"], header["NAXIS2"] = M106_SIZE
+    return header
+
+
+def _sized_file(root, name, size):
+    file = File.create(root=root, path="lights/", name=name, size=1, mtime_millis=1)
+    Image.create(file=file, image_type="LIGHT", width=size[0] if size else None, height=size[1] if size else None)
+    return file
+
+
+def _assert_agrees_with_its_solution(file):
+    """Centre, radius and scale on the Image are what its stored solution gives."""
+    from astropy.wcs import WCS
+    from astropy.wcs.utils import proj_plane_pixel_scales
+    image = _image(file)
+    solution = plate_solution.load(file)
+    ra, dec, healpix, radius = plate_solution.image_centre(solution, image.width, image.height)
+    assert (image.coord_ra, image.coord_dec, image.coord_pix256) == (pytest.approx(ra), pytest.approx(dec), healpix)
+    assert image.coord_radius == pytest.approx(radius)
+    pixel_scale = float(proj_plane_pixel_scales(WCS(solution))[0]) * 3600
+    assert image.coord_scale == pytest.approx(pixel_scale, rel=0.02)
+
+
+@pytest.fixture
+def root(context):
+    return LibraryRoot.create(name="Main", path="/data/")
+
+
+def test_a_stored_solution_and_the_image_agree(root):
+    file = _sized_file(root, "m106.fits", M106_SIZE)
+
+    stored = plate_solution.store(file, _m106_solution(), "ASTROMETRY_NET")
+
+    _assert_agrees_with_its_solution(file)
+    assert stored.image_updated and (stored.width, stored.height) == M106_SIZE
+    assert 1.13 < stored.radius < 1.14
+    assert plate_solution.origin_of(plate_solution.load(file)) == "ASTROMETRY_NET"
+    _assert_invariant()
+
+
+def test_a_solution_without_its_size_takes_the_image_size(root):
+    file = _sized_file(root, "m106.fits", M106_SIZE)
+
+    stored = plate_solution.store(file, _m106_solution(with_size=False), "ASTROMETRY_NET")
+
+    assert 1.13 < stored.radius < 1.14
+    _assert_agrees_with_its_solution(file)
+    _assert_invariant()
+
+
+def test_a_solution_gives_an_image_of_unknown_size_its_size(root):
+    file = _sized_file(root, "m106.fits", None)
+
+    plate_solution.store(file, _m106_solution(), "ASTAP")
+
+    assert (_image(file).width, _image(file).height) == M106_SIZE
+    _assert_agrees_with_its_solution(file)
+
+
+def test_an_unusable_solution_changes_nothing(root):
+    file = _sized_file(root, "m106.fits", M106_SIZE)
+    plate_solution.store(file, _m106_solution(), "ASTAP")
+    before = _image(file).coord_ra
+    broken = _m106_solution()
+    del broken["CRVAL1"]
+
+    with pytest.raises(ValueError):
+        plate_solution.store(file, broken, "ASTAP")
+
+    assert plate_solution.origin_of(plate_solution.load(file)) == "ASTAP"
+    assert _image(file).coord_ra == before
+
+
+def test_a_copied_solution_is_the_targets_own(root):
+    source = _sized_file(root, "source.fits", M106_SIZE)
+    target = _sized_file(root, "target.fits", M106_SIZE)
+    plate_solution.store(source, _m106_solution(), "ASTROMETRY_NET")
+
+    result = plate_solution.copy(source, [target], overwrite=False)
+
+    assert result.copied == [target]
+    _assert_agrees_with_its_solution(target)
+    assert (_image(target).coord_ra, _image(target).coord_radius) == (
+        pytest.approx(_image(source).coord_ra), pytest.approx(_image(source).coord_radius))
+    copied = plate_solution.load(target)
+    assert plate_solution.origin_of(copied) == "COPY:source.fits/ASTROMETRY_NET"
+    assert sum(str(c).startswith("WCS_ORIGIN=") for c in copied["COMMENT"]) == 1
+    _assert_invariant()
+
+
+def test_a_copy_skips_frames_of_another_size(root):
+    source = _sized_file(root, "source.fits", M106_SIZE)
+    binned = _sized_file(root, "binned.fits", (2748, 1836))
+    unknown = _sized_file(root, "unknown.fits", None)
+    plate_solution.store(source, _m106_solution(with_size=False), "ASTAP")
+
+    result = plate_solution.copy(source, [binned, unknown], overwrite=False)
+
+    assert result.other_dimensions == [binned] and result.copied == [unknown]
+    assert plate_solution.load(binned) is None
+    assert (_image(unknown).width, _image(unknown).height) == M106_SIZE
+    _assert_agrees_with_its_solution(unknown)
+    _assert_invariant()
+
+
+def test_a_copy_overwrites_a_solution_only_when_asked(root):
+    source = _sized_file(root, "source.fits", (200, 200))
+    target = _sized_file(root, "target.fits", (200, 200))
+    plate_solution.store(source, fixed_solution_header(), "ASTAP")
+    plate_solution.store(target, _m106_solution(with_size=False).copy(), "ASTROMETRY_NET")
+    Image.update(width=200, height=200).where(Image.file == target).execute()
+
+    kept = plate_solution.copy(source, [target], overwrite=False)
+    assert kept.already_solved == [target]
+    assert plate_solution.origin_of(plate_solution.load(target)) == "ASTROMETRY_NET"
+
+    replaced = plate_solution.copy(source, [target], overwrite=True)
+    assert replaced.copied == [target]
+    assert plate_solution.origin_of(plate_solution.load(target)) == "COPY:source.fits/ASTAP"
+    _assert_agrees_with_its_solution(target)

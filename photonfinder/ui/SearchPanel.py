@@ -934,11 +934,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         model.setData(model.index(source_row, 16), dec, SORT_ROLE)
         model.setData(model.index(source_row, 17), "False", Qt.DisplayRole)
         model.setData(model.index(source_row, 17), "False", SORT_ROLE)
-        if hasattr(file, 'has_wcs'):
-            file.has_wcs = False
-        image = getattr(file, 'image', None)
-        if image is not None:
-            image.coord_ra, image.coord_dec, image.coord_radius, image.coord_scale = ra, dec, None, None
 
     def on_item_double_clicked(self, index):
         """Handle double-click on an item in the data view."""

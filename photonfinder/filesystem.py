@@ -278,7 +278,7 @@ def build_wcs_from_header(file: File, header: Header) -> 'FileWCS | None':
     """
     from astropy.wcs import WCS
     from photonfinder.platesolver import (
-        has_been_plate_solved, extract_wcs_cards, flip_wcs_vertical, stamp_wcs_origin,
+        has_been_plate_solved, extract_wcs_cards, flip_wcs_vertical,
     )
     if not has_been_plate_solved(header):
         return None
@@ -291,7 +291,8 @@ def build_wcs_from_header(file: File, header: Header) -> 'FileWCS | None':
             if k in solution:
                 flipped[k] = solution[k]
         solution = flipped
-    stamp_wcs_origin(solution, "IMPORT")
+    from photonfinder.plate_solution import stamp_origin
+    stamp_origin(solution, "IMPORT")
     return FileWCS(file=file, wcs=compress(solution.tostring().encode()))
 
 

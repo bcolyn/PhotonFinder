@@ -3,6 +3,7 @@ import subprocess
 
 import pytest
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from astropy_healpix import HEALPix
 
 from photonfinder.platesolver import *

@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.io.fits import Header
 from astropy.wcs import WCS
@@ -22,7 +21,8 @@ from astroquery.exceptions import TimeoutError as AstroqueryTimeoutError
 from astroquery.utils import url_helpers
 from xisf import XISF
 
-from photonfinder.core import get_default_astap_path, decompress, hp
+from photonfinder import plate_solution
+from photonfinder.core import get_default_astap_path, decompress
 from photonfinder.image_processing import is_linear
 from photonfinder.filesystem import fopen, Importer, header_from_xisf_dict, repair_header
 
@@ -64,11 +64,6 @@ def file_position(header, image) -> tuple:
     if header is None:
         return None, None
     return _first_header_value(header, "RA", "CRVAL1"), _first_header_value(header, "DEC", "CRVAL2")
-
-
-def stamp_wcs_origin(header: Header, origin: str) -> None:
-    """Add a COMMENT card recording how the WCS solution was obtained."""
-    header.add_comment(f"WCS_ORIGIN={origin}")
 
 
 class SolverBase(metaclass=ABCMeta):
@@ -782,27 +777,9 @@ class SolverCancelled(Exception):
 
 
 def get_image_center_coords(header):
+    """(ra, dec, healpix, radius) of a solution; see plate_solution.image_centre."""
     assert has_minimal_wcs(header)
-    import astropy.units as u
-    naxis1 = header.get('NAXIS1')
-    naxis2 = header.get('NAXIS2')
-    if naxis1 and naxis2:
-        wcs = WCS(header)
-        coords = wcs.pixel_to_world((naxis1 - 1) / 2.0, (naxis2 - 1) / 2.0)
-        ra = coords.ra.deg
-        dec = coords.dec.deg
-        corners = wcs.pixel_to_world(
-            [0, naxis1 - 1, 0, naxis1 - 1],
-            [0, 0, naxis2 - 1, naxis2 - 1],
-        )
-        radius = float(coords.separation(corners).max().deg)
-    else:
-        ra = header.get("CRVAL1")
-        dec = header.get("CRVAL2")
-        coords = SkyCoord(ra, dec, unit=(u.deg, u.deg), frame='icrs')
-        radius = None
-    healpix_index = int(hp.skycoord_to_healpix(coords))
-    return ra, dec, healpix_index, radius
+    return plate_solution.image_centre(header)
 
 
 def extract_wcs_cards(header):
