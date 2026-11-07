@@ -14,7 +14,7 @@ from photonfinder import library_query
 from photonfinder.library_query import search_files
 from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
 from photonfinder.filesystem import reindex_library
-from photonfinder import solve_service
+from photonfinder import solve_service, solvers
 from photonfinder.platesolver import SolverBase, SolverHint
 
 logger = logging.getLogger(__name__)
@@ -368,19 +368,9 @@ class PlateSolveTask(FileProcessingTask):
         self.camera_scale_cache = camera_scale_cache if camera_scale_cache is not None else {}
         self.use_camera_scales = use_camera_scales
 
-    def _solver_name(self, solver: SolverBase) -> str:
-        from photonfinder.platesolver import ASTAPSolver, AstrometryNetSolver, SolveFieldSolver
-        if isinstance(solver, ASTAPSolver):
-            return "ASTAP"
-        if isinstance(solver, AstrometryNetSolver):
-            return "Astrometry.net"
-        if isinstance(solver, SolveFieldSolver):
-            return "solve-field"
-        return type(solver).__name__
-
     def _process_files(self):
-        primary_name = self._solver_name(self.solver)
-        backup_name = self._solver_name(self.backup_solver) if self.backup_solver else None
+        primary_name = solvers.label_of(self.solver)
+        backup_name = solvers.label_of(self.backup_solver) if self.backup_solver else None
         header = f"Solver: {primary_name}"
         if backup_name:
             header += f"  |  Backup: {backup_name}"

@@ -44,7 +44,7 @@ import anyio
 from peewee import JOIN
 from pydantic import BaseModel, Field
 
-from photonfinder import reports, solve_service
+from photonfinder import reports, solve_service, solvers
 from photonfinder.core import ApplicationContext, LibraryBusyError, library_busy_message, mcp_port_file
 from photonfinder.models import (
     CORE_MODELS, CATALOG_MODELS, SearchCriteria, InvalidCriteria, File, Image, LibraryRoot,
@@ -54,9 +54,7 @@ from photonfinder.library_query import (
     SORTABLE_FIELDS, count_files, search_files as run_search_files, serialize_search_row,
     _SERIALIZED_IMAGE_FIELDS,
 )
-from photonfinder.platesolver import (
-    ASTAPSolver, AstrometryNetSolver, SolveFieldSolver, SolverHint,
-)
+from photonfinder.platesolver import SolverHint
 
 logger = logging.getLogger(__name__)
 # Search logging is DEBUG-level diagnostic detail; enable it for this module specifically
@@ -73,7 +71,6 @@ MAX_FILES_PER_OBJECT = 10
 MAX_HEADER_KEYWORDS = 20
 
 # Solver name -> settings index, matching PlateSolveDialog's combo box order.
-SOLVER_NAMES = {"astap": 0, "astrometry_net": 1, "solve_field": 2}
 
 # Fields the agent may request distinct values for, mapped to their Image column.
 DISTINCT_FIELDS = {
@@ -534,31 +531,8 @@ def query_header_values(context: ApplicationContext, fields: Optional[list] = No
     }
 
 
-def _build_solver(context: ApplicationContext, solver_index: int):
-    s = context.settings
-    if solver_index == 0:
-        return ASTAPSolver(exe=s.get_astap_path())
-    elif solver_index == 1:
-        return AstrometryNetSolver(
-            api_key=s.get_astrometry_net_api_key(),
-            force_image_upload=s.get_astrometry_net_force_image_upload(),
-        )
-    elif solver_index == 2:
-        return SolveFieldSolver(
-            exe_path=s.get_solve_field_path(),
-            timeout=s.get_solve_field_timeout(),
-            wsl_distro=s.get_solve_field_wsl_distro(),
-        )
-    return None
-
-
-def _resolve_solver_index(name: Optional[str], default_index: int) -> int:
-    if name is None:
-        return default_index
-    key = name.strip().lower()
-    if key not in SOLVER_NAMES:
-        raise ValueError(f"Unknown solver '{name}'. Valid solvers: {', '.join(sorted(SOLVER_NAMES))}.")
-    return SOLVER_NAMES[key]
+def _solver_index(name: Optional[str], default_index: int, allow_none: bool = False) -> int:
+    return default_index if name is None else solvers.index_for(name, allow_none=allow_none)
 
 
 MCP_SOLVE_WRITER = "Plate solving (MCP)"
@@ -582,9 +556,9 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
 
     s = context.settings
     try:
-        primary_index = _resolve_solver_index(solver, s.get_plate_solve_primary_solver())
-        backup_index = _resolve_solver_index(backup_solver, s.get_plate_solve_backup_solver())
-    except ValueError as e:
+        primary_index = _solver_index(solver, s.get_plate_solve_primary_solver())
+        backup_index = _solver_index(backup_solver, s.get_plate_solve_backup_solver(), allow_none=True)
+    except solvers.SolverConfigError as e:
         return {"error": str(e)}
 
     if context.database is None:
@@ -599,12 +573,11 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
         return {"error": f"Plate solving not started: {library_busy_message(busy)}"}
     try:
         try:
-            primary = _build_solver(context, primary_index)
-            backup = _build_solver(context, backup_index) if backup_index >= 0 else None
+            primary, backup = solvers.build_solvers(s, primary_index, backup_index)
+        except solvers.SolverConfigError as e:
+            return {"error": str(e)}
         except Exception as e:
             return {"error": f"Could not build solver: {e}"}
-        if primary is None:
-            return {"error": f"No primary solver configured (index {primary_index})."}
 
         hint = SolverHint(
             ra=hint_ra if hint_ra is not None else (float(s.get_plate_solve_hint_ra()) if s.get_plate_solve_hint_ra() else None),
@@ -1077,9 +1050,9 @@ def build_mcp(context: ApplicationContext):
             f"Plate-solve up to {MAX_SOLVE_BATCH} files at once by rowid (from "
             "`search_files`/`get_file_details`), writing the resulting WCS solution and "
             "coordinates to the library. "
-            '`solver`/`backup_solver` are one of "astap", "astrometry_net", "solve_field"; '
-            "omit to use the primary/backup solver configured in Settings (no backup if "
-            "unset). `hint_ra`/`hint_dec` (degrees) and `hint_scale` (arcsec/pixel) seed the "
+            '`solver`/`backup_solver` are one of "astap", "astrometry_net", "solve_field", '
+            'and `backup_solver` may also be "none" for no backup; omit to use the '
+            "primary/backup solver configured in Settings (no backup if unset). `hint_ra`/`hint_dec` (degrees) and `hint_scale` (arcsec/pixel) seed the "
             'solver; `hint_mode` is "fallback" (only used if the file has no usable '
             'coordinates/scale) or "override" (always used). Omitted hint fields fall back '
             "to the values configured in Settings. "

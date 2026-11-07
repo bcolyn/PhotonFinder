@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 
 from photonfinder.platesolver import SolverCancelled
 from photonfinder.ui.PlateSolveDialog import PlateSolveDialog
+from photonfinder import solvers
 from tests.e2e.test_diagnose_quality import add_frames, search
 from tests.test_solve_service import FakeSolver
 
@@ -30,7 +31,7 @@ class SolveInProgress:
         self.reached_second = threading.Event()
         self.release = threading.Event()
         self.solver = FakeSolver(on_solve=self._hold_the_second_file)
-        monkeypatch.setattr(PlateSolveDialog, "_build_solver", lambda dialog, index: self.solver)
+        monkeypatch.setattr(solvers, "build_solver", lambda settings, index: self.solver)
         self.panel = app.get_current_search_panel()
         self.panel.plate_solve_files()
         [self.dialog] = self.panel.findChildren(PlateSolveDialog)
@@ -126,7 +127,7 @@ def test_cancelling_stops_the_running_solver_and_frees_the_library(sandbox, app,
     add_frames(sandbox, "M81", [3.0] * 4)
     search(sandbox, app, object_name="M81")
     solver = StopsWhenCancelled()
-    monkeypatch.setattr(PlateSolveDialog, "_build_solver", lambda dialog, index: solver)
+    monkeypatch.setattr(solvers, "build_solver", lambda settings, index: solver)
     panel = app.get_current_search_panel()
     panel.plate_solve_files()
     [dialog] = panel.findChildren(PlateSolveDialog)

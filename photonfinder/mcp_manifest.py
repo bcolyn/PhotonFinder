@@ -3305,20 +3305,20 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
             'description': 'Plate-solve up to 10 files at once by rowid (from '
                            '`search_files`/`get_file_details`), writing the resulting WCS solution '
                            'and coordinates to the library. `solver`/`backup_solver` are one of '
-                           '"astap", "astrometry_net", "solve_field"; omit to use the '
-                           'primary/backup solver configured in Settings (no backup if unset). '
-                           '`hint_ra`/`hint_dec` (degrees) and `hint_scale` (arcsec/pixel) seed '
-                           'the solver; `hint_mode` is "fallback" (only used if the file has no '
-                           'usable coordinates/scale) or "override" (always used). Omitted hint '
-                           'fields fall back to the values configured in Settings. Returns '
-                           '{results, solved, failed}. `results` is a list of per-file dicts with '
-                           '`rowid`, `path`, `success`, and on success '
-                           "`ra`/`dec`/`scale_arcsec`/`solver`, or on failure `error`. One file's "
-                           'failure does not abort the rest of the batch. Returns {"error": ...} '
-                           'if the batch is empty, too large, if another job is writing to the '
-                           'library (a plate-solve, scan, compression or analysis, here or in '
-                           'another PhotonFinder window), or if the user has not enabled '
-                           'agent-triggered plate solving in Settings.',
+                           '"astap", "astrometry_net", "solve_field", and `backup_solver` may also '
+                           'be "none" for no backup; omit to use the primary/backup solver '
+                           'configured in Settings (no backup if unset). `hint_ra`/`hint_dec` '
+                           '(degrees) and `hint_scale` (arcsec/pixel) seed the solver; `hint_mode` '
+                           'is "fallback" (only used if the file has no usable coordinates/scale) '
+                           'or "override" (always used). Omitted hint fields fall back to the '
+                           'values configured in Settings. Returns {results, solved, failed}. '
+                           '`results` is a list of per-file dicts with `rowid`, `path`, `success`, '
+                           'and on success `ra`/`dec`/`scale_arcsec`/`solver`, or on failure '
+                           "`error`. One file's failure does not abort the rest of the batch. "
+                           'Returns {"error": ...} if the batch is empty, too large, if another '
+                           'job is writing to the library (a plate-solve, scan, compression or '
+                           'analysis, here or in another PhotonFinder window), or if the user has '
+                           'not enabled agent-triggered plate solving in Settings.',
             'inputSchema': {'properties': {'rowids': {'items': {'type': 'integer'},
                                                       'title': 'Rowids',
                                                       'type': 'array'},

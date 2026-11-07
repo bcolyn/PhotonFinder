@@ -16,7 +16,7 @@ from typing import Callable, Optional
 
 from astropy.io.fits import Header
 
-from photonfinder import plate_solution
+from photonfinder import plate_solution, solvers
 from photonfinder.models import File, FileWCS
 from photonfinder.platesolver import SolverBase, SolverHint, SolverError, SolverFailure, SolverCancelled
 
@@ -38,17 +38,6 @@ class SolveOutcome:
     warning: Optional[str] = None  # solved and stored, but something about it needs saying
 
 
-def _solver_name(solver: SolverBase) -> str:
-    from photonfinder.platesolver import ASTAPSolver, AstrometryNetSolver, SolveFieldSolver
-    if isinstance(solver, ASTAPSolver):
-        return "ASTAP"
-    if isinstance(solver, AstrometryNetSolver):
-        return "Astrometry.net"
-    if isinstance(solver, SolveFieldSolver):
-        return "solve-field"
-    return type(solver).__name__
-
-
 def solve_file(file: File, solver: SolverBase, backup_solver: SolverBase = None,
                 hint: SolverHint = None, file_wcs: FileWCS = None,
                 output_callback: Callable[[str], None] = None,
@@ -67,8 +56,8 @@ def solve_file(file: File, solver: SolverBase, backup_solver: SolverBase = None,
     captured in ``SolveOutcome.error``.
     """
     cancelled = cancelled or (lambda: False)
-    primary_name = _solver_name(solver)
-    backup_name = _solver_name(backup_solver) if backup_solver else None
+    primary_name = solvers.label_of(solver)
+    backup_name = solvers.label_of(backup_solver) if backup_solver else None
     try:
         if cancelled():
             raise SolverCancelled("cancelled before starting")
@@ -108,7 +97,7 @@ def solve_file(file: File, solver: SolverBase, backup_solver: SolverBase = None,
                     file.name, stored.ra, stored.dec, stored.scale_arcsec)
         return SolveOutcome(success=True, ra=stored.ra, dec=stored.dec, radius=stored.radius,
                              scale_arcsec=stored.scale_arcsec, width=stored.width, height=stored.height,
-                             used_solver=_solver_name(used_solver), warning=warning)
+                             used_solver=solvers.label_of(used_solver), warning=warning)
     except SolverCancelled as stopped:
         logger.info("Solving %s cancelled: %s", file.name, stopped)
         return SolveOutcome(success=False, cancelled=True)

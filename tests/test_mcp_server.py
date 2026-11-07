@@ -12,6 +12,7 @@ from astropy.io.fits import Header
 from photonfinder.models import File, Image, FileWCS, ImageStats
 from photonfinder import mcp_server
 from photonfinder.platesolver import SolverBase, SolverType
+from photonfinder import solvers
 from tests.conftest import fixed_solution_header as _fixed_solution_header
 
 
@@ -491,7 +492,7 @@ def test_plate_solve_refuses_when_the_setting_is_off(sample, monkeypatch):
     def fail(*args, **kwargs):
         raise AssertionError("no solver may be built while the setting is off")
 
-    monkeypatch.setattr(mcp_server, "_build_solver", fail)
+    monkeypatch.setattr(solvers, "build_solver", fail)
 
     result = mcp_server.query_plate_solve(ctx, [data["dark"].rowid])
 
@@ -515,7 +516,7 @@ def test_plate_solve_rejects_oversized_batch(sample):
 def test_plate_solve_success_persists_wcs(sample, monkeypatch):
     ctx, data = sample
     fake = _FakeSolver(header=_fixed_solution_header())
-    monkeypatch.setattr(mcp_server, "_build_solver", lambda context, index: fake)
+    monkeypatch.setattr(solvers, "build_solver", lambda settings, index: fake)
 
     dark = data["dark"]
     result = mcp_server.query_plate_solve(ctx, [dark.rowid])
@@ -536,7 +537,7 @@ def test_plate_solve_success_persists_wcs(sample, monkeypatch):
 def test_plate_solve_unknown_rowid_does_not_abort_batch(sample, monkeypatch):
     ctx, data = sample
     fake = _FakeSolver(header=_fixed_solution_header())
-    monkeypatch.setattr(mcp_server, "_build_solver", lambda context, index: fake)
+    monkeypatch.setattr(solvers, "build_solver", lambda settings, index: fake)
 
     dark = data["dark"]
     result = mcp_server.query_plate_solve(ctx, [999999, dark.rowid])
@@ -553,7 +554,7 @@ def test_plate_solve_reports_solver_failure_per_file(sample, monkeypatch):
     from photonfinder.platesolver import SolverError
     ctx, data = sample
     fake = _FakeSolver(error=SolverError("no stars detected"))
-    monkeypatch.setattr(mcp_server, "_build_solver", lambda context, index: fake)
+    monkeypatch.setattr(solvers, "build_solver", lambda settings, index: fake)
 
     dark = data["dark"]
     result = mcp_server.query_plate_solve(ctx, [dark.rowid])
@@ -570,10 +571,34 @@ def test_plate_solve_rejects_unknown_solver_name(sample):
     assert "error" in result
 
 
+def test_plate_solve_backup_none_overrides_a_configured_backup(sample, monkeypatch):
+    from photonfinder.platesolver import SolverError
+    ctx, data = sample
+    monkeypatch.setattr(ctx.settings, "get_plate_solve_backup_solver", lambda: 1)
+    built = []
+
+    def build(settings, index):
+        built.append(index)
+        return _FakeSolver(error=SolverError("no stars detected")) if index == 0             else _FakeSolver(header=_fixed_solution_header())
+    monkeypatch.setattr(solvers, "build_solver", build)
+
+    with_backup = mcp_server.query_plate_solve(ctx, [data["dark"].rowid])
+    without = mcp_server.query_plate_solve(ctx, [data["dark"].rowid], backup_solver="none")
+
+    assert with_backup["solved"] == 1 and without["failed"] == 1
+    assert built == [0, 1, 0]
+
+
+def test_plate_solve_none_is_not_a_primary(sample):
+    ctx, _ = sample
+    result = mcp_server.query_plate_solve(ctx, [1], solver="none")
+    assert "Unknown solver 'none'" in result["error"]
+
+
 def test_plate_solve_is_refused_while_another_writer_holds_the_library(sample, monkeypatch):
     ctx, data = sample
     fake = _FakeSolver(header=_fixed_solution_header())
-    monkeypatch.setattr(mcp_server, "_build_solver", lambda context, index: fake)
+    monkeypatch.setattr(solvers, "build_solver", lambda settings, index: fake)
 
     dark = data["dark"]
     assert ctx.library_write_lock.acquire(blocking=False, holder="Library scan")

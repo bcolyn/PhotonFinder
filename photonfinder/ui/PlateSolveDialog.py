@@ -6,13 +6,11 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from photonfinder import library_query, plate_solution
+from photonfinder import library_query, plate_solution, solvers
 from photonfinder.core import ApplicationContext, library_busy_message
 from photonfinder.filesystem import decode_header_blob
 from photonfinder.models import File, FileWCS, FitsHeader, Image, SearchCriteria
-from photonfinder.platesolver import (
-    ASTAPSolver, AstrometryNetSolver, SolveFieldSolver, SolverHint
-)
+from photonfinder.platesolver import SolverHint
 from photonfinder.ui.BackgroundLoader import PlateSolveTask
 from photonfinder.ui.generated.PlateSolveDialog_ui import Ui_PlateSolveDialog
 
@@ -46,14 +44,6 @@ class CopyWCSDialog(QDialog):
 
     def should_overwrite(self):
         return self.overwrite_check.isChecked()
-
-
-# Maps combo index → (display name, solver index 0/1/2)
-_SOLVERS = [
-    ("ASTAP", 0),
-    ("Astrometry.net", 1),
-    ("solve-field", 2),
-]
 
 
 def _infer_scale_from_header(file: File):
@@ -139,17 +129,17 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
             self.setWindowTitle(f"Plate Solve — {self.parent().get_title()}")
 
     def _populate_combos(self):
-        for name, _ in _SOLVERS:
-            self.primary_solver_combo.addItem(name)
-        self.backup_solver_combo.addItem("None")
-        for name, _ in _SOLVERS:
-            self.backup_solver_combo.addItem(name)
+        """Each item carries the solver's settings index as its data."""
+        for entry in solvers.SOLVERS:
+            self.primary_solver_combo.addItem(entry.label, entry.index)
+        self.backup_solver_combo.addItem("None", solvers.NO_BACKUP)
+        for entry in solvers.SOLVERS:
+            self.backup_solver_combo.addItem(entry.label, entry.index)
 
     def _load_settings(self):
         s = self.context.settings
-        self.primary_solver_combo.setCurrentIndex(s.get_plate_solve_primary_solver())
-        # backup: stored as -1=None, 0/1/2=solver index → combo index = stored + 1
-        self.backup_solver_combo.setCurrentIndex(s.get_plate_solve_backup_solver() + 1)
+        self.primary_solver_combo.setCurrentIndex(max(self.primary_solver_combo.findData(s.get_plate_solve_primary_solver()), 0))
+        self.backup_solver_combo.setCurrentIndex(max(self.backup_solver_combo.findData(s.get_plate_solve_backup_solver()), 0))
 
         ra = s.get_plate_solve_hint_ra()
         dec = s.get_plate_solve_hint_dec()
@@ -166,8 +156,8 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
 
     def _save_settings(self):
         s = self.context.settings
-        s.set_plate_solve_primary_solver(self.primary_solver_combo.currentIndex())
-        s.set_plate_solve_backup_solver(self.backup_solver_combo.currentIndex() - 1)
+        s.set_plate_solve_primary_solver(self.primary_solver_combo.currentData())
+        s.set_plate_solve_backup_solver(self.backup_solver_combo.currentData())
         s.set_plate_solve_hint_mode('override' if self.hint_override_radio.isChecked() else 'fallback')
 
     def _infer_hints(self):
@@ -309,23 +299,6 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         except Exception:
             return True  # safe default — don't disable if check fails
 
-    def _build_solver(self, solver_index: int):
-        s = self.context.settings
-        if solver_index == 0:
-            return ASTAPSolver(exe=s.get_astap_path())
-        elif solver_index == 1:
-            return AstrometryNetSolver(
-                api_key=s.get_astrometry_net_api_key(),
-                force_image_upload=s.get_astrometry_net_force_image_upload(),
-            )
-        elif solver_index == 2:
-            return SolveFieldSolver(
-                exe_path=s.get_solve_field_path(),
-                timeout=s.get_solve_field_timeout(),
-                wsl_distro=s.get_solve_field_wsl_distro(),
-            )
-        return None
-
     def _build_hint(self):
         ra_text = self.hint_ra_edit.text().strip()
         dec_text = self.hint_dec_edit.text().strip()
@@ -359,12 +332,10 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
             return
         self._lock_held = True
 
-        primary_index = self.primary_solver_combo.currentIndex()
-        backup_index = self.backup_solver_combo.currentIndex() - 1  # -1 = None
-
         try:
-            primary_solver = self._build_solver(primary_index)
-            backup_solver = self._build_solver(backup_index) if backup_index >= 0 else None
+            primary_solver, backup_solver = solvers.build_solvers(
+                self.context.settings, self.primary_solver_combo.currentData(),
+                self.backup_solver_combo.currentData())
         except Exception as e:
             self._release_write_lock()
             QMessageBox.critical(self, "Configuration error", str(e))

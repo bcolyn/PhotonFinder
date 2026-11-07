@@ -21,6 +21,7 @@ from photonfinder.ui.ImageViewerWindow import ImageViewerWindow
 from photonfinder.ui.MainWindow import LibraryScanWorker
 from photonfinder.ui.PlateSolveDialog import PlateSolveDialog
 from photonfinder.ui.ProjectEditDialog import ProjectEditDialog
+from photonfinder import solvers
 from tests.e2e.helpers import add_libraries, wait_for_scan
 from tests.e2e.test_diagnose_quality import GOOD_RESULT, add_unanalysed, search
 
@@ -129,7 +130,7 @@ def _plate_solve_from_mcp(sandbox, app, monkeypatch, wait):
         entered.set()
         wait()
 
-    monkeypatch.setattr(mcp_server, "_build_solver", build_solver)
+    monkeypatch.setattr(solvers, "build_solver", build_solver)
     thread = threading.Thread(target=mcp_server.query_plate_solve, args=(sandbox.context, [1]), daemon=True)
     thread.start()
     assert entered.wait(10)
