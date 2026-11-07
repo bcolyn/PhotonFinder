@@ -14,7 +14,7 @@ build_date_file = os.path.join('build', 'build_date.txt')
 with open(build_date_file, 'w', encoding='utf-8') as f:
     f.write(date.today().strftime('%Y%m%d'))
 
-datas = [('icon.png', '.'), ('data/catalog.db', '.'), ('pyproject.toml', '.'),
+datas = [('LICENSE', '.'), ('icon.png', '.'), ('data/catalog.db', '.'), ('pyproject.toml', '.'),
          (build_date_file, '.')]
 datas += copy_metadata('xisf')
 datas += copy_metadata('mcp')

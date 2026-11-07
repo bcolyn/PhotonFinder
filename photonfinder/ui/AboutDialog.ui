@@ -63,7 +63,7 @@
    <item>
     <widget class="QLabel" name="licenseLabel">
      <property name="text">
-      <string>License: MIT</string>
+      <string>License: GPL-3.0-or-later</string>
      </property>
      <property name="alignment">
       <set>Qt::AlignCenter</set>

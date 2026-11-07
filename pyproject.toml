@@ -6,7 +6,7 @@ readme = "Readme.md"
 authors = [
     { name = "Benny Colyn", email = "benny.colyn@gmail.com" }
 ]
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 # Not 3.14 yet: pytest-qt 4.5.0 does not support it and crashes the test process.
 requires-python = ">=3.13"

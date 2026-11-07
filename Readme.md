@@ -1,6 +1,6 @@
 # PhotonFinder
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue.svg)](https://github.com/your-repo/PhotonFinder)
 
 A versatile desktop application for managing and organizing astronomical image files. PhotonFinder helps amateur astrophotographers efficiently search, filter, and manage their astronomical data collections.
@@ -247,7 +247,13 @@ We welcome contributions! Please feel free to submit issues, feature requests, o
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Copyright (c) 2026 Benny Colyn
+
+PhotonFinder is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See the [LICENSE](LICENSE) file for the full text.
+
+PhotonFinder is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+Releases up to and including 2.0.0 were published under the MIT License.
 
 ## 🆘 Support
 
