@@ -14,8 +14,29 @@ build_date_file = os.path.join('build', 'build_date.txt')
 with open(build_date_file, 'w', encoding='utf-8') as f:
     f.write(date.today().strftime('%Y%m%d'))
 
-datas = [('LICENSE', '.'), ('icon.png', '.'), ('data/catalog.db', '.'), ('pyproject.toml', '.'),
+# Third-party notices: the LGPL libraries in the bundle, with the versions of this build
+# filled in so the source pointers stay right after a dependency bump.
+from importlib.metadata import version as dist_version
+from PySide6.QtCore import qVersion
+with open(os.path.join('licenses', 'THIRD-PARTY-NOTICES.txt'), encoding='utf-8') as f:
+    notices = f.read().format(
+        qt_version=qVersion(),
+        pyside6_version=dist_version('PySide6'),
+        shiboken6_version=dist_version('shiboken6'),
+        sep_version=dist_version('sep'),
+        opencv_version=dist_version('opencv-python'),
+        # opencv-python tags its releases by build number only: 5.0.0.93 is tag 93.
+        opencv_build=dist_version('opencv-python').rsplit('.', 1)[-1],
+        astropy_version=dist_version('astropy'))
+notices_file = os.path.join('build', 'THIRD-PARTY-NOTICES.txt')
+with open(notices_file, 'w', encoding='utf-8') as f:
+    f.write(notices)
+
+datas = [('LICENSE', '.'), (notices_file, '.'), ('licenses/LGPL-3.0.txt', '.'),
+         ('icon.png', '.'), ('data/catalog.db', '.'), ('pyproject.toml', '.'),
          (build_date_file, '.')]
+# OpenCV's own license and its third-party licenses, including FFmpeg's LGPL 2.1.
+datas += collect_data_files('cv2', includes=['LICENSE*.txt'])
 datas += copy_metadata('xisf')
 datas += copy_metadata('mcp')
 datas += copy_metadata('photutils')  # read at import time to discover optional deps
