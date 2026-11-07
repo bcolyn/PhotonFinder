@@ -22,6 +22,7 @@ from typing import Callable, NamedTuple
 import astropy.units as u
 from peewee import JOIN, SQL, chunked, fn
 
+from photonfinder import filter_catalogue
 from photonfinder.core import hp
 from photonfinder.formatting import _format_date, _format_dec, _format_file_size, _format_ra, _format_timestamp, _utc_to_local
 from photonfinder.models import (
@@ -410,20 +411,7 @@ def _criteria_conditions(criteria: SearchCriteria, exclude=None) -> list:
         if value is not None:
             conditions.append(condition(value))
 
-    stats_conditions = [condition(value) for value, condition in (
-        (criteria.star_count_min, lambda v: ImageStats.star_count >= v),
-        (criteria.star_count_max, lambda v: ImageStats.star_count <= v),
-        (criteria.fwhm_min, lambda v: ImageStats.fwhm_median >= v),
-        (criteria.fwhm_max, lambda v: ImageStats.fwhm_median <= v),
-        (criteria.background_min, lambda v: ImageStats.background_median >= v),
-        (criteria.background_max, lambda v: ImageStats.background_median <= v),
-        (criteria.background_rms_min, lambda v: ImageStats.background_rms >= v),
-        (criteria.background_rms_max, lambda v: ImageStats.background_rms <= v),
-        (criteria.elongation_min, lambda v: ImageStats.elongation_median >= v),
-        (criteria.elongation_max, lambda v: ImageStats.elongation_median <= v),
-    ) if value is not None]
-    if stats_conditions:
-        conditions.append(File.rowid.in_(ImageStats.select(ImageStats.file).where(*stats_conditions)))
+    conditions.extend(filter_catalogue.IMAGE_QUALITY.conditions(criteria))
 
     if criteria.diagnosis_hidden:
         conditions.extend(_diagnosis_conditions(criteria.diagnosis_hidden))

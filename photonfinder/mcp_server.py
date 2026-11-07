@@ -45,6 +45,7 @@ from peewee import JOIN
 from pydantic import BaseModel, Field
 
 from photonfinder import reports, solve_service, solvers
+from photonfinder.filter_catalogue import mcp_description
 from photonfinder.core import ApplicationContext, LibraryBusyError, mcp_port_file
 from photonfinder.models import (
     CORE_MODELS, CATALOG_MODELS, SearchCriteria, InvalidCriteria, File, Image, LibraryRoot,
@@ -79,6 +80,16 @@ DISTINCT_FIELDS = {
     "camera": Image.camera,
     "telescope": Image.telescope,
     "object_name": Image.object_name,
+}
+
+# SearchCriteria fields the MCP search input leaves out on purpose, and why. Every other field
+# is in SearchCriteriaInput (a test holds the two together, so a new field needs a decision).
+NOT_FOR_MCP = {
+    "diagnosis_hidden": "the quality diagnosis filter is GUI-only for now",
+    "paths_as_prefix": "MCP path filters always include subfolders",
+    "coord_query": "only the display name of a coordinates search",
+    "reference_file": "the GUI's calibration matching sets it",
+    "sorting_index": "a GUI column position; MCP callers sort by `sorting_field`",
 }
 
 # The quality diagnosis filter is GUI-only for now.
@@ -715,27 +726,15 @@ class SearchCriteriaInput(BaseModel):
         default=None, description="Plate scale in arcsec/pixel, inclusive. Only "
                                    "plate-solved images have a scale.")
     scale_max: Optional[float] = None
-    star_count_min: Optional[int] = Field(
-        default=None, description="Detected star count, inclusive. Like all the image-quality "
-                                   "filters (star_count, fwhm, background, background_rms, "
-                                   "elongation), this only matches images that have been "
-                                   "analysed in PhotonFinder -- unanalysed images are excluded.")
+    star_count_min: Optional[int] = Field(default=None, description=mcp_description("star_count_min"))
     star_count_max: Optional[int] = None
-    fwhm_min: Optional[float] = Field(
-        default=None, description="Median star FWHM in pixels, inclusive. Lower is sharper.")
+    fwhm_min: Optional[float] = Field(default=None, description=mcp_description("fwhm_min"))
     fwhm_max: Optional[float] = None
-    background_min: Optional[float] = Field(
-        default=None, description="Median sky background level, inclusive, in the image's "
-                                   "own pixel units (ADU for integer data, 0-1 for normalised "
-                                   "float data) -- so only comparable across similar files.")
+    background_min: Optional[float] = Field(default=None, description=mcp_description("background_min"))
     background_max: Optional[float] = None
-    background_rms_min: Optional[float] = Field(
-        default=None, description="Sky background noise (RMS), inclusive, in the same pixel "
-                                   "units as `background_min`.")
+    background_rms_min: Optional[float] = Field(default=None, description=mcp_description("background_rms_min"))
     background_rms_max: Optional[float] = None
-    elongation_min: Optional[float] = Field(
-        default=None, description="Median star elongation (major/minor axis ratio), inclusive; "
-                                   "1.0 is perfectly round, higher suggests trailing.")
+    elongation_min: Optional[float] = Field(default=None, description=mcp_description("elongation_min"))
     elongation_max: Optional[float] = None
     sorting_field: Optional[typing.Literal[tuple(SORTABLE_FIELDS)]] = Field(
         default=None, description="Field to sort results by. Omit for the default "

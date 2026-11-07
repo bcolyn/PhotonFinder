@@ -310,6 +310,35 @@ def test_image_statistics_without_stats_on_the_row_shows_the_current_filter(sand
     add_filter(sandbox, modals, app.actionImageQuality, ImageQualityDialog, check_prefill)
 
 
+def test_image_statistics_cleared_in_the_dialog_leaves_no_chip(sandbox, app, modals, libraries, grid):
+    grid.panel.search_criteria.fwhm_max = 4.0
+
+    def clear_all(dialog: ImageQualityDialog):
+        for name in ("stars", "fwhm", "bg", "bgrms", "elong"):
+            for bound in ("min", "max"):
+                getattr(dialog, f"_{name}_{bound}_cb").setChecked(False)
+        assert all(v is None for v in dialog.get_quality_criteria().values())
+
+    add_filter(sandbox, modals, app.actionImageQuality, ImageQualityDialog, clear_all)
+
+    assert AdvancedFilter.IMAGE_QUALITY not in grid.panel.advanced_options
+    assert grid.panel.search_criteria.fwhm_max is None
+
+
+def test_a_restored_image_statistics_filter_keeps_its_chip_and_its_ranges(sandbox, app, libraries, grid):
+    saved = SearchCriteria(fwhm_max=4.0, star_count_min=10)
+
+    grid.panel.apply_search_criteria(saved)
+    sandbox.wait_idle()
+    grid.panel.apply_search_criteria(saved)  # onto a panel already showing the chip
+    sandbox.wait_idle()
+
+    assert filter_button(grid, AdvancedFilter.IMAGE_QUALITY).text() == "Quality: Stars, FWHM"
+    assert (grid.panel.search_criteria.fwhm_max, grid.panel.search_criteria.star_count_min) == (4.0, 10)
+    remove_filter(sandbox, grid, AdvancedFilter.IMAGE_QUALITY)
+    assert grid.panel.search_criteria.fwhm_max is None
+
+
 def test_quality_diagnosis_filter(sandbox, app, modals, libraries, grid):
     names = shown(grid)
     bad, both, good = names[0], names[1], names[2]

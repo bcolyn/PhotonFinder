@@ -15,7 +15,7 @@ from PySide6.QtGui import QBrush, QDesktopServices, QKeySequence, QPalette, QSta
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame, QInputDialog, QMenu,
                                QMessageBox, QPushButton, QSizePolicy, QToolBar, QWidget)
 
-from photonfinder import plate_solution
+from photonfinder import filter_catalogue, plate_solution
 from photonfinder.core import ApplicationContext, Change, library_busy_message
 from photonfinder.filesystem import is_compressible, decode_header_blob
 from photonfinder.library_query import (
@@ -1162,14 +1162,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         else:
             dialog.set_from_criteria(self.search_criteria)
         if dialog.exec():
-            q = dialog.get_quality_criteria()
-            active = [k for k, v in q.items() if v is not None]
-            text = f"Quality ({len(active)} filter{'s' if len(active) != 1 else ''})" if active else "Image Statistics"
-            filter_button = FilterButton(self, text, AdvancedFilter.IMAGE_QUALITY)
-            filter_button.on_remove_filter.connect(self.reset_image_quality_criteria)
-            self.add_filter_button_control(filter_button)
-            for key, value in q.items():
+            for key, value in dialog.get_quality_criteria().items():
                 setattr(self.search_criteria, key, value)
+            self._show_catalogue_chip(filter_catalogue.IMAGE_QUALITY, AdvancedFilter.IMAGE_QUALITY)
             self.update_search_criteria()
 
     def _selected_row_stats(self) -> Optional[SimpleNamespace]:
@@ -1183,11 +1178,25 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             "star_count", "fwhm_median", "background_median", "background_rms", "elongation_median")})
         return stats if any(v is not None for v in vars(stats).values()) else None
 
-    def reset_image_quality_criteria(self):
-        for attr in ["star_count_min", "star_count_max", "fwhm_min", "fwhm_max",
-                     "background_min", "background_max", "background_rms_min",
-                     "background_rms_max", "elongation_min", "elongation_max"]:
-            setattr(self.search_criteria, attr, None)
+    def _drop_chip(self, button: 'FilterButton'):
+        """Remove a chip without resetting its filter's criteria."""
+        try:
+            button.on_remove_filter.disconnect()
+        except (RuntimeError, TypeError):  # nothing connected
+            pass
+        self.remove_filter_button_control(button)
+
+    def _show_catalogue_chip(self, entry: 'filter_catalogue.FilterEntry', filter_type: 'AdvancedFilter'):
+        """Show the entry's chip with its label for the current criteria, or none when the
+        criteria leave the filter inactive. Removing the chip resets the entry's fields."""
+        current = self.advanced_options.get(filter_type)
+        if current is not None:
+            self._drop_chip(current)  # the criteria already hold the new values
+        if not entry.is_active(self.search_criteria):
+            return
+        filter_button = FilterButton(self, entry.chip_label(self.search_criteria), filter_type)
+        filter_button.on_remove_filter.connect(lambda: entry.reset(self.search_criteria))
+        self.add_filter_button_control(filter_button)
 
     def add_diagnosis_filter(self):
         from .RangeFilterDialogs import DiagnosisFilterDialog
@@ -1447,9 +1456,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         self.update_in_progress = False
 
-        # Clear existing filter buttons
+        # Clear existing filter buttons, without resetting the criteria just restored
         for button in list(self.advanced_options.values()):
-            self.remove_filter_button_control(button)
+            self._drop_chip(button)
         self.advanced_options.clear()
 
         # Add filter buttons for other filters
@@ -1539,17 +1548,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             filter_button.on_remove_filter.connect(self.reset_plate_scale_criteria)
             self.add_filter_button_control(filter_button)
 
-        _quality_vals = [criteria.star_count_min, criteria.star_count_max,
-                         criteria.fwhm_min, criteria.fwhm_max,
-                         criteria.background_min, criteria.background_max,
-                         criteria.background_rms_min, criteria.background_rms_max,
-                         criteria.elongation_min, criteria.elongation_max]
-        if any(v is not None for v in _quality_vals):
-            active = sum(1 for v in _quality_vals if v is not None)
-            text = f"Quality ({active} filter{'s' if active != 1 else ''})"
-            filter_button = FilterButton(self, text, AdvancedFilter.IMAGE_QUALITY)
-            filter_button.on_remove_filter.connect(self.reset_image_quality_criteria)
-            self.add_filter_button_control(filter_button)
+        self._show_catalogue_chip(filter_catalogue.IMAGE_QUALITY, AdvancedFilter.IMAGE_QUALITY)
 
         if criteria.diagnosis_hidden:
             self._add_diagnosis_filter_button(criteria.diagnosis_hidden)

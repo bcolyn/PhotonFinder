@@ -176,10 +176,10 @@ class SearchCriteria:
             result.append(f"Size: {self.width_min or ''}–{self.width_max or ''}×{self.height_min or ''}–{self.height_max or ''}")
         if self.scale_min is not None or self.scale_max is not None:
             result.append(f"Scale: {self.scale_min or ''}–{self.scale_max or ''} arcsec/px")
-        if any(v is not None for v in [self.star_count_min, self.star_count_max, self.fwhm_min, self.fwhm_max,
-                                        self.background_min, self.background_max, self.background_rms_min,
-                                        self.background_rms_max, self.elongation_min, self.elongation_max]):
-            result.append("Image Statistics filter")
+        from photonfinder import filter_catalogue  # it builds on these models
+        for entry in filter_catalogue.ENTRIES:
+            if entry.is_active(self):
+                result.append(entry.summary(self))
         if self.diagnosis_hidden:
             result.append("Quality diagnosis filter")
         return ', '.join(result)
