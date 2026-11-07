@@ -655,76 +655,33 @@ class SearchCriteriaInput(BaseModel):
     optional; omit any field to leave it unconstrained. All given fields are combined
     with AND."""
 
-    type: Optional[str] = Field(
-        default=None, description="Exact image type, e.g. LIGHT, DARK, FLAT, BIAS, "
-                                   "MASTER DARK. See `list_distinct_values('type')`.")
-    filter: Optional[str] = Field(
-        default=None, description="Exact filter name as recorded in the header, e.g. Ha. "
-                                   "See `list_distinct_values('filter')`.")
-    camera: Optional[str] = Field(
-        default=None, description="Exact camera name. See `list_distinct_values('camera')`.")
-    telescope: Optional[str] = Field(
-        default=None, description="Substring match on the telescope name. See "
-                                   "`list_distinct_values('telescope')`.")
-    object_name: Optional[str] = Field(
-        default=None, description="Substring match on the OBJECT name recorded in the "
-                                   "header, e.g. \"M 31\". Spelling varies per capture "
-                                   "program; check `list_distinct_values('object_name')`, or "
-                                   "use a coordinate search to catch every spelling.")
-    file_name: Optional[str] = Field(
-        default=None, description="Substring match on the file name (not the directory).")
-    exposure: Optional[str] = Field(default=None, description="Exposure time in seconds, "
-                                                                 'e.g. "300".')
-    exposure_tolerance: Optional[float] = Field(
-        default=None, description="± seconds tolerance for `exposure`; omit for an exact match.")
-    binning: Optional[str] = Field(default=None, description='Binning factor, e.g. "2" for 2x2.')
-    gain: Optional[str] = Field(default=None, description='Camera gain, e.g. "100".')
-    offset: Optional[int] = Field(default=None, description="Camera offset.")
-    temperature: Optional[str] = Field(
-        default=None, description='Sensor cooling set-point in °C, e.g. "-10".')
-    temperature_tolerance: Optional[float] = Field(
-        default=None, description="± °C tolerance for `temperature`; omit for an exact match.")
-    coord_ra: Optional[str] = Field(
-        default=None, description='Right Ascension in hours, decimal ("0.712") or sexagesimal '
-                                   '("00:42:44"). Requires `coord_dec`. Use `lookup_object` to '
-                                   "get an object's coordinates (note it returns RA in "
-                                   "degrees: divide by 15).")
-    coord_dec: Optional[str] = Field(
-        default=None, description='Declination in degrees, decimal ("41.27") or sexagesimal '
-                                   '("+41:16:09"). Requires `coord_ra`.')
-    coord_radius: Optional[float] = Field(
-        default=None, description="Cone search radius in decimal degrees (used with "
-                                   "`coord_ra`/`coord_dec`); defaults to 0.5.")
-    start_datetime: Optional[datetime] = Field(
-        default=None, description="Only images observed at or after this time (ISO 8601). "
-                                   "Compared with DATE-OBS in UTC: a value with an offset "
-                                   "is converted to UTC, one without is taken as UTC.")
-    end_datetime: Optional[datetime] = Field(
-        default=None, description="Only images observed at or before this time (ISO 8601). "
-                                   "Compared with DATE-OBS in UTC: a value with an offset "
-                                   "is converted to UTC, one without is taken as UTC.")
-    header_text: Optional[str] = Field(
-        default=None, description='FITS header match: "KEYWORD=value", "KEYWORD<value" or '
-                                   '"KEYWORD>value" compares one keyword numerically, e.g. '
-                                   '"FOCTEMP<0"; anything else (including a non-numeric '
-                                   'value) is a substring search over the whole header text.')
-    plate_solved: Optional[bool] = Field(
-        default=None, description="True = solved only, False = unsolved only, "
-                                   "omit = either.")
-    project: Optional[int] = Field(
-        default=None, description="A project rowid from `list_projects`, or -1 to match "
-                                   "files not assigned to any project.")
-    paths: Optional[list[_RootAndPathInput]] = Field(
-        default=None, description="Restrict to one or more library roots (optionally a "
-                                   "subdirectory of each), e.g. [{\"root_id\": 2}]. Get "
-                                   "`root_id`s from `list_library_roots`.")
-    width_min: Optional[int] = Field(default=None, description="Image width in pixels, inclusive.")
+    type: Optional[str] = Field(default=None, description=mcp_description("type"))
+    filter: Optional[str] = Field(default=None, description=mcp_description("filter"))
+    camera: Optional[str] = Field(default=None, description=mcp_description("camera"))
+    telescope: Optional[str] = Field(default=None, description=mcp_description("telescope"))
+    object_name: Optional[str] = Field(default=None, description=mcp_description("object_name"))
+    file_name: Optional[str] = Field(default=None, description=mcp_description("file_name"))
+    exposure: Optional[str] = Field(default=None, description=mcp_description("exposure"))
+    exposure_tolerance: Optional[float] = Field(default=None, description=mcp_description("exposure_tolerance"))
+    binning: Optional[str] = Field(default=None, description=mcp_description("binning"))
+    gain: Optional[str] = Field(default=None, description=mcp_description("gain"))
+    offset: Optional[int] = Field(default=None, description=mcp_description("offset"))
+    temperature: Optional[str] = Field(default=None, description=mcp_description("temperature"))
+    temperature_tolerance: Optional[float] = Field(default=None, description=mcp_description("temperature_tolerance"))
+    coord_ra: Optional[str] = Field(default=None, description=mcp_description("coord_ra"))
+    coord_dec: Optional[str] = Field(default=None, description=mcp_description("coord_dec"))
+    coord_radius: Optional[float] = Field(default=None, description=mcp_description("coord_radius"))
+    start_datetime: Optional[datetime] = Field(default=None, description=mcp_description("start_datetime"))
+    end_datetime: Optional[datetime] = Field(default=None, description=mcp_description("end_datetime"))
+    header_text: Optional[str] = Field(default=None, description=mcp_description("header_text"))
+    plate_solved: Optional[bool] = Field(default=None, description=mcp_description("plate_solved"))
+    project: Optional[int] = Field(default=None, description=mcp_description("project"))
+    paths: Optional[list[_RootAndPathInput]] = Field(default=None, description=mcp_description("paths"))
+    width_min: Optional[int] = Field(default=None, description=mcp_description("width_min"))
     width_max: Optional[int] = None
-    height_min: Optional[int] = Field(default=None, description="Image height in pixels, inclusive.")
+    height_min: Optional[int] = Field(default=None, description=mcp_description("height_min"))
     height_max: Optional[int] = None
-    scale_min: Optional[float] = Field(
-        default=None, description="Plate scale in arcsec/pixel, inclusive. Only "
-                                   "plate-solved images have a scale.")
+    scale_min: Optional[float] = Field(default=None, description=mcp_description("scale_min"))
     scale_max: Optional[float] = None
     star_count_min: Optional[int] = Field(default=None, description=mcp_description("star_count_min"))
     star_count_max: Optional[int] = None

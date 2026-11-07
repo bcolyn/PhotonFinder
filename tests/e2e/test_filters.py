@@ -16,7 +16,7 @@ from photonfinder.ui.ExposureDialog import ExposureDialog
 from photonfinder.ui.GainDialog import GainDialog
 from photonfinder.models import CORE_MODELS, DIAGNOSIS_BAD_VALUES, File, Image, ImageStats, SearchCriteria
 from photonfinder.ui.RangeFilterDialogs import DiagnosisFilterDialog, ImageQualityDialog, ImageSizeDialog, PlateScaleDialog
-from photonfinder.ui.SearchPanel import AdvancedFilter
+from photonfinder import filter_catalogue
 from photonfinder.ui.TelescopeDialog import TelescopeDialog
 from photonfinder.ui.TemperatureDialog import TemperatureDialog
 from tests.e2e.helpers import Grid, add_libraries, choose
@@ -47,13 +47,13 @@ def add_filter(sandbox, modals, action, dialog_type, fn=lambda d: None):
     sandbox.wait_idle()
 
 
-def filter_button(grid: Grid, kind: AdvancedFilter):
+def filter_button(grid: Grid, kind: filter_catalogue.FilterEntry):
     button = grid.panel.advanced_options.get(kind)
-    assert button is not None and button.isVisible(), f"no {kind.name} filter button"
+    assert button is not None and button.isVisible(), f"no {kind.key} filter button"
     return button
 
 
-def remove_filter(sandbox, grid: Grid, kind: AdvancedFilter):
+def remove_filter(sandbox, grid: Grid, kind: filter_catalogue.FilterEntry):
     sandbox.qtbot.mouseClick(filter_button(grid, kind), Qt.MouseButton.RightButton)
     sandbox.wait_idle()
     assert kind not in grid.panel.advanced_options
@@ -72,9 +72,9 @@ def test_exposure_from_the_selected_row(sandbox, app, modals, libraries, grid):
 
     add_filter(sandbox, modals, app.actionExposure, ExposureDialog, check_prefill)
 
-    assert filter_button(grid, AdvancedFilter.EXPOSURE).text() == "Exposure: 120.0 s"
+    assert filter_button(grid, filter_catalogue.EXPOSURE).text() == "Exposure: 120.0 s"
     assert shown(grid) == matching(libraries, lambda f: f.exposure == 120.0)
-    remove_filter(sandbox, grid, AdvancedFilter.EXPOSURE)
+    remove_filter(sandbox, grid, filter_catalogue.EXPOSURE)
     assert grid.row_count() == len(libraries.files)
 
 
@@ -146,7 +146,7 @@ def test_gain_then_edit_to_gain_and_offset(sandbox, app, modals, libraries, grid
         dialog.set_offset(50)
 
     with modals.handle(GainDialog, gain_100_offset_50):
-        filter_button(grid, AdvancedFilter.GAIN).click()  # left click edits
+        filter_button(grid, filter_catalogue.GAIN).click()  # left click edits
     sandbox.wait_idle()
 
     assert shown(grid) == matching(libraries, lambda f: f.gain == 100 and f.offset == 50)
@@ -205,7 +205,7 @@ def test_date_range_from_the_selected_row(sandbox, app, modals, libraries, grid)
     end_utc = first_ha.date_obs + timedelta(minutes=30)
     expected = matching(libraries, lambda f: start_utc <= f.date_obs <= end_utc)
     assert shown(grid) == expected
-    label = filter_button(grid, AdvancedFilter.DATETIME).text()
+    label = filter_button(grid, filter_catalogue.DATES).text()
     assert label == f"Date {local - timedelta(minutes=1):%Y-%m-%d %H:%M:%S} - "                     f"{local + timedelta(minutes=30):%Y-%m-%d %H:%M:%S}"
 
     def unchanged(dialog: DateRangeDialog):
@@ -214,13 +214,13 @@ def test_date_range_from_the_selected_row(sandbox, app, modals, libraries, grid)
         assert abs(end - (local + timedelta(minutes=30))) < timedelta(seconds=1), end
 
     with modals.handle(DateRangeDialog, unchanged):
-        filter_button(grid, AdvancedFilter.DATETIME).click()
+        filter_button(grid, filter_catalogue.DATES).click()
     sandbox.wait_idle()
     assert shown(grid) == expected
 
     app = sandbox.restart()  # the filter comes back from the session file
     grid = sandbox.grid(app.get_search_panels()[-1])
-    assert filter_button(grid, AdvancedFilter.DATETIME).text() == label
+    assert filter_button(grid, filter_catalogue.DATES).text() == label
     assert shown(grid) == expected
 
 
@@ -232,7 +232,7 @@ def test_plate_solved_and_unsolved(sandbox, app, modals, boundary, libraries, gr
     assert set(grid.column("Solved")) == {"True"}
 
     boundary.answer("getItem", ("Unsolved", True))
-    filter_button(grid, AdvancedFilter.PLATE_SOLVED).click()
+    filter_button(grid, filter_catalogue.PLATE_SOLVED).click()
     sandbox.wait_idle()
     assert shown(grid) == matching(libraries, lambda f: not f.solved)
 
@@ -260,7 +260,7 @@ def test_filters_combine_with_the_type_box_and_come_off_again(sandbox, app, moda
     assert shown(grid) == expected
     assert grid.panel.get_title().startswith(f"{len(expected)} files [")
 
-    remove_filter(sandbox, grid, AdvancedFilter.EXPOSURE)
+    remove_filter(sandbox, grid, filter_catalogue.EXPOSURE)
     assert shown(grid) == matching(libraries, lambda f: f.image_type == "LIGHT")
 
 
@@ -293,7 +293,7 @@ def test_image_statistics_from_the_selected_row(sandbox, app, modals, libraries,
     add_filter(sandbox, modals, app.actionImageQuality, ImageQualityDialog, check_prefill)
 
     assert shown(grid) == [analysed]
-    remove_filter(sandbox, grid, AdvancedFilter.IMAGE_QUALITY)
+    remove_filter(sandbox, grid, filter_catalogue.IMAGE_QUALITY)
     assert grid.row_count() == len(libraries.files)
 
 
@@ -321,7 +321,7 @@ def test_image_statistics_cleared_in_the_dialog_leaves_no_chip(sandbox, app, mod
 
     add_filter(sandbox, modals, app.actionImageQuality, ImageQualityDialog, clear_all)
 
-    assert AdvancedFilter.IMAGE_QUALITY not in grid.panel.advanced_options
+    assert filter_catalogue.IMAGE_QUALITY not in grid.panel.advanced_options
     assert grid.panel.search_criteria.fwhm_max is None
 
 
@@ -333,9 +333,9 @@ def test_a_restored_image_statistics_filter_keeps_its_chip_and_its_ranges(sandbo
     grid.panel.apply_search_criteria(saved)  # onto a panel already showing the chip
     sandbox.wait_idle()
 
-    assert filter_button(grid, AdvancedFilter.IMAGE_QUALITY).text() == "Quality: Stars, FWHM"
+    assert filter_button(grid, filter_catalogue.IMAGE_QUALITY).text() == "Quality: Stars, FWHM"
     assert (grid.panel.search_criteria.fwhm_max, grid.panel.search_criteria.star_count_min) == (4.0, 10)
-    remove_filter(sandbox, grid, AdvancedFilter.IMAGE_QUALITY)
+    remove_filter(sandbox, grid, filter_catalogue.IMAGE_QUALITY)
     assert grid.panel.search_criteria.fwhm_max is None
 
 
@@ -358,7 +358,7 @@ def test_quality_diagnosis_filter(sandbox, app, modals, libraries, grid):
         assert dialog.get_hidden() == list(DIAGNOSIS_BAD_VALUES)  # the default hides bad frames
 
     add_filter(sandbox, modals, app.actionQualityDiagnosis, DiagnosisFilterDialog, check_default)
-    assert filter_button(grid, AdvancedFilter.QUALITY_DIAGNOSIS).text() == "Diagnosis: hide bad"
+    assert filter_button(grid, filter_catalogue.QUALITY_DIAGNOSIS).text() == "Diagnosis: hide bad"
     assert app.actionQualityDiagnosis.isChecked()
     grid.load_all()
     assert shown(grid) == sorted(set(names) - {bad, both})
@@ -369,18 +369,18 @@ def test_quality_diagnosis_filter(sandbox, app, modals, libraries, grid):
         dialog.set_hidden(["Bad background"])
 
     with modals.handle(DiagnosisFilterDialog, hide_only_background):
-        filter_button(grid, AdvancedFilter.QUALITY_DIAGNOSIS).click()
+        filter_button(grid, filter_catalogue.QUALITY_DIAGNOSIS).click()
     sandbox.wait_idle()
     grid.load_all()
     assert shown(grid) == sorted(set(names) - {both})  # one Bad value is enough to hide it
 
     # Restoring a tab's saved criteria brings back the filter and its button.
     saved = SearchCriteria.from_json(grid.panel.search_criteria.to_json())
-    remove_filter(sandbox, grid, AdvancedFilter.QUALITY_DIAGNOSIS)
+    remove_filter(sandbox, grid, filter_catalogue.QUALITY_DIAGNOSIS)
     assert grid.total == len(libraries.files)
     grid.panel.apply_search_criteria(saved)
     sandbox.wait_idle()
-    assert filter_button(grid, AdvancedFilter.QUALITY_DIAGNOSIS).text() == "Diagnosis (1 hidden)"
+    assert filter_button(grid, filter_catalogue.QUALITY_DIAGNOSIS).text() == "Diagnosis (1 hidden)"
     assert grid.total == len(libraries.files) - 1
 
 

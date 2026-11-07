@@ -239,18 +239,12 @@ class ProjectsWindow(QWidget, Ui_ProjectsWindow):
         self.context.signal_bus.projects_changed.emit(to_merge, Change.DELETE)
 
     def use_as_filter_action(self):
-        from photonfinder.ui.SearchPanel import FilterButton, AdvancedFilter
         search_panel = self.main_window.get_current_search_panel()
         projects = self.get_selected_projects()
         assert len(projects) == 1
         project = projects[0]
 
-        text = f"Project: {project.name}"
-        filter_button = FilterButton(search_panel, text, AdvancedFilter.PROJECT)
-        filter_button.on_remove_filter.connect(search_panel.reset_project_criteria)
-        search_panel.add_filter_button_control(filter_button)
-        search_panel.search_criteria.project = project
-        search_panel.update_search_criteria()
+        search_panel.set_project_filter(project)
 
     def enable_disable_actions(self):
         projects = self.get_selected_projects()

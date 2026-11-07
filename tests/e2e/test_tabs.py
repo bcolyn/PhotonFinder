@@ -5,7 +5,8 @@ import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 
 from photonfinder.ui.ExposureDialog import ExposureDialog
-from photonfinder.ui.SearchPanel import AdvancedFilter, FilterButton
+from photonfinder import filter_catalogue
+from photonfinder.ui.SearchPanel import FilterButton
 from tests.e2e.helpers import Grid, add_libraries, wait_for_scan
 from tests.e2e.test_filters import add_filter, remove_filter
 
@@ -41,7 +42,7 @@ def test_matching_calibration_tab_is_announced_and_keeps_the_columns(sandbox, ap
 def test_removing_filters_leaves_no_filter_buttons_behind(sandbox, app, modals, grid):
     for _ in range(3):
         add_filter(sandbox, modals, app.actionExposure, ExposureDialog, lambda d: d.set_exposure(120.0))
-        remove_filter(sandbox, grid, AdvancedFilter.EXPOSURE)
+        remove_filter(sandbox, grid, filter_catalogue.EXPOSURE)
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
     assert grid.panel.findChildren(FilterButton) == []

@@ -1,6 +1,6 @@
 from zoneinfo import ZoneInfo
 
-from photonfinder.ui.SearchPanel import _format_date
+from photonfinder.formatting import _format_date
 
 
 def test__format_date_datetime_utc():

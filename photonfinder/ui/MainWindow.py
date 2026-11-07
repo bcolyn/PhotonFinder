@@ -1,6 +1,7 @@
 import logging
 import time
 from copy import deepcopy
+from functools import partial
 from typing import List
 
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize, QEvent
@@ -8,12 +9,12 @@ from PySide6.QtGui import QIcon, QPalette, QAction, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QTabWidget,
                                QToolButton, QWidget)
 
-from photonfinder import library_query
+from photonfinder import filter_catalogue, library_query
 from photonfinder.core import ApplicationContext, LibraryBusyError, StatusReporter, backup_database, \
     library_busy_message
 from photonfinder.filesystem import Importer, ScanCancelled, update_fits_header_cache, check_missing_header_cache, \
     repair_truncated_header_cache
-from photonfinder.models import SearchCriteria, Project, File, ProjectFile, RootAndPath, LibraryRoot
+from photonfinder.models import NO_PROJECT, SearchCriteria, Project, File, ProjectFile, RootAndPath, LibraryRoot
 from .AboutDialog import AboutDialog
 from .ImageViewerWindow import ImageViewerWindow
 from .LibraryRootDialog import LibraryRootDialog
@@ -21,7 +22,7 @@ from .LibraryTreeModel import AllLibrariesNode, LibraryRootNode
 from .LogWindow import LogWindow
 from .ProjectEditDialog import ProjectEditDialog
 from .ProjectsWindow import ProjectsWindow
-from .SearchPanel import SearchPanel, AdvancedFilter
+from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
 from .common import create_colored_svg_icon, _BUILTIN_PRESETS
 from .generated.MainWindow_ui import Ui_MainWindow
@@ -126,19 +127,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.action_Manage_Libraries.triggered.connect(self.manage_library_roots)
         self.action_Settings.triggered.connect(self.open_settings_dialog)
         self.action_Scan_Libraries.triggered.connect(self.scan_libraries)
-        self.actionExposure.triggered.connect(self.add_exposure_filter)
-        self.actionDate.triggered.connect(self.add_datetime_filter)
         self.action_View_Log.triggered.connect(self.view_log)
-        self.actionCoordinates.triggered.connect(self.add_coordinates_filter)
-        self.actionTelescope.triggered.connect(self.add_telescope_filter)
-        self.actionBinning.triggered.connect(self.add_binning_filter)
-        self.actionGain.triggered.connect(self.add_gain_filter)
-        self.actionTemperature.triggered.connect(self.add_temperature_filter)
-        self.actionPlateSolved.triggered.connect(self.add_plate_solved_filter)
-        self.actionImageSize.triggered.connect(self.add_image_size_filter)
-        self.actionPlateScale.triggered.connect(self.add_plate_scale_filter)
-        self.actionImageQuality.triggered.connect(self.add_image_quality_filter)
-        self.actionQualityDiagnosis.triggered.connect(self.add_diagnosis_filter)
         self.actionDiagnose_Quality.triggered.connect(self.open_diagnose_quality)
         self.action_Create_Backup.triggered.connect(self.create_backup)
         self.action_Create_Database.triggered.connect(self.create_database)
@@ -157,7 +146,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionPlate_solve_files.triggered.connect(self.plate_solve_files)
         self.actionCompress_files.triggered.connect(self.compress_files)
         self.actionList_Files.triggered.connect(self.report_list_files)
-        self.actionHeader_Text.triggered.connect(self.add_header_text_filter)
         self.actionMetadata_Report.triggered.connect(self.report_metadata)
         self.actionTelescopius_List.triggered.connect(self.report_telescopius_list)
         self.actionTarget_List_Report.triggered.connect(self.report_targets)
@@ -168,7 +156,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.menuProject.aboutToShow.connect(self.on_show_project_menu)
         self.actionAddToNewProject.triggered.connect(self.on_add_to_project_action)
         self.dockWidget.visibilityChanged.connect(self.show_projects_window)
-        self.action_filter_no_project.triggered.connect(self.add_no_project_filter)
+        self.action_filter_no_project.triggered.connect(
+            lambda: self.get_current_search_panel().set_project_filter(NO_PROJECT))
+        for action, entry in self._filter_actions().items():
+            action.triggered.connect(partial(self._edit_filter, entry))
         self.menuSearch_Details.aboutToShow.connect(self.populate_search_details)
         self.menuProject_Details.aboutToShow.connect(self.populate_project_details)
         self.menu_File.setToolTipsVisible(True)
@@ -524,53 +515,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def get_current_search_panel(self) -> SearchPanel:
         return self.tabWidget.currentWidget()
 
-    def add_exposure_filter(self):
-        self.get_current_search_panel().add_exposure_filter()
-        self.enable_actions_for_current_tab()
+    def _filter_actions(self) -> dict:
+        """The Search menu's filter actions, each with the catalogue entry it edits."""
+        return {
+            self.actionExposure: filter_catalogue.EXPOSURE, self.actionDate: filter_catalogue.DATES,
+            self.actionCoordinates: filter_catalogue.COORDINATES, self.actionTelescope: filter_catalogue.TELESCOPE,
+            self.actionBinning: filter_catalogue.BINNING, self.actionGain: filter_catalogue.GAIN,
+            self.actionTemperature: filter_catalogue.TEMPERATURE, self.actionPlateSolved: filter_catalogue.PLATE_SOLVED,
+            self.actionImageSize: filter_catalogue.IMAGE_SIZE, self.actionPlateScale: filter_catalogue.PLATE_SCALE,
+            self.actionImageQuality: filter_catalogue.IMAGE_QUALITY,
+            self.actionQualityDiagnosis: filter_catalogue.QUALITY_DIAGNOSIS,
+            self.actionHeader_Text: filter_catalogue.HEADER_TEXT,
+        }
 
-    def add_telescope_filter(self):
-        self.get_current_search_panel().add_telescope_filter()
-        self.enable_actions_for_current_tab()
-
-    def add_binning_filter(self):
-        self.get_current_search_panel().add_binning_filter()
-        self.enable_actions_for_current_tab()
-
-    def add_gain_filter(self):
-        self.get_current_search_panel().add_gain_filter()
-        self.enable_actions_for_current_tab()
-
-    def add_temperature_filter(self):
-        self.get_current_search_panel().add_temperature_filter()
-        self.enable_actions_for_current_tab()
-
-    def add_datetime_filter(self):
-        self.get_current_search_panel().add_datetime_filter()
-        self.enable_actions_for_current_tab()
-
-    def add_coordinates_filter(self):
-        self.get_current_search_panel().add_coordinates_filter()
-        self.enable_actions_for_current_tab()
-
-    def add_plate_solved_filter(self):
-        self.get_current_search_panel().add_plate_solved_filter()
-        self.enable_actions_for_current_tab()
-
-    def add_image_size_filter(self):
-        self.get_current_search_panel().add_image_size_filter()
-        self.enable_actions_for_current_tab()
-
-    def add_plate_scale_filter(self):
-        self.get_current_search_panel().add_plate_scale_filter()
-        self.enable_actions_for_current_tab()
-
-    def add_image_quality_filter(self):
-        self.get_current_search_panel().add_image_quality_filter()
-        self.enable_actions_for_current_tab()
-
-    def add_diagnosis_filter(self):
-        self.get_current_search_panel().add_diagnosis_filter()
-        self.enable_actions_for_current_tab()
+    def _edit_filter(self, entry):
+        self.get_current_search_panel().edit_filter(entry)
 
     def open_diagnose_quality(self):
         if self._diagnose_dialog is not None:
@@ -591,12 +550,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         panel = self.get_current_search_panel()
         if panel is not None:
             panel.refresh_data_grid()
-
-    def add_header_text_filter(self):
-        self.get_current_search_panel().add_header_text_filter()
-
-    def add_no_project_filter(self):
-        self.get_current_search_panel().add_no_project_filter()
 
     def report_metadata(self):
         self.get_current_search_panel().report_metadata()
@@ -817,18 +770,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self._plate_solve_fits_selection = is_light
             self.actionPlate_solve_files.setEnabled(is_light and self.context.library_write_lock.holder is None)
 
-        self.actionExposure.setChecked(AdvancedFilter.EXPOSURE in current_panel.advanced_options)
-        self.actionCoordinates.setChecked(AdvancedFilter.COORDINATES in current_panel.advanced_options)
-        self.actionDate.setChecked(AdvancedFilter.DATETIME in current_panel.advanced_options)
-        self.actionTelescope.setChecked(AdvancedFilter.TELESCOPE in current_panel.advanced_options)
-        self.actionBinning.setChecked(AdvancedFilter.BINNING in current_panel.advanced_options)
-        self.actionGain.setChecked(AdvancedFilter.GAIN in current_panel.advanced_options)
-        self.actionTemperature.setChecked(AdvancedFilter.TEMPERATURE in current_panel.advanced_options)
-        self.actionPlateSolved.setChecked(AdvancedFilter.PLATE_SOLVED in current_panel.advanced_options)
-        self.actionImageSize.setChecked(AdvancedFilter.IMAGE_SIZE in current_panel.advanced_options)
-        self.actionPlateScale.setChecked(AdvancedFilter.PLATE_SCALE in current_panel.advanced_options)
-        self.actionImageQuality.setChecked(AdvancedFilter.IMAGE_QUALITY in current_panel.advanced_options)
-        self.actionQualityDiagnosis.setChecked(AdvancedFilter.QUALITY_DIAGNOSIS in current_panel.advanced_options)
+        for action, entry in self._filter_actions().items():
+            action.setChecked(entry in current_panel.advanced_options)  # no effect on the uncheckable ones
 
     def add_selection_to_project(self, project: Project):
         edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)

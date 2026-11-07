@@ -2,8 +2,6 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
-from enum import Enum
 from functools import partial
 from logging import DEBUG
 from types import SimpleNamespace
@@ -21,8 +19,8 @@ from photonfinder.filesystem import is_compressible, decode_header_blob
 from photonfinder.library_query import (
     COLUMN_INDEX, RESULT_COLUMNS, cell, diagnosis_counts, distinct_values, search_row_stat,
 )
-from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
-    ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, PROJECT_NAME_SEP
+from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, \
+    ProjectFile, LibraryRoot
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask, ImageAnalysisTask
 from .DateRangeDialog import DateRangeDialog
 from .HeaderDialog import HeaderDialog
@@ -31,7 +29,7 @@ from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .MetadataReportDialog import MetadataReportDialog
 from .PlateSolveDialog import PlateSolveDialog
 from .ProgressDialog import ProgressDialog
-from .common import _format_ra, _format_dec, _format_date, _utc_to_local, _local_to_utc, ensure_header_widths, \
+from .common import _utc_to_local, _local_to_utc, ensure_header_widths, \
     ColumnVisibilityController
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
@@ -270,37 +268,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def edit_filter_button(self):
         sender: FilterButton = self.sender()
-        filter_type = sender.filter_type
-        match filter_type:
-            case AdvancedFilter.EXPOSURE:
-                self.add_exposure_filter()
-            case AdvancedFilter.DATETIME:
-                self.add_datetime_filter()
-            case AdvancedFilter.TELESCOPE:
-                self.add_telescope_filter()
-            case AdvancedFilter.BINNING:
-                self.add_binning_filter()
-            case AdvancedFilter.GAIN:
-                self.add_gain_filter()
-            case AdvancedFilter.TEMPERATURE:
-                self.add_temperature_filter()
-            case AdvancedFilter.COORDINATES:
-                self.add_coordinates_filter()
-            case AdvancedFilter.HEADER_TEXT:
-                self.add_header_text_filter()
-            case AdvancedFilter.PLATE_SOLVED:
-                self.add_plate_solved_filter()
-            case AdvancedFilter.PROJECT:
-                pass
-            case AdvancedFilter.IMAGE_SIZE:
-                self.add_image_size_filter()
-            case AdvancedFilter.PLATE_SCALE:
-                self.add_plate_scale_filter()
-            case AdvancedFilter.IMAGE_QUALITY:
-                self.add_image_quality_filter()
-            case AdvancedFilter.QUALITY_DIAGNOSIS:
-                self.add_diagnosis_filter()
-        self.mainWindow.enable_actions_for_current_tab()
+        self.edit_filter(sender.filter_type)
 
     def remove_filter_button(self):
         sender: FilterButton = self.sender()
@@ -935,198 +903,189 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # If we couldn't find the library root, select "All libraries"
         self.filesystemTreeView.selectionModel().select(all_libraries_index, QItemSelectionModel.SelectCurrent)
 
-    def reset_date_criteria(self):
-        self.search_criteria.start_datetime = None
-        self.search_criteria.end_datetime = None
+    # --- filters: each has a catalogue entry (photonfinder.filter_catalogue) and, for the ones
+    # with a chip, an editor below that opens its dialog and writes the entry's fields.
 
-    def add_exposure_filter(self):
+    def edit_filter(self, entry: filter_catalogue.FilterEntry):
+        """Open the filter's dialog (prefilled from the selected row or the current criteria)
+        and apply what it returns."""
+        editor = getattr(self, f"_edit_{entry.key}", None)
+        if editor is not None:
+            editor()
+        self.mainWindow.enable_actions_for_current_tab()
+
+    def _apply_filter(self, entry: filter_catalogue.FilterEntry):
+        """The entry's fields were just set: show its chip (or none, if they leave it inactive)
+        and search again."""
+        self._show_catalogue_chip(entry)
+        self.update_search_criteria()
+
+    def set_project_filter(self, project: Project):
+        self.search_criteria.project = project
+        self._apply_filter(filter_catalogue.PROJECT)
+
+    def set_diagnosis_filter(self, hidden: list[str]):
+        self.search_criteria.diagnosis_hidden = hidden
+        self._apply_filter(filter_catalogue.QUALITY_DIAGNOSIS)
+
+    def _edit_exposure(self):
         from .ExposureDialog import ExposureDialog
         dialog = ExposureDialog(self.context)
-
-        # Check if there's a selected image with an exposure value
         selected_image = self.get_selected_image()
         if selected_image and selected_image.exposure is not None:
-            # Use the selected image's exposure as the default
             dialog.set_exposure(selected_image.exposure)
         elif self.search_criteria.exposure:
             try:
                 dialog.set_exposure(float(self.search_criteria.exposure))
             except (ValueError, TypeError):
                 pass
-
         if dialog.exec():
-            exposure = dialog.get_exposure()
-            text = f"Exposure: {exposure} s"
-            filter_button = FilterButton(self, text, AdvancedFilter.EXPOSURE)
-            filter_button.on_remove_filter.connect(self.reset_exposure_criteria)
-            self.add_filter_button_control(filter_button)
-            self.search_criteria.exposure = str(exposure)
-            self.update_search_criteria()
+            self.search_criteria.exposure = str(dialog.get_exposure())
+            self._apply_filter(filter_catalogue.EXPOSURE)
 
-    def reset_exposure_criteria(self):
-        self.search_criteria.exposure = ""
-
-    def add_telescope_filter(self):
+    def _edit_telescope(self):
         from .TelescopeDialog import TelescopeDialog
         dialog = TelescopeDialog(self.context)
-
-        # Check if there's a selected image with a telescope value
         selected_image = self.get_selected_image()
         if selected_image and selected_image.telescope is not None:
-            # Use the selected image's telescope as the default
             dialog.set_telescope(selected_image.telescope)
         elif self.search_criteria.telescope:
             dialog.set_telescope(self.search_criteria.telescope)
-
         if dialog.exec():
-            telescope = dialog.get_telescope()
-            text = f"Telescope: {telescope}"
-            filter_button = FilterButton(self, text, AdvancedFilter.TELESCOPE)
-            filter_button.on_remove_filter.connect(self.reset_telescope_criteria)
-            self.add_filter_button_control(filter_button)
-            self.search_criteria.telescope = telescope
-            self.update_search_criteria()
+            self.search_criteria.telescope = dialog.get_telescope()
+            self._apply_filter(filter_catalogue.TELESCOPE)
 
-    def reset_telescope_criteria(self):
-        self.search_criteria.telescope = ""
-
-    def add_binning_filter(self):
+    def _edit_binning(self):
         from .BinningDialog import BinningDialog
         dialog = BinningDialog(self.context)
-
-        # Check if there's a selected image with a binning value
         selected_image = self.get_selected_image()
         if selected_image and selected_image.binning is not None:
-            # Use the selected image's binning as the default
             dialog.set_binning(selected_image.binning)
         elif self.search_criteria.binning:
             try:
                 dialog.set_binning(int(self.search_criteria.binning))
             except (ValueError, TypeError):
                 pass
-
         if dialog.exec():
-            binning = dialog.get_binning()
-            text = f"Binning: {binning}"
-            filter_button = FilterButton(self, text, AdvancedFilter.BINNING)
-            filter_button.on_remove_filter.connect(self.reset_binning_criteria)
-            self.add_filter_button_control(filter_button)
-            self.search_criteria.binning = str(binning)
-            self.update_search_criteria()
+            self.search_criteria.binning = str(dialog.get_binning())
+            self._apply_filter(filter_catalogue.BINNING)
 
-    def reset_binning_criteria(self):
-        self.search_criteria.binning = ""
-
-    def add_gain_filter(self):
+    def _edit_gain(self):
         from .GainDialog import GainDialog
         dialog = GainDialog(self.context)
-
-        # Check if there's a selected image with a gain value
         selected_image: Image = self.get_selected_image()
         if selected_image and selected_image.gain is not None:
-            # Use the selected image's gain as the default
             dialog.set_gain(selected_image.gain)
         elif self.search_criteria.gain:
             try:
                 dialog.set_gain(int(self.search_criteria.gain))
             except (ValueError, TypeError):
                 pass
-
         if selected_image and selected_image.offset is not None:
-            # Use the selected image's gain as the default
             dialog.set_offset(selected_image.offset)
         elif self.search_criteria.offset is not None:
             try:
                 dialog.set_offset(int(self.search_criteria.offset))
             except (ValueError, TypeError):
                 pass
-
         if dialog.exec():
-            gain = dialog.get_gain()
-            offset = dialog.get_offset()
-            text = f"Gain: {gain}"
-            filter_button = FilterButton(self, text, AdvancedFilter.GAIN)
-            filter_button.on_remove_filter.connect(self.reset_gain_criteria)
-            self.add_filter_button_control(filter_button)
-            self.search_criteria.gain = str(gain)
-            self.search_criteria.offset = offset
-            self.update_search_criteria()
+            self.search_criteria.gain = str(dialog.get_gain())
+            self.search_criteria.offset = dialog.get_offset()
+            self._apply_filter(filter_catalogue.GAIN)
 
-    def reset_gain_criteria(self):
-        self.search_criteria.gain = ""
-        self.search_criteria.offset = None
+    def _edit_temperature(self):
+        from .TemperatureDialog import TemperatureDialog
+        dialog = TemperatureDialog(self.context)
+        selected_image = self.get_selected_image()
+        if selected_image and selected_image.set_temp is not None:
+            dialog.set_temperature(selected_image.set_temp)
+        elif self.search_criteria.temperature:
+            try:
+                dialog.set_temperature(float(self.search_criteria.temperature))
+            except (ValueError, TypeError):
+                pass
+        if dialog.exec():
+            self.search_criteria.temperature = str(dialog.get_temperature())
+            self._apply_filter(filter_catalogue.TEMPERATURE)
 
-    def add_header_text_filter(self):
+    def _edit_header_text(self):
         from textwrap import dedent
         header_text, ok = QInputDialog.getText(self, "Add generic header filter",
                                                dedent("""\
-                                               Search the header cache for any value. 
+                                               Search the header cache for any value.
                                                Supports finding by value (KEY=VALUE,KEY<VALUE,...) or just free text.
-                                               Beware that this involves decompressing all headers and does not use an index. 
+                                               Beware that this involves decompressing all headers and does not use an index.
                                                If there are no other filters to limit results the search will be slow.
                                                """), text=self.search_criteria.header_text)
-
         if ok and header_text:
-            text = f"Header: {header_text}"
-            filter_button = FilterButton(self, text, AdvancedFilter.HEADER_TEXT)
-            filter_button.on_remove_filter.connect(self.reset_header_text_criteria)
-            self.add_filter_button_control(filter_button)
             self.search_criteria.header_text = header_text
-            self.update_search_criteria()
+            self._apply_filter(filter_catalogue.HEADER_TEXT)
 
-    def reset_header_text_criteria(self):
-        self.search_criteria.header_text = ""
-
-    def add_plate_solved_filter(self):
+    def _edit_plate_solved(self):
         options = ["Solved", "Unsolved"]
         current = "Solved" if self.search_criteria.plate_solved else "Unsolved"
         choice, ok = QInputDialog.getItem(self, "Plate Solved Filter", "Show:", options, options.index(current), False)
         if ok:
-            solved = choice == "Solved"
-            filter_button = FilterButton(self, f"Plate Solved: {choice}", AdvancedFilter.PLATE_SOLVED)
-            filter_button.on_remove_filter.connect(self.reset_plate_solved_criteria)
-            self.add_filter_button_control(filter_button)
-            self.search_criteria.plate_solved = solved
-            self.update_search_criteria()
+            self.search_criteria.plate_solved = choice == "Solved"
+            self._apply_filter(filter_catalogue.PLATE_SOLVED)
 
-    def reset_plate_solved_criteria(self):
-        self.search_criteria.plate_solved = None
+    def _edit_coordinates(self):
+        from .CoordinatesDialog import CoordinatesDialog
+        dialog = CoordinatesDialog(self.context)
+        selected_image = self.get_selected_image()
+        if selected_image and selected_image.coord_ra is not None and selected_image.coord_dec is not None:
+            import astropy.units as u
+            try:
+                coords = selected_image.get_sky_coord()
+                ra_str = coords.ra.to_string(unit=u.hour, sep=':', precision=2)
+                dec_str = coords.dec.to_string(unit=u.deg, sep=':', precision=2)
+                dialog.set_coordinates(ra_str, dec_str, self.search_criteria.coord_radius)
+            except Exception as e:
+                logging.error(f"Error setting coordinates from selected image: {str(e)}")
+        elif self.search_criteria.coord_ra and self.search_criteria.coord_dec:
+            dialog.set_coordinates(self.search_criteria.coord_ra, self.search_criteria.coord_dec,
+                                   self.search_criteria.coord_radius, self.search_criteria.coord_query)
+        if dialog.exec():
+            ra, dec, radius = dialog.get_coordinates()
+            self.search_criteria.coord_ra = ra
+            self.search_criteria.coord_dec = dec
+            self.search_criteria.coord_radius = radius
+            self.search_criteria.coord_query = dialog.get_query_label() or ""
+            self._apply_filter(filter_catalogue.COORDINATES)
 
-    def add_image_size_filter(self):
+    def _edit_dates(self):
+        dialog = DateRangeDialog(self.context)
+        # The dialog works in local time, like the grid; the criteria are UTC, like date_obs.
+        selected_image = self.get_selected_image()
+        if selected_image and selected_image.date_obs is not None:
+            localtime = _utc_to_local(selected_image.date_obs)
+            dialog.set_start_date(localtime)
+            dialog.set_end_date(localtime)
+        elif self.search_criteria.start_datetime is not None:
+            dialog.set_start_date(_utc_to_local(self.search_criteria.start_datetime))
+            if self.search_criteria.end_datetime is not None:
+                dialog.set_end_date(_utc_to_local(self.search_criteria.end_datetime))
+        if dialog.exec():
+            start_datetime, end_datetime = dialog.get_datetime_range()
+            self.search_criteria.start_datetime = _local_to_utc(start_datetime)
+            self.search_criteria.end_datetime = _local_to_utc(end_datetime)
+            self._apply_filter(filter_catalogue.DATES)
+
+    def _edit_image_size(self):
         from .RangeFilterDialogs import ImageSizeDialog
         dialog = ImageSizeDialog(self)
         selected_image = self.get_selected_image()
         if selected_image and (selected_image.width is not None or selected_image.height is not None):
             dialog.set_from_image(selected_image)
         else:
-            dialog.set_from_criteria(
-                self.search_criteria.width_min, self.search_criteria.width_max,
-                self.search_criteria.height_min, self.search_criteria.height_max,
-            )
+            dialog.set_from_criteria(self.search_criteria.width_min, self.search_criteria.width_max,
+                                     self.search_criteria.height_min, self.search_criteria.height_max)
         if dialog.exec():
-            width_min, width_max, height_min, height_max = dialog.get_size_criteria()
-            parts = []
-            if width_min is not None or width_max is not None:
-                parts.append(f"W:{width_min or ''}–{width_max or ''}")
-            if height_min is not None or height_max is not None:
-                parts.append(f"H:{height_min or ''}–{height_max or ''}")
-            text = "Size: " + ", ".join(parts) if parts else "Image Size"
-            filter_button = FilterButton(self, text, AdvancedFilter.IMAGE_SIZE)
-            filter_button.on_remove_filter.connect(self.reset_image_size_criteria)
-            self.add_filter_button_control(filter_button)
-            self.search_criteria.width_min = width_min
-            self.search_criteria.width_max = width_max
-            self.search_criteria.height_min = height_min
-            self.search_criteria.height_max = height_max
-            self.update_search_criteria()
+            (self.search_criteria.width_min, self.search_criteria.width_max,
+             self.search_criteria.height_min, self.search_criteria.height_max) = dialog.get_size_criteria()
+            self._apply_filter(filter_catalogue.IMAGE_SIZE)
 
-    def reset_image_size_criteria(self):
-        self.search_criteria.width_min = None
-        self.search_criteria.width_max = None
-        self.search_criteria.height_min = None
-        self.search_criteria.height_max = None
-
-    def add_plate_scale_filter(self):
+    def _edit_plate_scale(self):
         from .RangeFilterDialogs import PlateScaleDialog
         dialog = PlateScaleDialog(self)
         selected_image = self.get_selected_image()
@@ -1135,25 +1094,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         else:
             dialog.set_from_criteria(self.search_criteria.scale_min, self.search_criteria.scale_max)
         if dialog.exec():
-            scale_min, scale_max = dialog.get_scale_criteria()
-            parts = []
-            if scale_min is not None:
-                parts.append(f"≥{scale_min}")
-            if scale_max is not None:
-                parts.append(f"≤{scale_max}")
-            text = "Scale: " + " ".join(parts) + " arcsec/px" if parts else "Image Scale"
-            filter_button = FilterButton(self, text, AdvancedFilter.PLATE_SCALE)
-            filter_button.on_remove_filter.connect(self.reset_plate_scale_criteria)
-            self.add_filter_button_control(filter_button)
-            self.search_criteria.scale_min = scale_min
-            self.search_criteria.scale_max = scale_max
-            self.update_search_criteria()
+            self.search_criteria.scale_min, self.search_criteria.scale_max = dialog.get_scale_criteria()
+            self._apply_filter(filter_catalogue.PLATE_SCALE)
 
-    def reset_plate_scale_criteria(self):
-        self.search_criteria.scale_min = None
-        self.search_criteria.scale_max = None
-
-    def add_image_quality_filter(self):
+    def _edit_image_quality(self):
         from .RangeFilterDialogs import ImageQualityDialog
         dialog = ImageQualityDialog(self)
         stats = self._selected_row_stats()
@@ -1164,8 +1108,16 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if dialog.exec():
             for key, value in dialog.get_quality_criteria().items():
                 setattr(self.search_criteria, key, value)
-            self._show_catalogue_chip(filter_catalogue.IMAGE_QUALITY, AdvancedFilter.IMAGE_QUALITY)
-            self.update_search_criteria()
+            self._apply_filter(filter_catalogue.IMAGE_QUALITY)
+
+    def _edit_quality_diagnosis(self):
+        from .RangeFilterDialogs import DiagnosisFilterDialog
+        dialog = DiagnosisFilterDialog(diagnosis_counts(self.search_criteria), self)
+        dialog.set_hidden(self.search_criteria.diagnosis_hidden)
+        if dialog.exec():
+            self.set_diagnosis_filter(dialog.get_hidden())
+        elif dialog.diagnose_requested:
+            self.mainWindow.open_diagnose_quality()
 
     def _selected_row_stats(self) -> Optional[SimpleNamespace]:
         """The selected row's image statistics, or None when there is no row or it has none.
@@ -1186,125 +1138,17 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             pass
         self.remove_filter_button_control(button)
 
-    def _show_catalogue_chip(self, entry: 'filter_catalogue.FilterEntry', filter_type: 'AdvancedFilter'):
+    def _show_catalogue_chip(self, entry: filter_catalogue.FilterEntry):
         """Show the entry's chip with its label for the current criteria, or none when the
         criteria leave the filter inactive. Removing the chip resets the entry's fields."""
-        current = self.advanced_options.get(filter_type)
+        current = self.advanced_options.get(entry)
         if current is not None:
             self._drop_chip(current)  # the criteria already hold the new values
         if not entry.is_active(self.search_criteria):
             return
-        filter_button = FilterButton(self, entry.chip_label(self.search_criteria), filter_type)
+        filter_button = FilterButton(self, entry.chip_label(self.search_criteria), entry)
         filter_button.on_remove_filter.connect(lambda: entry.reset(self.search_criteria))
         self.add_filter_button_control(filter_button)
-
-    def add_diagnosis_filter(self):
-        from .RangeFilterDialogs import DiagnosisFilterDialog
-        dialog = DiagnosisFilterDialog(diagnosis_counts(self.search_criteria), self)
-        dialog.set_hidden(self.search_criteria.diagnosis_hidden)
-        if dialog.exec():
-            self.set_diagnosis_filter(dialog.get_hidden())
-        elif dialog.diagnose_requested:
-            self.mainWindow.open_diagnose_quality()
-
-    def set_diagnosis_filter(self, hidden: list[str]):
-        current = self.advanced_options.get(AdvancedFilter.QUALITY_DIAGNOSIS)
-        # The button first: replacing the old one resets the criteria.
-        if hidden:
-            self._add_diagnosis_filter_button(hidden)
-        elif current:  # everything ticked: nothing left to filter on
-            self.remove_filter_button_control(current)
-        self.search_criteria.diagnosis_hidden = hidden
-        self.update_search_criteria()
-
-    def _add_diagnosis_filter_button(self, hidden: list[str]):
-        text = "Diagnosis: hide bad" if set(hidden) == set(DIAGNOSIS_BAD_VALUES) else f"Diagnosis ({len(hidden)} hidden)"
-        filter_button = FilterButton(self, text, AdvancedFilter.QUALITY_DIAGNOSIS)
-        filter_button.on_remove_filter.connect(self.reset_diagnosis_criteria)
-        self.add_filter_button_control(filter_button)
-
-    def reset_diagnosis_criteria(self):
-        self.search_criteria.diagnosis_hidden = []
-
-    def add_temperature_filter(self):
-        from .TemperatureDialog import TemperatureDialog
-        dialog = TemperatureDialog(self.context)
-
-        # Check if there's a selected image with a set_temp value
-        selected_image = self.get_selected_image()
-        if selected_image and selected_image.set_temp is not None:
-            # Use the selected image's set_temp as the default
-            dialog.set_temperature(selected_image.set_temp)
-        elif self.search_criteria.temperature:
-            try:
-                dialog.set_temperature(float(self.search_criteria.temperature))
-            except (ValueError, TypeError):
-                pass
-
-        if dialog.exec():
-            temperature = dialog.get_temperature()
-            text = f"Temperature: {temperature} °C"
-            filter_button = FilterButton(self, text, AdvancedFilter.TEMPERATURE)
-            filter_button.on_remove_filter.connect(self.reset_temperature_criteria)
-            self.add_filter_button_control(filter_button)
-            self.search_criteria.temperature = str(temperature)
-            self.update_search_criteria()
-
-    def reset_temperature_criteria(self):
-        self.search_criteria.temperature = ""
-
-    def add_coordinates_filter(self):
-        from .CoordinatesDialog import CoordinatesDialog
-        dialog = CoordinatesDialog(self.context)
-
-        # Check if there's a selected image with coordinate values
-        selected_image = self.get_selected_image()
-        if selected_image and selected_image.coord_ra is not None and selected_image.coord_dec is not None:
-            # Use the selected image's coordinates as the default
-            # Convert from decimal degrees to string format
-            import astropy.units as u
-
-            try:
-                # Create SkyCoord from the image's coordinates
-                coords = selected_image.get_sky_coord()
-
-                # Format RA as hours and DEC as degrees
-                ra_str = coords.ra.to_string(unit=u.hour, sep=':', precision=2)
-                dec_str = coords.dec.to_string(unit=u.deg, sep=':', precision=2)
-
-                dialog.set_coordinates(ra_str, dec_str, self.search_criteria.coord_radius)
-            except Exception as e:
-                logging.error(f"Error setting coordinates from selected image: {str(e)}")
-        elif self.search_criteria.coord_ra and self.search_criteria.coord_dec:
-            # Use the existing search criteria
-            dialog.set_coordinates(
-                self.search_criteria.coord_ra,
-                self.search_criteria.coord_dec,
-                self.search_criteria.coord_radius,
-                self.search_criteria.coord_query
-            )
-
-        if dialog.exec():
-            ra, dec, radius = dialog.get_coordinates()
-            query_label = dialog.get_query_label()
-            if query_label:
-                text = f"Coordinates: {query_label}, r={radius:.2f}°"
-            else:
-                text = f"Coordinates: RA={ra}, DEC={dec}, r={radius:.2f}°"
-            filter_button = FilterButton(self, text, AdvancedFilter.COORDINATES)
-            filter_button.on_remove_filter.connect(self.reset_coordinates_criteria)
-            self.add_filter_button_control(filter_button)
-            self.search_criteria.coord_ra = ra
-            self.search_criteria.coord_dec = dec
-            self.search_criteria.coord_radius = radius
-            self.search_criteria.coord_query = query_label or ""
-            self.update_search_criteria()
-
-    def reset_coordinates_criteria(self):
-        self.search_criteria.coord_ra = ""
-        self.search_criteria.coord_dec = ""
-        self.search_criteria.coord_radius = 0.5
-        self.search_criteria.coord_query = ""
 
     def get_selected_file(self) -> File | None:
         """Get the image data of the first selected file, if any."""
@@ -1330,34 +1174,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         else:
             return None
 
-    def reset_project_criteria(self):
-        self.search_criteria.project = None
-
-    def add_datetime_filter(self):
-        dialog = DateRangeDialog(self.context)
-
-        # The dialog works in local time, like the grid; the criteria are UTC, like date_obs.
-        # Check if there's a selected image with a date_obs value
-        selected_image = self.get_selected_image()
-        if selected_image and selected_image.date_obs is not None:
-            # Use the selected image's date_obs as the default
-            localtime = _utc_to_local(selected_image.date_obs)
-            dialog.set_start_date(localtime)
-            dialog.set_end_date(localtime)
-        elif self.search_criteria.start_datetime is not None:
-            dialog.set_start_date(_utc_to_local(self.search_criteria.start_datetime))
-            if self.search_criteria.end_datetime is not None:
-                dialog.set_end_date(_utc_to_local(self.search_criteria.end_datetime))
-
-        if dialog.exec():
-            (start_datetime, end_datetime) = dialog.get_datetime_range()
-            text = f"Date {_format_date(start_datetime)} - {_format_date(end_datetime)}"
-            filter_button = FilterButton(self, text, AdvancedFilter.DATETIME)
-            filter_button.on_remove_filter.connect(self.reset_date_criteria)
-            self.add_filter_button_control(filter_button)
-            self.search_criteria.start_datetime = _local_to_utc(start_datetime)
-            self.search_criteria.end_datetime = _local_to_utc(end_datetime)
-            self.update_search_criteria()
 
     def export_data(self):
         # Get the selected files
@@ -1461,97 +1277,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self._drop_chip(button)
         self.advanced_options.clear()
 
-        # Add filter buttons for other filters
-        if criteria.exposure:
-            text = f"Exposure: {criteria.exposure} s"
-            filter_button = FilterButton(self, text, AdvancedFilter.EXPOSURE)
-            filter_button.on_remove_filter.connect(self.reset_exposure_criteria)
-            self.add_filter_button_control(filter_button)
-
-        if criteria.telescope:
-            text = f"Telescope: {criteria.telescope}"
-            filter_button = FilterButton(self, text, AdvancedFilter.TELESCOPE)
-            filter_button.on_remove_filter.connect(self.reset_telescope_criteria)
-            self.add_filter_button_control(filter_button)
-
-        if criteria.binning:
-            text = f"Binning: {criteria.binning}"
-            filter_button = FilterButton(self, text, AdvancedFilter.BINNING)
-            filter_button.on_remove_filter.connect(self.reset_binning_criteria)
-            self.add_filter_button_control(filter_button)
-
-        if criteria.gain:
-            text = f"Gain: {criteria.gain}"
-            filter_button = FilterButton(self, text, AdvancedFilter.GAIN)
-            filter_button.on_remove_filter.connect(self.reset_gain_criteria)
-            self.add_filter_button_control(filter_button)
-
-        if criteria.temperature:
-            text = f"Temperature: {criteria.temperature} °C"
-            filter_button = FilterButton(self, text, AdvancedFilter.TEMPERATURE)
-            filter_button.on_remove_filter.connect(self.reset_temperature_criteria)
-            self.add_filter_button_control(filter_button)
-
-        if criteria.coord_ra and criteria.coord_dec:
-            if criteria.coord_query:
-                text = f"Coordinates: {criteria.coord_query}, r={criteria.coord_radius:.2f}°"
-            else:
-                text = f"Coordinates: RA={criteria.coord_ra}, DEC={criteria.coord_dec}, r={criteria.coord_radius:.2f}°"
-            filter_button = FilterButton(self, text, AdvancedFilter.COORDINATES)
-            filter_button.on_remove_filter.connect(self.reset_coordinates_criteria)
-            self.add_filter_button_control(filter_button)
-
-        if criteria.start_datetime and criteria.end_datetime:
-            text = f"Date {_format_date(_utc_to_local(criteria.start_datetime))} - "                    f"{_format_date(_utc_to_local(criteria.end_datetime))}"
-            filter_button = FilterButton(self, text, AdvancedFilter.DATETIME)
-            filter_button.on_remove_filter.connect(self.reset_date_criteria)
-            self.add_filter_button_control(filter_button)
-
-        if criteria.header_text:
-            text = f"Header: {criteria.header_text}"
-            filter_button = FilterButton(self, text, AdvancedFilter.HEADER_TEXT)
-            filter_button.on_remove_filter.connect(self.reset_header_text_criteria)
-            self.add_filter_button_control(filter_button)
-
-        if criteria.plate_solved is not None:
-            label = "Solved" if criteria.plate_solved else "Unsolved"
-            filter_button = FilterButton(self, f"Plate Solved: {label}", AdvancedFilter.PLATE_SOLVED)
-            filter_button.on_remove_filter.connect(self.reset_plate_solved_criteria)
-            self.add_filter_button_control(filter_button)
-
-        if criteria.project:
-            text = f"Project: {criteria.project.name}"
-            filter_button = FilterButton(self, text, AdvancedFilter.PROJECT)
-            filter_button.on_remove_filter.connect(self.reset_project_criteria)
-            self.add_filter_button_control(filter_button)
-
-        if any(v is not None for v in [criteria.width_min, criteria.width_max,
-                                        criteria.height_min, criteria.height_max]):
-            parts = []
-            if criteria.width_min is not None or criteria.width_max is not None:
-                parts.append(f"W:{criteria.width_min or ''}–{criteria.width_max or ''}")
-            if criteria.height_min is not None or criteria.height_max is not None:
-                parts.append(f"H:{criteria.height_min or ''}–{criteria.height_max or ''}")
-            text = "Size: " + ", ".join(parts) if parts else "Image Size"
-            filter_button = FilterButton(self, text, AdvancedFilter.IMAGE_SIZE)
-            filter_button.on_remove_filter.connect(self.reset_image_size_criteria)
-            self.add_filter_button_control(filter_button)
-
-        if criteria.scale_min is not None or criteria.scale_max is not None:
-            parts = []
-            if criteria.scale_min is not None:
-                parts.append(f"≥{criteria.scale_min}")
-            if criteria.scale_max is not None:
-                parts.append(f"≤{criteria.scale_max}")
-            text = "Scale: " + " ".join(parts) + " arcsec/px" if parts else "Image Scale"
-            filter_button = FilterButton(self, text, AdvancedFilter.PLATE_SCALE)
-            filter_button.on_remove_filter.connect(self.reset_plate_scale_criteria)
-            self.add_filter_button_control(filter_button)
-
-        self._show_catalogue_chip(filter_catalogue.IMAGE_QUALITY, AdvancedFilter.IMAGE_QUALITY)
-
-        if criteria.diagnosis_hidden:
-            self._add_diagnosis_filter_button(criteria.diagnosis_hidden)
+        for entry in filter_catalogue.ENTRIES:
+            if entry.has_chip:
+                self._show_catalogue_chip(entry)
 
         self.update_search_criteria()
 
@@ -1689,15 +1417,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         window.setAttribute(Qt.WA_DeleteOnClose)
         window.show()
 
-    def add_no_project_filter(self):
-        project = NO_PROJECT
-        text = f"Project: {project.name}"
-        filter_button = FilterButton(self, text, AdvancedFilter.PROJECT)
-        filter_button.on_remove_filter.connect(self.reset_project_criteria)
-        self.add_filter_button_control(filter_button)
-        self.search_criteria.project = project
-        self.update_search_criteria()
-
     def print_task_complete(self):
         self.context.status_reporter.update_status("Task complete")
 
@@ -1751,20 +1470,3 @@ def _set_cells(model, source_row: int, **values):
         index = model.index(source_row, COLUMN_INDEX[key])
         model.setData(index, text, Qt.DisplayRole)
         model.setData(index, sort_value, SORT_ROLE)
-
-
-class AdvancedFilter(Enum):
-    EXPOSURE = 1
-    DATETIME = 2
-    TELESCOPE = 3
-    BINNING = 4
-    GAIN = 5
-    TEMPERATURE = 6
-    COORDINATES = 7
-    HEADER_TEXT = 8
-    PROJECT = 9
-    PLATE_SOLVED = 10
-    IMAGE_SIZE = 11
-    PLATE_SCALE = 12
-    IMAGE_QUALITY = 13
-    QUALITY_DIAGNOSIS = 14

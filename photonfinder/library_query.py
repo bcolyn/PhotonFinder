@@ -13,21 +13,16 @@ text that doesn't parse is skipped; `SearchCriteria.validate` reports it instead
 The models must be bound to a database (e.g. inside `context.database.bind_ctx(CORE_MODELS)`).
 """
 import dataclasses
-import logging
-import operator
 from datetime import datetime
-from functools import reduce
 from typing import Callable, NamedTuple
 
-import astropy.units as u
-from peewee import JOIN, SQL, chunked, fn
+from peewee import JOIN, chunked, fn
 
 from photonfinder import filter_catalogue
-from photonfinder.core import hp
 from photonfinder.formatting import _format_date, _format_dec, _format_file_size, _format_ra, _format_timestamp, _utc_to_local
 from photonfinder.models import (
-    DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_OK, DIAGNOSIS_SEPARATOR, DIAGNOSIS_VALUES, PROJECT_NAME_SEP, File, FileWCS, FitsHeader, Image, ImageStats,
-    LibraryRoot, Project, ProjectFile, SearchCriteria, norm_db_path,
+    DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_SEPARATOR, DIAGNOSIS_VALUES, PROJECT_NAME_SEP, File, FileWCS, FitsHeader, Image, ImageStats,
+    LibraryRoot, Project, ProjectFile, SearchCriteria,
 )
 
 # The order of files when the criteria ask for no sort.
@@ -356,142 +351,7 @@ def _where_criteria(query, criteria: SearchCriteria, exclude=None):
 
 
 def _criteria_conditions(criteria: SearchCriteria, exclude=None) -> list:
-    """The WHERE conditions of the criteria, over File and Image columns. Everything else
-    (headers, plate solutions, stats, projects) is a subquery, so a query that joins one of
-    those tables to select its columns never has it joined twice."""
-    conditions = []
-    _path_conditions(criteria, exclude, conditions)
-
-    # Exact matches: "" is no constraint, None is IS NULL (peewee turns == None into IS NULL)
-    for value, column in ((criteria.type, Image.image_type),
-                          (criteria.filter, Image.filter),
-                          (criteria.camera, Image.camera)):
-        if value != "" and exclude is not column:
-            conditions.append(column == value)
-
-    for value, column in ((criteria.object_name, Image.object_name),
-                          (criteria.file_name, File.name),
-                          (criteria.telescope, Image.telescope)):
-        if value and exclude is not column:
-            conditions.append(column.contains(value))
-
-    # The text fields constrain only when non-empty; offset is a number, where 0 is a value.
-    for value, present, parse, column, tolerance in (
-            (criteria.exposure, bool(criteria.exposure), float, Image.exposure, criteria.exposure_tolerance),
-            (criteria.binning, bool(criteria.binning), int, Image.binning, None),
-            (criteria.gain, bool(criteria.gain), int, Image.gain, None),
-            (criteria.offset, criteria.offset is not None, int, Image.offset, None),
-            (criteria.temperature, bool(criteria.temperature), float, Image.set_temp,
-             criteria.temperature_tolerance)):
-        if present and exclude is not column:
-            _number_condition(value, parse, column, tolerance, conditions)
-
-    if criteria.start_datetime and exclude is not Image.date_obs:
-        conditions.append(Image.date_obs >= criteria.start_datetime)
-    if criteria.end_datetime and exclude is not Image.date_obs:
-        conditions.append(Image.date_obs <= criteria.end_datetime)
-
-    if criteria.coord_ra and criteria.coord_dec and exclude is not Image.coord_pix256:
-        try:
-            pixels = hp.cone_search_skycoord(criteria.cone_center(), criteria.coord_radius * u.deg)
-            if len(pixels) > 0:
-                conditions.append(Image.coord_pix256.in_(pixels.tolist()))
-        except Exception as e:  # astropy raises several types for unparsable input
-            logging.error(f"Error applying coordinates filter: {str(e)}")
-
-    if criteria.header_text:
-        conditions.append(_header_condition(criteria.header_text))
-
-    for value, condition in ((criteria.width_min, lambda v: Image.width >= v),
-                             (criteria.width_max, lambda v: Image.width <= v),
-                             (criteria.height_min, lambda v: Image.height >= v),
-                             (criteria.height_max, lambda v: Image.height <= v),
-                             (criteria.scale_min, lambda v: Image.coord_scale >= v),
-                             (criteria.scale_max, lambda v: Image.coord_scale <= v)):
-        if value is not None:
-            conditions.append(condition(value))
-
-    conditions.extend(filter_catalogue.IMAGE_QUALITY.conditions(criteria))
-
-    if criteria.diagnosis_hidden:
-        conditions.extend(_diagnosis_conditions(criteria.diagnosis_hidden))
-
-    if criteria.plate_solved is True:
-        conditions.append(File.rowid.in_(FileWCS.select(FileWCS.file)))
-    elif criteria.plate_solved is False:
-        conditions.append(File.rowid.not_in(FileWCS.select(FileWCS.file)))
-
-    if criteria.project:
-        if criteria.project.rowid > 0:
-            conditions.append(File.rowid.in_(
-                ProjectFile.select(ProjectFile.file).where(ProjectFile.project == criteria.project)))
-        else:  # NO_PROJECT
-            conditions.append(File.rowid.not_in(ProjectFile.select(ProjectFile.file)))
-    return conditions
-
-
-def _path_conditions(criteria: SearchCriteria, exclude, conditions: list) -> None:
-    if not criteria.paths or exclude is File.path:
-        return
-    path_conditions = []
-    for full_path in criteria.paths:
-        if full_path.root_id is None and full_path.path is None:  # all libraries
-            if criteria.paths_as_prefix:
-                return  # everything is below it, so no constraint
-            continue  # no file is directly in 'all libraries'
-        if criteria.paths_as_prefix:
-            if full_path.path is None:  # a library root: anything below it
-                path_conditions.append(File.root == full_path.root_id)
-            else:
-                path_conditions.append(
-                    (File.root == full_path.root_id) & (File.path.startswith(norm_db_path(full_path.path))))
-        else:  # only directly in the directory
-            path = "." if full_path.path is None else full_path.path
-            path_conditions.append((File.root == full_path.root_id) & (File.path == norm_db_path(path)))
-    if path_conditions:
-        conditions.append(reduce(operator.or_, path_conditions))
-
-
-def _number_condition(text, parse, column, tolerance, conditions: list) -> None:
-    """Match a number typed as text, within ±tolerance when given. Skipped when it doesn't parse."""
-    try:
-        value = parse(text)
-    except (ValueError, TypeError):
-        return
-    if tolerance is not None:
-        conditions.append(column.between(value - tolerance, value + tolerance))
-    else:
-        conditions.append(column == value)
-
-
-def _header_condition(header_text: str):
-    """KEY=n, KEY<n or KEY>n compare a header value; anything else searches the header text."""
-    header_condition = None
-    for symbol, compare in (('=', operator.eq), ('<', operator.lt), ('>', operator.gt)):
-        if symbol in header_text:
-            try:
-                key, value = header_text.split(symbol)
-                header_condition = compare(fn.decompress_header_value(FitsHeader.header, key.strip()),
-                                           float(value.strip()))
-            except ValueError:
-                pass
-            break
-    if header_condition is None:
-        header_condition = fn.decompress(FitsHeader.header).contains(header_text)
-    # A correlated subquery rather than a join, so callers that already join
-    # FitsHeader (e.g. to read header values) don't end up with it joined twice.
-    return fn.EXISTS(FitsHeader.select(SQL('1')).where((FitsHeader.file == File.rowid) & header_condition))
-
-
-def _diagnosis_conditions(hidden: list[str]) -> list:
-    """Conditions hiding every file with any of the given diagnosis values."""
-    conditions = []
-    if DIAGNOSIS_NOT_ANALYSED in hidden:
-        conditions.append(File.rowid.in_(ImageStats.select(ImageStats.file).where(ImageStats.diagnosis.is_null(False))))
-    matches = [ImageStats.diagnosis == DIAGNOSIS_OK if value == DIAGNOSIS_OK
-               else ImageStats.diagnosis.contains(value)
-               for value in hidden if value != DIAGNOSIS_NOT_ANALYSED]
-    if matches:
-        hidden_files = ImageStats.select(ImageStats.file).where(reduce(operator.or_, matches))
-        conditions.append(File.rowid.not_in(hidden_files))
-    return conditions
+    """The WHERE conditions of the criteria, over File and Image columns, from the filter
+    catalogue. Everything else (headers, plate solutions, stats, projects) is a subquery, so a
+    query that joins one of those tables to select its columns never has it joined twice."""
+    return filter_catalogue.conditions(criteria, exclude)

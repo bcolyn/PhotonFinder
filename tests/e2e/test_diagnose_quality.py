@@ -19,7 +19,7 @@ from photonfinder.quality_diagnosis import DiagnosisSettings, Metric, MetricRule
 from photonfinder.ui.common import _format_dec
 from photonfinder.ui.ImageAnalysisDialog import ImageAnalysisDialog
 from photonfinder.ui.RangeFilterDialogs import DiagnosisFilterDialog
-from photonfinder.ui.SearchPanel import AdvancedFilter
+from photonfinder import filter_catalogue
 
 GOOD_FWHMS = [2.6, 2.7, 2.8, 2.9, 3.0, 3.1, 3.2, 3.3]
 BAD_NAME = "M81_bad.fits"
@@ -113,7 +113,7 @@ def test_save_stores_results_and_refreshes_the_grid(sandbox, app, m81):
     assert diagnosis_of(sandbox, "M81_0.fits") == "OK"
     assert dialog.status_label.text() == "Saved."
     wait_for_grid(sandbox, lambda g: {r["File name"]: r["Diagnosis"] for r in g.rows()}[BAD_NAME] == "Bad FWHM")
-    assert AdvancedFilter.QUALITY_DIAGNOSIS not in sandbox.grid().panel.advanced_options
+    assert filter_catalogue.QUALITY_DIAGNOSIS not in sandbox.grid().panel.advanced_options
 
 
 def test_save_and_hide_adds_the_filter_and_leaves_the_scope_alone(sandbox, app, m81):
@@ -123,7 +123,7 @@ def test_save_and_hide_adds_the_filter_and_leaves_the_scope_alone(sandbox, app, 
 
     wait_for_grid(sandbox, lambda g: g.total == 8)
     grid = sandbox.grid()
-    assert grid.panel.advanced_options[AdvancedFilter.QUALITY_DIAGNOSIS].text() == "Diagnosis: hide bad"
+    assert grid.panel.advanced_options[filter_catalogue.QUALITY_DIAGNOSIS].text() == "Diagnosis: hide bad"
     assert app.actionQualityDiagnosis.isChecked()
     assert BAD_NAME not in grid.column("File name")
     assert not dialog.use_current_button.isVisible()  # hiding frames isn't a new scope
@@ -242,7 +242,7 @@ def test_filter_dialog_leads_to_the_diagnose_dialog(sandbox, app, modals, m81):
     sandbox.wait_idle()
 
     assert app._diagnose_dialog is not None and app._diagnose_dialog.isVisible()
-    assert AdvancedFilter.QUALITY_DIAGNOSIS not in app.get_current_search_panel().advanced_options
+    assert filter_catalogue.QUALITY_DIAGNOSIS not in app.get_current_search_panel().advanced_options
     assert not app.actionQualityDiagnosis.isChecked()
 
 

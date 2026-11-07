@@ -146,43 +146,8 @@ class SearchCriteria:
         return SkyCoord(self.coord_ra, self.coord_dec, unit=(u.hourangle, u.deg), frame='icrs')
 
     def __str__(self):
-        result = []
-        if self.paths:
-            if len(self.paths) > 1:
-                result.append(str(self.paths[0]) + "+" + str(len(self.paths) - 1))
-            elif len(self.paths) > 0:
-                result.append(str(self.paths[0]))
-
-        for text in [self.type, self.filter, self.camera, self.file_name, self.object_name, self.exposure,
-                     self.telescope, self.binning, self.gain, self.temperature, self.header_text]:
-            if text:
-                result.append(text)
-        if self.plate_solved is True:
-            result.append("Solved")
-        elif self.plate_solved is False:
-            result.append("Unsolved")
-        if self.project:
-            result.append(self.project.name)
-        if self.coord_ra and self.coord_dec:
-            if self.coord_query:
-                result.append(f"{self.coord_query} ±{self.coord_radius:.1f}°")
-            else:
-                short_ra = self.coord_ra.split('.')[0]
-                short_dec = self.coord_dec.split('.')[0]
-                result.append(f"({short_ra}{short_dec}) ±{self.coord_radius:.1f}°")
-        if self.start_datetime and self.end_datetime:
-            result.append(f"{self.start_datetime.isoformat()} to {self.end_datetime.isoformat()}")
-        if self.width_min is not None or self.width_max is not None or self.height_min is not None or self.height_max is not None:
-            result.append(f"Size: {self.width_min or ''}–{self.width_max or ''}×{self.height_min or ''}–{self.height_max or ''}")
-        if self.scale_min is not None or self.scale_max is not None:
-            result.append(f"Scale: {self.scale_min or ''}–{self.scale_max or ''} arcsec/px")
         from photonfinder import filter_catalogue  # it builds on these models
-        for entry in filter_catalogue.ENTRIES:
-            if entry.is_active(self):
-                result.append(entry.summary(self))
-        if self.diagnosis_hidden:
-            result.append("Quality diagnosis filter")
-        return ', '.join(result)
+        return filter_catalogue.summary(self)
 
     @staticmethod
     def _with_reference(criteria: 'SearchCriteria', reference_frame: 'Image') -> 'SearchCriteria':
