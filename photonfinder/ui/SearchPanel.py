@@ -15,6 +15,7 @@ from PySide6.QtGui import QBrush, QDesktopServices, QKeySequence, QPalette, QSta
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame, QInputDialog, QMenu,
                                QMessageBox, QPushButton, QSizePolicy, QToolBar, QWidget)
 
+from photonfinder import plate_solution
 from photonfinder.core import ApplicationContext, decompress, Change, library_busy_message
 from photonfinder.filesystem import is_compressible, parse_FITS_header, decode_header_blob
 from photonfinder.library_query import diagnosis_counts, distinct_values, search_row_stat
@@ -920,22 +921,24 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         return True
 
     def clear_plate_solution(self, file: File, model_row: int):
-        """Delete the FileWCS for the given file and update the grid row."""
+        """Remove the file's plate solution and update the grid row: RA/Dec show the header's
+        pointing position again, if it has one."""
         with self.context.database.bind_ctx(CORE_MODELS):
-            wcs = FileWCS.get_or_none(FileWCS.file == file)
-            if wcs:
-                wcs.delete_instance()
+            ra, dec = plate_solution.clear(file)
         # The source model: a sorted proxy moves the row as soon as a sort value changes.
         model = self.data_model
         source_row = self.proxy_model.mapToSource(self.proxy_model.index(model_row, 0)).row()
-        model.setData(model.index(source_row, 15), "", Qt.DisplayRole)
-        model.setData(model.index(source_row, 15), None, SORT_ROLE)
-        model.setData(model.index(source_row, 16), "", Qt.DisplayRole)
-        model.setData(model.index(source_row, 16), None, SORT_ROLE)
+        model.setData(model.index(source_row, 15), _format_ra(ra) if ra is not None else "", Qt.DisplayRole)
+        model.setData(model.index(source_row, 15), ra, SORT_ROLE)
+        model.setData(model.index(source_row, 16), _format_dec(dec) if dec is not None else "", Qt.DisplayRole)
+        model.setData(model.index(source_row, 16), dec, SORT_ROLE)
         model.setData(model.index(source_row, 17), "False", Qt.DisplayRole)
         model.setData(model.index(source_row, 17), "False", SORT_ROLE)
         if hasattr(file, 'has_wcs'):
             file.has_wcs = False
+        image = getattr(file, 'image', None)
+        if image is not None:
+            image.coord_ra, image.coord_dec, image.coord_radius, image.coord_scale = ra, dec, None, None
 
     def on_item_double_clicked(self, index):
         """Handle double-click on an item in the data view."""
