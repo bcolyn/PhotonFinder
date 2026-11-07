@@ -7,7 +7,8 @@ import pytest
 
 from photonfinder import mcp_server, reports
 from photonfinder.mcp_server import McpServerController
-from photonfinder.models import File, Image, InvalidCriteria, Project, ProjectFile, SearchCriteria, search_files
+from photonfinder.library_query import search_files
+from photonfinder.models import File, Image, InvalidCriteria, Project, ProjectFile, SearchCriteria
 
 
 def _names(result) -> list[str]:

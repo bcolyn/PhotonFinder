@@ -12,7 +12,8 @@ from peewee import JOIN, chunked
 from photonfinder.core import ApplicationContext, decompress, library_busy_message
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, \
-    Project, ImageStats, search_files
+    Project, ImageStats
+from photonfinder.library_query import search_files
 from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
 from photonfinder.filesystem import decode_header_blob, build_wcs_from_header
 from photonfinder import solve_service

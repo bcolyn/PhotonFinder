@@ -47,9 +47,11 @@ from pydantic import BaseModel, Field
 from photonfinder import reports, solve_service
 from photonfinder.core import ApplicationContext, LibraryBusyError, library_busy_message, mcp_port_file
 from photonfinder.models import (
-    CORE_MODELS, CATALOG_MODELS, SearchCriteria, InvalidCriteria, SORTABLE_FIELDS, File, Image, LibraryRoot,
+    CORE_MODELS, CATALOG_MODELS, SearchCriteria, InvalidCriteria, File, Image, LibraryRoot,
     Project, ProjectFile, FitsHeader, FileWCS, CatalogEntry,
-    search_files as run_search_files, serialize_search_row, _SERIALIZED_IMAGE_FIELDS,
+)
+from photonfinder.library_query import (
+    SORTABLE_FIELDS, search_files as run_search_files, serialize_search_row, _SERIALIZED_IMAGE_FIELDS,
 )
 from photonfinder.platesolver import (
     ASTAPSolver, AstrometryNetSolver, SolveFieldSolver, SolverHint,

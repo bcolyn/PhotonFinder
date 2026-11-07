@@ -14,8 +14,8 @@ from peewee import JOIN
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 
 from photonfinder.core import compress
-from photonfinder.models import File, FileWCS, FitsHeader, Image, Project, ProjectFile, SearchCriteria, \
-    search_files
+from photonfinder.models import File, FileWCS, FitsHeader, Image, Project, ProjectFile, SearchCriteria
+from photonfinder.library_query import search_files
 from photonfinder.ui.BackgroundLoader import ImageReindexWorker, ProjectsLoader
 from photonfinder.ui.ExportDialog import ExportWorker
 from photonfinder.ui.ProjectEditDialog import _coords_by_pixel

@@ -16,8 +16,9 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame
 
 from photonfinder.core import ApplicationContext, decompress, Change, library_busy_message
 from photonfinder.filesystem import is_compressible, parse_FITS_header, decode_header_blob
+from photonfinder.library_query import search_row_stat
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
-    FileWCS, ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, diagnosis_counts, search_row_stat, PROJECT_NAME_SEP
+    FileWCS, ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, diagnosis_counts, PROJECT_NAME_SEP
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask, ImageAnalysisTask
 from .DateRangeDialog import DateRangeDialog
 from .HeaderDialog import HeaderDialog

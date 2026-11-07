@@ -93,7 +93,8 @@ class TestHeaderUdfs:
         assert _header_value(context, _raw_header("EXPTIME = 1.0.0", "GAIN    = 100"), "EXPTIME") == "1.0.0"
 
     def test_header_search_with_files_lacking_headers(self, sample):
-        from photonfinder.models import SearchCriteria, search_files
+        from photonfinder.library_query import search_files
+        from photonfinder.models import SearchCriteria
         _, objs = sample  # the DARK has no FitsHeader row
 
         rows, total, _ = search_files(SearchCriteria(header_text="GAIN=100"))

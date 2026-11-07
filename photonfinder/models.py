@@ -1,12 +1,10 @@
 import dataclasses
 import json
-import logging
-import operator
 import os
 import typing
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from functools import cmp_to_key, reduce
+from functools import cmp_to_key
 from pathlib import Path
 from typing import Optional
 
@@ -86,7 +84,7 @@ class SearchCriteria:
     sorting_index: int | None = None
     sorting_desc: bool = True
     # Named alternative to sorting_index for API/MCP callers, who can't know the
-    # GUI's result-table column order. See SORTABLE_FIELDS for valid names. Takes
+    # GUI's result-table column order. See library_query.SORTABLE_FIELDS for valid names. Takes
     # precedence over sorting_index when set; both use sorting_desc for direction.
     sorting_field: str | None = None
     exposure_tolerance: float | None = None   # ±seconds; None = exact match
@@ -118,7 +116,7 @@ class SearchCriteria:
         return self == SearchCriteria()
 
     def validate(self) -> None:
-        """Raise InvalidCriteria for the first value apply_search_criteria would skip as
+        """Raise InvalidCriteria for the first value the library query would skip as
         unparsable. The GUI search never calls this: it ignores such values instead."""
         for name, parse, expected in (("exposure", float, "a number of seconds"),
                                       ("binning", int, 'a whole number, e.g. "2"'),
@@ -520,205 +518,10 @@ class Image(Model):
 
     @staticmethod
     def apply_search_criteria(query, criteria, exclude_ref=None):
-        """Apply search criteria to the query."""
-        conditions = []
-
-        # Filter by paths
-        if criteria.paths and exclude_ref is not File.path:
-            path_conditions = []
-            if criteria.paths_as_prefix:
-                for full_path in criteria.paths:
-                    if full_path.root_id is None and full_path.path is None:  # all libraries is included
-                        path_conditions = []  # short-circuit the case where all libraries are included
-                        break
-                    elif full_path.path is None:  # a root library is included, anything below that is good
-                        path_conditions.append(File.root == full_path.root_id)
-                    else:  # normal path
-                        path_conditions.append(
-                            (File.root == full_path.root_id) & (File.path.startswith(norm_db_path(full_path.path))))
-            else:  # only in exact directory
-                for full_path in criteria.paths:
-                    if full_path.root_id is None and full_path.path is None:  # all libraries
-                        continue  # nothing can be in the 'all libraries' path, so skip it'
-                    elif full_path.path is None:  # a root library is included
-                        path_conditions.append((File.root == full_path.root_id) & (File.path == norm_db_path(".")))
-                    else:
-                        # Match files exactly in this path
-                        path_conditions.append(
-                            (File.root == full_path.root_id) & (File.path == norm_db_path(full_path.path)))
-            if path_conditions:
-                combined = path_conditions[0]
-                for condition in path_conditions[1:]:
-                    combined = combined | condition
-                conditions.append(combined)
-
-        # Filter by file type
-        if criteria.type != "" and exclude_ref is not Image.image_type:
-            conditions.append(Image.image_type == criteria.type)
-
-        # Filter by filter
-        if criteria.filter != "" and exclude_ref is not Image.filter:
-            conditions.append(Image.filter == criteria.filter)
-
-        # Apply additional criteria if available
-        if criteria.camera != "" and exclude_ref is not Image.camera:
-            conditions.append(Image.camera == criteria.camera)
-
-        if criteria.object_name and exclude_ref is not Image.object_name:
-            conditions.append(Image.object_name.contains(criteria.object_name))
-
-        if criteria.file_name and exclude_ref is not File.name:
-            conditions.append(File.name.contains(criteria.file_name))
-
-        if criteria.exposure and exclude_ref is not Image.exposure:
-            try:
-                exp = float(criteria.exposure)
-                if criteria.exposure_tolerance is not None:
-                    tol = criteria.exposure_tolerance
-                    conditions.append(Image.exposure.between(exp - tol, exp + tol))
-                else:
-                    conditions.append(Image.exposure == exp)
-            except (ValueError, TypeError):
-                pass
-
-        if criteria.telescope and exclude_ref is not Image.telescope:
-            conditions.append(Image.telescope.contains(criteria.telescope))
-
-        if criteria.binning and exclude_ref is not Image.binning:
-            try:
-                bin_val = int(criteria.binning)
-                conditions.append(Image.binning == bin_val)
-            except (ValueError, TypeError):
-                pass
-
-        if criteria.gain and exclude_ref is not Image.gain:
-            try:
-                gain_val = int(criteria.gain)
-                conditions.append(Image.gain == gain_val)
-            except (ValueError, TypeError):
-                pass
-
-        if criteria.offset is not None and exclude_ref is not Image.offset:
-            try:
-                offset_val = int(criteria.offset)
-                conditions.append(Image.offset == offset_val)
-            except (ValueError, TypeError):
-                pass
-
-        if criteria.temperature and exclude_ref is not Image.set_temp:
-            try:
-                temp_val = float(criteria.temperature)
-                if criteria.temperature_tolerance is not None:
-                    tol = criteria.temperature_tolerance
-                    conditions.append(Image.set_temp.between(temp_val - tol, temp_val + tol))
-                else:
-                    conditions.append(Image.set_temp == temp_val)
-            except (ValueError, TypeError):
-                pass
-
-        if criteria.start_datetime and exclude_ref is not Image.date_obs:
-            conditions.append(Image.date_obs >= criteria.start_datetime)
-
-        if criteria.end_datetime and exclude_ref is not Image.date_obs:
-            conditions.append(Image.date_obs <= criteria.end_datetime)
-
-        # Filter by coordinates
-        if criteria.coord_ra and criteria.coord_dec and exclude_ref is not Image.coord_pix256:
-            try:
-                coords = criteria.cone_center()
-                # Get pixels in the cone
-                radius = criteria.coord_radius * u.deg
-                pixels = hp.cone_search_skycoord(coords, radius)
-
-                # Filter images where coord_pix256 is in the list of pixels
-                if len(pixels) > 0:
-                    conditions.append(Image.coord_pix256.in_(pixels.tolist()))
-            except Exception as e:
-                logging.error(f"Error applying coordinates filter: {str(e)}")
-
-        if criteria.header_text:
-            try:
-                if '=' in criteria.header_text:
-                    key, value = criteria.header_text.split('=')
-                    header_condition = fn.decompress_header_value(FitsHeader.header, key.strip()) == float(value.strip())
-                elif '<' in criteria.header_text:
-                    key, value = criteria.header_text.split('<')
-                    header_condition = fn.decompress_header_value(FitsHeader.header, key.strip()) < float(value.strip())
-                elif '>' in criteria.header_text:
-                    key, value = criteria.header_text.split('>')
-                    header_condition = fn.decompress_header_value(FitsHeader.header, key.strip()) > float(value.strip())
-                else:
-                    header_condition = fn.decompress(FitsHeader.header).contains(criteria.header_text)
-            except ValueError:
-                header_condition = fn.decompress(FitsHeader.header).contains(criteria.header_text)
-            # A correlated subquery rather than a join, so callers that already join
-            # FitsHeader (e.g. to read header values) don't end up with it joined twice.
-            conditions.append(fn.EXISTS(
-                FitsHeader.select(SQL('1')).where((FitsHeader.file == File.rowid) & header_condition)))
-
-        if criteria.width_min is not None:
-            conditions.append(Image.width >= criteria.width_min)
-        if criteria.width_max is not None:
-            conditions.append(Image.width <= criteria.width_max)
-        if criteria.height_min is not None:
-            conditions.append(Image.height >= criteria.height_min)
-        if criteria.height_max is not None:
-            conditions.append(Image.height <= criteria.height_max)
-
-        if criteria.scale_min is not None:
-            conditions.append(Image.coord_scale >= criteria.scale_min)
-        if criteria.scale_max is not None:
-            conditions.append(Image.coord_scale <= criteria.scale_max)
-
-        # ImageStats filter: use a subquery to avoid conflicting with any pre-existing
-        # LEFT OUTER JOIN on ImageStats that callers (e.g. BackgroundLoader) may have added.
-        _stats_subq_conditions = []
-        if criteria.star_count_min is not None:
-            _stats_subq_conditions.append(ImageStats.star_count >= criteria.star_count_min)
-        if criteria.star_count_max is not None:
-            _stats_subq_conditions.append(ImageStats.star_count <= criteria.star_count_max)
-        if criteria.fwhm_min is not None:
-            _stats_subq_conditions.append(ImageStats.fwhm_median >= criteria.fwhm_min)
-        if criteria.fwhm_max is not None:
-            _stats_subq_conditions.append(ImageStats.fwhm_median <= criteria.fwhm_max)
-        if criteria.background_min is not None:
-            _stats_subq_conditions.append(ImageStats.background_median >= criteria.background_min)
-        if criteria.background_max is not None:
-            _stats_subq_conditions.append(ImageStats.background_median <= criteria.background_max)
-        if criteria.background_rms_min is not None:
-            _stats_subq_conditions.append(ImageStats.background_rms >= criteria.background_rms_min)
-        if criteria.background_rms_max is not None:
-            _stats_subq_conditions.append(ImageStats.background_rms <= criteria.background_rms_max)
-        if criteria.elongation_min is not None:
-            _stats_subq_conditions.append(ImageStats.elongation_median >= criteria.elongation_min)
-        if criteria.elongation_max is not None:
-            _stats_subq_conditions.append(ImageStats.elongation_median <= criteria.elongation_max)
-        if _stats_subq_conditions:
-            stats_subq = ImageStats.select(ImageStats.file)
-            for cond in _stats_subq_conditions:
-                stats_subq = stats_subq.where(cond)
-            conditions.append(File.rowid.in_(stats_subq))
-
-        if criteria.diagnosis_hidden:
-            conditions.extend(_diagnosis_conditions(criteria.diagnosis_hidden))
-
-        if criteria.plate_solved is True:
-            conditions.append(File.rowid.in_(FileWCS.select(FileWCS.file)))
-        elif criteria.plate_solved is False:
-            conditions.append(File.rowid.not_in(FileWCS.select(FileWCS.file)))
-
-        if criteria.project:
-            if criteria.project.rowid > 0:
-                query = query.join_from(File, ProjectFile)
-                conditions.append(ProjectFile.project == criteria.project)
-            else:
-                query = query.join_from(File, ProjectFile, JOIN.LEFT_OUTER)
-                conditions.append(ProjectFile.project.is_null(True))
-
-        # Apply all conditions to the query
-        for condition in conditions:
-            query = query.where(condition)
-        return query
+        """Add the criteria's conditions to a query joining File and Image. Kept for the
+        callers not yet on the library query module, which owns the conditions."""
+        from photonfinder.library_query import where_criteria  # pylint: disable=import-outside-toplevel,cyclic-import
+        return where_criteria(query, criteria, exclude_ref)
 
     @staticmethod
     def get_distinct_values_available(search_criteria: SearchCriteria, field_ref) -> list[str | None]:
@@ -936,20 +739,6 @@ class ImageStats(Model):
         database = None
 
 
-def _diagnosis_conditions(hidden: list[str]) -> list:
-    """Conditions hiding every file with any of the given diagnosis values."""
-    conditions = []
-    if DIAGNOSIS_NOT_ANALYSED in hidden:
-        conditions.append(File.rowid.in_(ImageStats.select(ImageStats.file).where(ImageStats.diagnosis.is_null(False))))
-    matches = [ImageStats.diagnosis == DIAGNOSIS_OK if value == DIAGNOSIS_OK
-               else ImageStats.diagnosis.contains(value)
-               for value in hidden if value != DIAGNOSIS_NOT_ANALYSED]
-    if matches:
-        hidden_files = ImageStats.select(ImageStats.file).where(reduce(operator.or_, matches))
-        conditions.append(File.rowid.not_in(hidden_files))
-    return conditions
-
-
 def diagnosis_counts(search_criteria: SearchCriteria) -> dict[str, int]:
     """Files per diagnosis value within a search, ignoring its diagnosis filter.
 
@@ -1017,158 +806,3 @@ class CatalogEntry(Model):
 
 
 CATALOG_MODELS = [CatalogEntry]
-
-
-# Named sort targets for SearchCriteria.sorting_field -- independent of the GUI's
-# result-table column order (see SearchCriteria.sorting_index), so external callers
-# (e.g. the MCP server) can request a sort without knowing that layout.
-SORTABLE_FIELDS = {
-    "name": File.name,
-    "path": File.path,
-    "size": File.size,
-    "mtime": File.mtime_millis,
-    "type": Image.image_type,
-    "filter": Image.filter,
-    "exposure": Image.exposure,
-    "gain": Image.gain,
-    "offset": Image.offset,
-    "binning": Image.binning,
-    "temperature": Image.set_temp,
-    "camera": Image.camera,
-    "telescope": Image.telescope,
-    "object_name": Image.object_name,
-    "date_obs": Image.date_obs,
-    "coord_ra": Image.coord_ra,
-    "coord_dec": Image.coord_dec,
-    "star_count": ImageStats.star_count,
-    "fwhm": ImageStats.fwhm_median,
-    "elongation": ImageStats.elongation_median,
-    "background": ImageStats.background_median,
-    "background_rms": ImageStats.background_rms,
-}
-
-
-# Ordered list of selected columns. The position in this list is what
-# SearchCriteria.sorting_index refers to (it maps to result-table columns), so the
-# order must stay in sync with the SearchPanel result columns.
-def _build_search_query(search_criteria: SearchCriteria):
-    """Build the paginated search query shared by the GUI and the MCP server.
-
-    Returns a tuple of (query, fields) where `fields` is the ordered list of selected
-    columns used both for the SELECT and for resolving SearchCriteria.sorting_index.
-    """
-    project_names_subq = (
-        ProjectFile
-        .select(
-            ProjectFile.file.alias('file_id'),
-            fn.GROUP_CONCAT(Project.name, PROJECT_NAME_SEP).alias('project_names')
-        )
-        .join(Project)
-        .group_by(ProjectFile.file)
-    )
-
-    fields = [File.name, Image.image_type, Image.filter, Image.exposure, Image.gain, Image.offset,
-              Image.binning, Image.set_temp, Image.camera, Image.telescope, Image.object_name,
-              Image.date_obs, File.path, File.size, File.mtime_millis, Image.coord_ra, Image.coord_dec,
-              FileWCS.wcs.is_null(False).alias('has_wcs'),
-              project_names_subq.c.project_names.alias('project_names'),
-              ImageStats.background_median.alias('stats_background_median'),
-              ImageStats.background_rms.alias('stats_background_rms'),
-              ImageStats.star_count.alias('stats_star_count'),
-              ImageStats.fwhm_median.alias('stats_fwhm_median'),
-              ImageStats.elongation_median.alias('stats_elongation_median'),
-              ImageStats.diagnosis.alias('stats_diagnosis')]
-    query = (File
-             .select(*(fields + [File, Image, LibraryRoot]))
-             .join_from(File, LibraryRoot)
-             .join_from(File, Image, JOIN.LEFT_OUTER)
-             .join_from(File, FileWCS, JOIN.LEFT_OUTER)
-             .join_from(File, ImageStats, JOIN.LEFT_OUTER)
-             .join_from(File, project_names_subq, JOIN.LEFT_OUTER,
-                        on=(File.rowid == project_names_subq.c.file_id))
-             )
-    query = Image.apply_search_criteria(query, search_criteria)
-    return query, fields
-
-
-def search_row_stat(row: File, alias: str):
-    """An aliased ImageStats column of a search row. Peewee keeps it on the joined model."""
-    return getattr(getattr(row, 'imagestats', None), alias, None)
-
-
-def search_files(search_criteria: SearchCriteria, page: int = 0, page_size: int = 100):
-    """Run a paginated file search for the given criteria.
-
-    Returns (rows, total, has_more) where `rows` are File model instances with joined
-    Image / LibraryRoot data and aliased columns (has_wcs, project_names, stats_*).
-    `page` is zero-based. Must be called with the models bound to a database
-    (e.g. inside `context.database.bind_ctx(CORE_MODELS)`).
-    """
-    query, fields = _build_search_query(search_criteria)
-
-    if search_criteria.sorting_field is not None:
-        sort_field = SORTABLE_FIELDS.get(search_criteria.sorting_field)
-        if sort_field is None:
-            raise ValueError(
-                f"Unknown sorting_field '{search_criteria.sorting_field}'. "
-                f"Valid fields: {', '.join(sorted(SORTABLE_FIELDS))}.")
-        if sort_field == File.name or sort_field == File.path:
-            sort_field = sort_field.collate("NOCASE")
-        query = query.order_by(sort_field.desc() if search_criteria.sorting_desc else sort_field.asc())
-    elif search_criteria.sorting_index is None:
-        query = query.order_by(File.root, File.path, File.name)
-    else:
-        sort_field = fields[search_criteria.sorting_index]
-        if sort_field == File.name or sort_field == File.path:
-            sort_field = sort_field.collate("NOCASE")
-        query = query.order_by(sort_field.desc()) if search_criteria.sorting_desc else query.order_by(sort_field.asc())
-
-    total = query.count()
-    rows = list(query.paginate(page + 1, page_size))
-    has_more = (page + 1) * page_size < total
-    return rows, total, has_more
-
-
-_SERIALIZED_IMAGE_FIELDS = (
-    "image_type", "camera", "filter", "exposure", "gain", "offset", "binning",
-    "set_temp", "telescope", "object_name", "coord_ra", "coord_dec",
-    "coord_radius", "width", "height",
-)
-
-
-def serialize_search_row(row: 'File') -> dict:
-    """Flatten one search result row into a JSON-safe dict for the MCP server."""
-    result = {
-        "rowid": row.rowid,
-        "name": row.name,
-        "path": row.path,
-        "size": row.size,
-        "mtime_millis": row.mtime_millis,
-        "full_filename": row.full_filename(),
-        "root": {"rowid": row.root.rowid, "name": row.root.name, "path": row.root.path},
-        "has_wcs": bool(getattr(row, "has_wcs", False)),
-    }
-
-    image = getattr(row, "image", None)
-    if image is not None and image.rowid is not None:
-        image_data = {name: getattr(image, name) for name in _SERIALIZED_IMAGE_FIELDS}
-        date_obs = image.date_obs
-        image_data["date_obs"] = date_obs.isoformat() if isinstance(date_obs, datetime) else date_obs
-        result["image"] = image_data
-    else:
-        result["image"] = None
-
-    if hasattr(row, "projectfile") and getattr(row.projectfile, "project_names", None):
-        result["projects"] = row.projectfile.project_names.split(PROJECT_NAME_SEP)
-    else:
-        result["projects"] = []
-
-    result["stats"] = {
-        "background_median": search_row_stat(row, "stats_background_median"),
-        "background_rms": search_row_stat(row, "stats_background_rms"),
-        "star_count": search_row_stat(row, "stats_star_count"),
-        "fwhm_median": search_row_stat(row, "stats_fwhm_median"),
-        "elongation_median": search_row_stat(row, "stats_elongation_median"),
-        "diagnosis": search_row_stat(row, "stats_diagnosis"),
-    }
-    return result
