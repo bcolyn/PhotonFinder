@@ -308,6 +308,51 @@
         </layout>
        </item>
        <item>
+        <widget class="Line" name="line_saspro">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="saspro_hint_label">
+         <property name="text">
+          <string>SASpro (Gaia) uses Seti Astro Suite Pro's own solver. Build its quad index in SASpro first.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="saspro_path_layout">
+         <item>
+          <widget class="QLabel" name="saspro_path_label">
+           <property name="text">
+            <string>SASpro Path:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="saspro_path_edit">
+           <property name="toolTip">
+            <string>Path to SetiAstroSuitePro.exe. Leave empty to use the standard install location.</string>
+           </property>
+           <property name="placeholderText">
+            <string>Leave empty for C:\Program Files\SetiAstroSuitePro</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="saspro_browse_button">
+           <property name="text">
+            <string>Browse...</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
         <spacer name="platesolver_spacer">
          <property name="orientation">
           <enum>Qt::Orientation::Vertical</enum>

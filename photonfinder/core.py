@@ -53,6 +53,13 @@ def get_default_astap_path():
     else:  # else, assume it's on the PATH
         return "astap"
 
+
+def get_default_saspro_path():
+    """Where the Seti Astro Suite Pro installer puts it, or "" when it isn't there."""
+    path = Path("C:/Program Files/SetiAstroSuitePro/SetiAstroSuitePro.exe")
+    return str(path.as_posix()) if path.exists() else ""
+
+
 def fatal_error(title: str, message: str, details: str = "") -> None:
     """
     Display a fatal error dialog and exit the application.
@@ -602,6 +609,7 @@ class Settings:
         ("solve_field_path", "solve_field_path", "", str),
         ("solve_field_wsl_distro", "solve_field_wsl_distro", "", str),
         ("solve_field_timeout", "wsl_solver_timeout", 300, int),
+        ("saspro_path", "saspro_path", "", str),
         ("plate_solve_primary_solver", "plate_solve_primary_solver", 0, int),
         ("plate_solve_backup_solver", "plate_solve_backup_solver", -1, int),
         ("plate_solve_hint_ra", "plate_solve_hint_ra", "", str),

@@ -1012,7 +1012,7 @@ def build_mcp(context: ApplicationContext):
             f"Plate-solve up to {MAX_SOLVE_BATCH} files at once by rowid (from "
             "`search_files`/`get_file_details`), writing the resulting WCS solution and "
             "coordinates to the library. "
-            '`solver`/`backup_solver` are one of "astap", "astrometry_net", "solve_field", '
+            "`solver`/`backup_solver` are one of " + ", ".join(f'"{key}"' for key in solvers.KEYS) + ", "
             'and `backup_solver` may also be "none" for no backup; omit to use the '
             "primary/backup solver configured in Settings (no backup if unset). `hint_ra`/`hint_dec` (degrees) and `hint_scale` (arcsec/pixel) seed the "
             'solver; `hint_mode` is "fallback" (only used if the file has no usable '

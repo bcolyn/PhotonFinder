@@ -2,7 +2,7 @@
 import pytest
 
 from photonfinder import solvers
-from photonfinder.platesolver import ASTAPSolver, AstrometryNetSolver, SolveFieldSolver
+from photonfinder.platesolver import ASTAPSolver, AstrometryNetSolver, SASproSolver, SolveFieldSolver
 
 
 class Settings:
@@ -26,6 +26,9 @@ class Settings:
     def get_solve_field_wsl_distro(self):
         return "Ubuntu"
 
+    def get_saspro_path(self):
+        return "D:/SASpro/SetiAstroSuitePro.exe"
+
 
 def test_primary_only():
     primary, backup = solvers.build_solvers(Settings(), 0)
@@ -40,7 +43,7 @@ def test_primary_and_backup_are_configured_from_the_settings():
     assert solvers.label_of(primary) == "solve-field" and solvers.label_of(backup) == "Astrometry.net"
 
 
-@pytest.mark.parametrize("index", [solvers.NO_BACKUP, 3, 99])
+@pytest.mark.parametrize("index", [solvers.NO_BACKUP, 4, 99])
 def test_no_primary_configured_is_an_error(index):
     with pytest.raises(solvers.SolverConfigError, match="No primary solver"):
         solvers.build_solvers(Settings(), index)
@@ -53,13 +56,22 @@ def test_an_unknown_backup_index_means_no_backup():
 def test_the_table_keeps_the_stored_indexes():
     """Settings saved by earlier versions name solvers by these indexes."""
     assert [(e.index, e.key, e.label) for e in solvers.SOLVERS] == [
-        (0, "astap", "ASTAP"), (1, "astrometry_net", "Astrometry.net"), (2, "solve_field", "solve-field")]
+        (0, "astap", "ASTAP"), (1, "astrometry_net", "Astrometry.net"), (2, "solve_field", "solve-field"),
+        (3, "saspro", "SASpro (Gaia)")]
 
 
 def test_keys_name_solvers_and_none_only_where_allowed():
     assert solvers.index_for(" Astrometry_Net ") == 1
     assert solvers.index_for("none", allow_none=True) == solvers.NO_BACKUP
-    with pytest.raises(solvers.SolverConfigError, match="Valid solvers: astap, astrometry_net, solve_field.$"):
+    with pytest.raises(solvers.SolverConfigError, match="Valid solvers: astap, astrometry_net, saspro, solve_field.$"):
         solvers.index_for("none")
     with pytest.raises(solvers.SolverConfigError, match="'Bogus'"):
         solvers.index_for("Bogus", allow_none=True)
+
+
+def test_saspro_is_configured_from_the_settings():
+    primary, backup = solvers.build_solvers(Settings(), 3, 0)
+
+    assert isinstance(primary, SASproSolver) and primary._exe == "D:/SASpro/SetiAstroSuitePro.exe"
+    assert isinstance(backup, ASTAPSolver)
+    assert solvers.index_for("saspro") == 3 and solvers.label_of(primary) == "SASpro (Gaia)"

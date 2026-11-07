@@ -9,7 +9,7 @@ import logging
 from typing import NamedTuple, Optional
 
 from photonfinder.platesolver import (
-    ASTAPSolver, AstrometryNetSolver, SolveFieldSolver, SolverBase, SolverType,
+    ASTAPSolver, AstrometryNetSolver, SASproSolver, SolveFieldSolver, SolverBase, SolverType,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,9 @@ SOLVERS = (
     SolverEntry(0, "astap", "ASTAP", SolverType.ASTAP, ASTAPSolver),
     SolverEntry(1, "astrometry_net", "Astrometry.net", SolverType.ASTROMETRY_NET, AstrometryNetSolver),
     SolverEntry(2, "solve_field", "solve-field", SolverType.SOLVE_FIELD, SolveFieldSolver),
+    SolverEntry(3, "saspro", "SASpro (Gaia)", SolverType.SASPRO, SASproSolver),
 )
+KEYS = tuple(entry.key for entry in SOLVERS)
 _BY_INDEX = {entry.index: entry for entry in SOLVERS}
 _BY_KEY = {entry.key: entry for entry in SOLVERS}
 
@@ -70,6 +72,8 @@ def build_solver(settings, index: int) -> Optional[SolverBase]:
             api_key=settings.get_astrometry_net_api_key(),
             force_image_upload=settings.get_astrometry_net_force_image_upload(),
         )
+    if entry.solver_type is SolverType.SASPRO:
+        return SASproSolver(exe=settings.get_saspro_path())
     return SolveFieldSolver(
         exe_path=settings.get_solve_field_path(),
         timeout=settings.get_solve_field_timeout(),

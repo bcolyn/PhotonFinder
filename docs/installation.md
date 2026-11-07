@@ -12,3 +12,9 @@ the sky each image points) needs at least one of these:
   [nova.astrometry.net](https://nova.astrometry.net), entered on the same tab.
 - **solve-field**, the offline Astrometry.net solver, installed in Ubuntu under WSL. See
   [Plate Solving with solve-field on WSL](solve-field-wsl.md).
+- **SASpro (Gaia)**, the plate solver built into [Seti Astro Suite Pro](https://www.setiastro.com).
+  It solves offline, with or without a known position, from a Gaia DR3 quad index that you build
+  in SASpro first (its plate-solve settings). PhotonFinder finds SASpro in its standard install
+  folder; if you installed it elsewhere, set the path to `SetiAstroSuitePro.exe` on the same tab.
+  It works out each image's position from its star pattern, so headers with wrong coordinates are
+  no problem.

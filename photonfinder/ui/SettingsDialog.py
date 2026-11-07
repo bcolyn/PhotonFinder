@@ -2,7 +2,7 @@ import os
 import platform
 from PySide6.QtWidgets import QDialog, QFileDialog
 
-from photonfinder.core import ApplicationContext
+from photonfinder.core import ApplicationContext, get_default_saspro_path
 from photonfinder.ui.generated.SettingsDialog_ui import Ui_SettingsDialog
 
 
@@ -19,6 +19,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.solve_field_path_edit.setText(self.context.settings.get_solve_field_path())
         self.wsl_distro_edit.setText(self.context.settings.get_solve_field_wsl_distro())
         self.wsl_timeout_spin.setValue(self.context.settings.get_solve_field_timeout())
+        self.saspro_path_edit.setText(self.context.settings.get_saspro_path())
 
         self.file_ignore_edit.setText(self.context.settings.get_bad_file_patterns())
         self.folder_ignore_edit.setText(self.context.settings.get_bad_dir_patterns())
@@ -34,6 +35,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
 
         self.astap_browse_button.clicked.connect(self.browse_astap_executable)
         self.solve_field_browse_button.clicked.connect(self.browse_solve_field_executable)
+        self.saspro_browse_button.clicked.connect(self.browse_saspro_executable)
 
     def browse_astap_executable(self):
         if platform.system() == "Windows":
@@ -61,6 +63,16 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         if file_path:
             self.solve_field_path_edit.setText(file_path)
 
+    def browse_saspro_executable(self):
+        current_path = self.saspro_path_edit.text() or get_default_saspro_path()
+        start_dir = os.path.dirname(current_path) if current_path else os.path.expanduser("~")
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select SetiAstroSuitePro.exe", start_dir, "SetiAstroSuitePro.exe;;All Files (*.*)"
+        )
+        if file_path:
+            self.saspro_path_edit.setText(file_path)
+
     def accept(self):
         self.context.settings.set_astap_path(self.astap_path_edit.text())
         self.context.settings.set_astrometry_net_api_key(self.astrometry_api_key_edit.text())
@@ -68,6 +80,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.context.settings.set_solve_field_path(self.solve_field_path_edit.text())
         self.context.settings.set_solve_field_wsl_distro(self.wsl_distro_edit.text().strip())
         self.context.settings.set_solve_field_timeout(self.wsl_timeout_spin.value())
+        self.context.settings.set_saspro_path(self.saspro_path_edit.text().strip())
 
         self.context.settings.set_bad_file_patterns(self.file_ignore_edit.text())
         self.context.settings.set_bad_dir_patterns(self.folder_ignore_edit.text())

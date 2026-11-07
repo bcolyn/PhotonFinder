@@ -1,3 +1,4 @@
+import json
 import logging
 import queue
 import shutil
@@ -22,7 +23,7 @@ from astroquery.utils import url_helpers
 from xisf import XISF
 
 from photonfinder import plate_solution
-from photonfinder.core import get_default_astap_path
+from photonfinder.core import get_default_astap_path, get_default_saspro_path
 from photonfinder.image_processing import is_linear
 from photonfinder.filesystem import fopen, Importer, header_from_xisf_dict, repair_header
 
@@ -31,6 +32,7 @@ class SolverType(Enum):
     ASTAP = 1
     ASTROMETRY_NET = 2
     SOLVE_FIELD = 3
+    SASPRO = 4
 
 
 @dataclass
@@ -45,6 +47,7 @@ _SOLVER_TYPE_ORIGIN = {
     SolverType.ASTAP:          "ASTAP",
     SolverType.ASTROMETRY_NET: "ASTROMETRY.NET",
     SolverType.SOLVE_FIELD: "SOLVE-FIELD",
+    SolverType.SASPRO: "SASPRO",
 }
 
 
@@ -754,6 +757,163 @@ class SolveFieldSolver(SolverBase):
         if naxis2:
             result["NAXIS2"] = naxis2
         return result
+
+
+SASPRO_TIMEOUT_SECONDS = 600  # a blind solve takes 6-9 s; SASpro's own limit is 10 minutes
+
+
+def _header_pixel_scale(header) -> float | None:
+    """The pixel scale (arcsec/px) a header states, or works out from focal length and pixel size."""
+    scale = _first_header_value(header, "SCALE", "PIXSCALE")
+    if scale is None:
+        focal_len = header.get("FOCALLEN")
+        pix_size = header.get("YPIXSZ")
+        if focal_len and pix_size:
+            scale = 206.265 * float(pix_size) / float(focal_len)
+    try:
+        return float(scale) if scale is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_float(value) -> float | None:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):  # e.g. a sexagesimal string
+        return None
+
+
+def _parse_saspro_result(output: str) -> dict:
+    """The JSON object `solve --json` prints after its image loader's log lines, or {}."""
+    decoder = json.JSONDecoder()
+    for start in (i for i, ch in enumerate(output) if ch == "{" and (i == 0 or output[i - 1] == "\n")):
+        try:
+            result, _ = decoder.raw_decode(output[start:])
+        except ValueError:
+            continue
+        if isinstance(result, dict) and "ok" in result:
+            return result
+    return {}
+
+
+class SASproSolver(SolverBase):
+    """Seti Astro Suite Pro's in-house Gaia DR3 solver, run headless as
+    ``SetiAstroSuitePro.exe solve --solver gaia``. It solves blind from the quad index the user
+    builds in SASpro, or seeded from a position.
+
+    What SASpro is given is a FITS with only the pixels: on some header contents its FITS reader
+    fails (a 'charmap' error on a Windows console) and a fallback reader takes over, which reads
+    the image upside down, so the solution comes back mirrored top to bottom. Its output saying
+    so is a failure, never a solution. The seed goes on the command line instead of the header.
+
+    ``--solver gaia`` keeps SASpro from falling back to ASTAP or Astrometry.net by itself; the
+    backup solver setting is for that. A seeded solve with a wrong position fails rather than
+    searching further, so a failed seeded solve is retried blind."""
+
+    def __init__(self, exe: str = "", timeout: int = SASPRO_TIMEOUT_SECONDS):
+        super().__init__()
+        self._exe = exe or get_default_saspro_path()
+        self._timeout = timeout
+
+    @property
+    def solver_type(self) -> SolverType:
+        return SolverType.SASPRO
+
+    def _command(self) -> list[str]:
+        return [self._exe]
+
+    @staticmethod
+    def _seed(header, image, hint: SolverHint | None):
+        """(ra, dec, scale) to seed the solve with, each None when unknown, following the hint's
+        mode the way the other solvers do."""
+        ra, dec = (_as_float(v) for v in file_position(header, image))
+        if ra is None or dec is None:
+            ra = dec = None
+        scale = _header_pixel_scale(header)
+        if hint:
+            hint_has_position = hint.ra is not None and hint.dec is not None
+            if hint_has_position and (hint.mode == 'override' or ra is None):
+                ra, dec = float(hint.ra), float(hint.dec)
+            if hint.scale is not None and (hint.mode == 'override' or scale is None):
+                scale = float(hint.scale)
+        return ra, dec, scale
+
+    def _run(self, pixels: Path, wcs_file: Path, seed_args: list[str],
+             cancelled: typing.Callable[[], bool]) -> tuple[int, str]:
+        """Run one solve; its exit code and everything it printed."""
+        cmd = [*self._command(), "solve", "-i", str(pixels), "--solver", "gaia",
+               "--wcs-path", str(wcs_file), "--json", *seed_args]
+        transcript = pixels.with_suffix(".log")
+        flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+        # Its output goes to a file, not a pipe: on a failure it is long, and nothing reads a
+        # pipe while _wait_or_kill waits.
+        with open(transcript, "wb") as out:
+            try:
+                proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                                        creationflags=flags)
+            except OSError as e:
+                raise SolverError(f"SASpro could not be started ({self._exe}): {e}. "
+                                  "Set its path under Settings > Plate Solving.") from e
+            stopped = _wait_or_kill(proc, self._timeout, cancelled)
+        output = transcript.read_text(encoding="utf-8", errors="replace")
+        if stopped == "cancelled":
+            raise SolverCancelled(f"SASpro stopped on {pixels.name}")
+        if stopped == "timeout":
+            raise SolverFailure(f"SASpro timed out after {self._timeout}s on {pixels.name}", output.splitlines())
+        return proc.returncode, output
+
+    def solve(self, image_path: Path, image=None, hint: SolverHint = None,
+              output_callback: typing.Callable[[str], None] = None, file_wcs=None,
+              cancelled: typing.Callable[[], bool] = None) -> Header:
+        if not image_path.is_file():
+            raise FileNotFoundError(f"Image file not found: {image_path}")
+        if not self.tmp_dir:
+            raise FileNotFoundError("Temporary directory not found, use with statement to create one.")
+        cancelled = cancelled or _never_cancelled
+
+        temp_image = self._create_temp_fits(image_path, file_wcs)
+        with fits.open(temp_image, memmap=False) as hdul:
+            header = hdul[0].header.copy()
+            data = hdul[0].data
+        height, width = data.shape
+        pixels = temp_image.with_name(temp_image.stem + "_pixels.fits")
+        fits.PrimaryHDU(data).writeto(pixels, overwrite=True)
+        wcs_file = pixels.with_suffix(".wcs")
+
+        ra, dec, scale = self._seed(header, image, hint)
+        seed_args = []
+        if ra is not None:
+            seed_args += ["--ra", str(ra), "--dec", str(dec)]
+        if scale is not None:
+            seed_args += ["--scale", str(scale)]
+        attempts = [seed_args, []] if seed_args else [[]]
+
+        error = None
+        result, output = {}, ""
+        for args in attempts:
+            if args is not seed_args and output_callback:
+                output_callback(f"SASpro: seeded solve failed ({error}), solving blind")
+            wcs_file.unlink(missing_ok=True)
+            returncode, output = self._run(pixels, wcs_file, args, cancelled)
+            result = _parse_saspro_result(output)
+            if "fallback reader" in output:
+                raise SolverFailure(f"SASpro misread {image_path.name} (its fallback image reader), "
+                                    "so its solution can't be trusted", output.splitlines())
+            if returncode == 0 and result.get("ok") and wcs_file.exists():
+                if output_callback:
+                    output_callback(f"SASpro: solved from {result.get('n_stars')} stars, "
+                                    f"RMS {result.get('rms_arcsec')}\", {result.get('distortion')}")
+                solution = extract_wcs_cards(fits.getheader(wcs_file))
+                solution["NAXIS1"] = width
+                solution["NAXIS2"] = height
+                return solution
+            error = result.get("error") or f"exit code {returncode}"
+            if returncode == 2:  # a usage or I/O error: blind won't fare better
+                break
+
+        log = result.get("log")
+        raise SolverFailure(f"SASpro could not solve {image_path.name}: {error}",
+                            log.splitlines() if isinstance(log, str) and log else output.splitlines() or None)
 
 
 class SolverError(Exception):

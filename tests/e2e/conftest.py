@@ -135,6 +135,7 @@ class Sandbox:
         # Never launch a solver the developer happens to have installed.
         settings.set_astap_path(str(self.data_dir / "no-astap.exe"))
         settings.set_solve_field_path(str(self.data_dir / "no-solve-field"))
+        settings.set_saspro_path(str(self.data_dir / "no-saspro.exe"))
         settings.set_obs_timezone("UTC")
         self.context = ApplicationContext.create_in_app_data(str(self.data_dir), settings)
         self.context.__enter__()

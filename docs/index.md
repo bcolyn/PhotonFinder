@@ -23,7 +23,7 @@ PhotonFinder (also known as AstroFileManager) is designed to help astronomers an
 - **Multiple Formats** - Handles various astronomical files produced by SGP, N.I.N.A., APT (AstroPhotography Tool) and more.
 
 ### Advanced Tools
-- **Batch Plate Solving** - Automated plate solving using ASTAP, Astrometry.net, or solve-field installed under WSL ([setup guide](solve-field-wsl.md))
+- **Batch Plate Solving** - Automated plate solving using ASTAP, Astrometry.net, solve-field installed under WSL ([setup guide](solve-field-wsl.md)), or Seti Astro Suite Pro's Gaia solver
 - **Calibration Frame Matching** - Find matching calibration files (darks, flats) for your light frames
 - **Data Export** - Export LIGHT files with calibration data for easy import into stacking programs
 - **File Management** - Find files used in processing and identify unprocessed data
