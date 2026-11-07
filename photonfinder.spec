@@ -63,7 +63,16 @@ excludes = [
     'py',
     'coverage',
     'doctest',
-    'matplotlib'
+    'matplotlib',
+    # Dev dependencies, installed in the build environment, that the analysis follows
+    # through optional imports. astropy imports IPython inside functions that only run
+    # within an IPython session; it would bring jedi (with ~5500 typeshed stubs), parso
+    # and pylint's astroid. httpx tries its CLI module, which needs rich and pygments,
+    # and falls back without it; FastMCP would use rich for logging only if the root
+    # logger had no handlers, and main.init_logging has added them by then.
+    'IPython',
+    'rich',
+    'pygments',
 ]
 # Not excludable from the app: photutils -> astropy.nddata -> scipy's array_api_compat
 # does `from numpy import *`, which imports numpy.testing, which imports unittest.
