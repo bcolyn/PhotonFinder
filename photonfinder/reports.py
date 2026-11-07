@@ -290,7 +290,7 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
     # Phase 2: single catalog query using the pixel union via json_each (no per-row UDF).
     t2 = time.monotonic()
     catalog_rows = list(db.execute_sql(
-        "SELECT rowid, ra, dec, healpix FROM catalog.catalog_entry"
+        "SELECT rowid, ra, dec, healpix FROM catalog_entry_all"
         " WHERE catalog = ? AND healpix IN (SELECT value FROM json_each(?))",
         [catalog, json.dumps(all_pixels)]
     ))

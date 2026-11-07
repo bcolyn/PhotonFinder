@@ -73,13 +73,53 @@ The Report menu provides various reporting and analysis tools.
 
 ### Aggregate Reports
 - **Target Report** - Total integration time per target, grouped by filter, telescope and camera
-- **Catalog Report** - Which catalog objects your plate-solved images cover
+- **Catalog Report** - Which catalog objects your plate-solved images cover. Besides the built-in catalogs you can use your own, see [Custom catalogs](#custom-catalogs)
 
 ### External Integration
 - **Telescopius Target List** - Compares one of your Telescopius observing lists with the current search and shows which targets have already been imaged. Requires a Telescopius API key (Settings > Telescopius)
 
 The Target Report, the Catalog Report and the Metadata Report's field extraction are also
 available to AI agents over MCP — see [mcp.md](mcp.md).
+
+#### Custom catalogs
+
+The **Custom** button next to the catalog selector in the Catalog Report lets you bring
+your own catalog, for example a list of targets you plan to image:
+
+- **Import CSV…** asks for a CSV file and a name for the catalog (the file name by
+  default), then adds it to the catalog selector. Importing again under the same name
+  replaces that catalog. The names of the built-in catalogs can't be used.
+- **Remove "*name*"…** deletes the selected custom catalog. It is only available for
+  catalogs you imported.
+
+Custom catalogs are stored in the library, so each library has its own. Besides the
+Catalog Report, they appear in image annotations, the object lookup and over MCP.
+
+The CSV file needs a header row. Columns are separated by commas or semicolons, and their
+names are not case sensitive:
+
+| Column | Required | Meaning |
+|---|---|---|
+| `id` (or `name`) | yes | The object's identifier within your catalog |
+| `ra` | yes | Right ascension: decimal degrees (`83.82`), or hours as `05:35:17.3`, `05 35 17.3` or `05h35m17.3s` |
+| `dec` | yes | Declination: decimal degrees (`-5.39`), or `-05:23:28`, `-05 23 28` or `-05d23m28s` |
+| `magnitude` | no | Brightness, shown in the report |
+| `size` | no | Size in arcminutes, shown in the report |
+| `axis_ratio`, `angle` | no | Shape, used to draw the object in image annotations |
+| `canonical_id` | no | Another name for the object, e.g. `NGC1976` for `M42` |
+
+Example:
+
+```csv
+name;ra;dec;magnitude;size
+M42;05:35:17.3;-05:23:28;4.0;85
+Heart Nebula;02:33:22;+61:26:36;6.5;150
+Spaghetti Nebula;85.25;27.97;;180
+```
+
+Rows that can't be read (an unreadable coordinate, a missing id, or an id that appears
+twice) are skipped, and the import tells you which lines were skipped and why. A file
+with no `id`, `ra` or `dec` column, or with no usable row at all, is not imported.
 
 ## Help Menu
 

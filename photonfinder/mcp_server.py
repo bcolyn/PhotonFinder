@@ -337,6 +337,21 @@ def query_file_details(context: ApplicationContext, rowid: int) -> dict:
         return details
 
 
+# The MCP server can't import catalogs (it is read-only), but the user can: tell the model
+# to point them there instead of giving up on a catalog PhotonFinder doesn't ship.
+CUSTOM_CATALOG_HINT = (
+    "If the user wants a catalog that is not listed, tell them they can add it themselves: "
+    "in PhotonFinder's Catalog Report (Report menu), the Custom button > Import CSV... "
+    "imports a CSV file with a header row and the columns id (or name), ra and dec "
+    "(optional: magnitude, size, axis_ratio, angle, canonical_id)."
+)
+
+
+def _unknown_catalog_error(catalog: str, known: list[str]) -> dict:
+    return {"error": f"Unknown catalog '{catalog}'. Valid catalogs: {', '.join(known)}. "
+                     + CUSTOM_CATALOG_HINT}
+
+
 def query_list_catalogs(context: ApplicationContext) -> list[str]:
     with _bound(context, CATALOG_MODELS):
         return [row[0] for row in
@@ -345,6 +360,9 @@ def query_list_catalogs(context: ApplicationContext) -> list[str]:
 
 
 def query_lookup_object(context: ApplicationContext, catalog: str, catalog_id: str) -> dict:
+    known = query_list_catalogs(context)
+    if catalog not in known:
+        return _unknown_catalog_error(catalog, known)
     with _bound(context, CATALOG_MODELS):
         entry = (CatalogEntry
                  .select()
@@ -430,7 +448,7 @@ def query_catalog_report(context: ApplicationContext, catalog: str,
 
     known = query_list_catalogs(context)
     if catalog not in known:
-        return {"error": f"Unknown catalog '{catalog}'. Valid catalogs: {', '.join(known)}."}
+        return _unknown_catalog_error(catalog, known)
 
     with _bound(context, CORE_MODELS):
         sc = _criteria_from_dict(criteria, "report_catalog_coverage")
@@ -804,8 +822,11 @@ def build_mcp(context: ApplicationContext):
         "yourself in an unfamiliar library. Use `get_project_details` to inspect a single project, "
         "`get_file_details` to inspect one file's full metadata and FITS header, and "
         "`lookup_object`/`list_catalogs` to resolve an object's RA/Dec from PhotonFinder's "
-        "local catalog database (no online lookups such as Simbad or Telescopius are "
-        "performed). `report_targets` and `report_catalog_coverage` give the same aggregates "
+        "local catalogs -- the built-in ones plus any the user imported -- (no online lookups "
+        "such as Simbad or Telescopius are performed). When the user asks about a catalog "
+        "`list_catalogs` does not show, don't substitute another one: tell them they can "
+        "import it as a CSV through the Custom button in the Catalog Report. "
+        "`report_targets` and `report_catalog_coverage` give the same aggregates "
         "as the application's Report menu -- total integration per target (matched by object "
         "name; no plate solving required), and which catalog objects the library covers "
         "(only considering plate-solved images) -- and `get_header_values` reads a few named "
@@ -927,7 +948,8 @@ def build_mcp(context: ApplicationContext):
 
         The same coverage report as the application's Catalog Report: each catalog entry is
         tested against the precise footprint of every matching image, not just its centre.
-        `catalog` is one of the names from `list_catalogs`.
+        `catalog` is one of the names from `list_catalogs`, which includes any custom
+        catalog the user imported (e.g. their own target list).
 
         Only **plate-solved** images are considered -- an unsolved library yields an empty
         report, so check `images_considered` before concluding you have not imaged something.
@@ -1023,15 +1045,22 @@ def build_mcp(context: ApplicationContext):
 
     @tool(annotations=read_only("List catalogs"))
     async def list_catalogs() -> list[str]:
-        """List the local catalog names available for `lookup_object` (e.g. "NGC", "IC",
-        "M"). Backed entirely by PhotonFinder's local catalog database; performs no
-        online lookups."""
+        """List the local catalog names available for `lookup_object` and
+        `report_catalog_coverage`: the built-in catalogs (e.g. "NGC", "IC", "Messier") plus
+        any custom catalogs the user imported from CSV. Backed entirely by PhotonFinder's
+        local data; performs no online lookups.
+
+        If the catalog the user asks about is missing, tell them they can import it: in
+        PhotonFinder's Catalog Report, Custom > Import CSV... takes a CSV with a header row
+        and the columns id (or name), ra and dec (optional: magnitude, size, axis_ratio,
+        angle, canonical_id)."""
         return await anyio.to_thread.run_sync(query_list_catalogs, context)
 
     @tool(annotations=read_only("Look up object"))
     async def lookup_object(catalog: str, catalog_id: str) -> dict:
-        """Resolve an object's RA/Dec (degrees) from PhotonFinder's local catalog
-        database only -- no online services (Simbad, Telescopius, etc.) are contacted.
+        """Resolve an object's RA/Dec (degrees) from PhotonFinder's local catalogs only (the
+        built-in ones plus any the user imported) -- no online services (Simbad,
+        Telescopius, etc.) are contacted.
 
         `catalog` must be one of the names returned by `list_catalogs`. `catalog_id` is
         matched against either the catalog's own identifier or its canonical identifier

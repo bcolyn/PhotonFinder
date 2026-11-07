@@ -351,6 +351,44 @@ class LibraryDatabase(SqliteDatabase):  # pylint: disable=abstract-method  # SQL
     def bind_ctx(self, models, bind_refs=True, bind_backrefs=True):
         return nullcontext()
 
+    # Built-in and custom catalogs as one table. TEMP because a view stored in main may not
+    # refer to an attached schema, which makes it per connection: it is created wherever the
+    # catalog is attached. Custom rowids are negated so both id spaces fit one key. SQLite
+    # pushes the catalog/healpix filters into each arm, so both keep their indexes.
+    _CATALOG_COLUMNS = "ra, dec, catalog, catalog_id, canonical_id, size, axis_ratio, angle, magnitude, healpix"
+    _BUILTIN_CATALOG_SQL = f"SELECT rowid AS rowid, {_CATALOG_COLUMNS} FROM catalog.catalog_entry"
+    _CUSTOM_CATALOG_SQL = f"SELECT -rowid AS rowid, {_CATALOG_COLUMNS} FROM main.custom_catalog_entry"
+
+    @classmethod
+    def _create_catalog_view(cls, conn) -> None:
+        # A library always has the custom table (open_database creates it), but a connection
+        # can see a main without it: :memory: gives every thread its own empty database. The
+        # view then shows the built-in catalogs alone rather than failing every catalog read.
+        has_custom = conn.execute(
+            "SELECT 1 FROM main.sqlite_master WHERE type = 'table' AND name = 'custom_catalog_entry'"
+        ).fetchone()
+        body = cls._BUILTIN_CATALOG_SQL
+        if has_custom:
+            body += " UNION ALL " + cls._CUSTOM_CATALOG_SQL
+        conn.execute("DROP VIEW IF EXISTS temp.catalog_entry_all")
+        conn.execute("CREATE TEMP VIEW catalog_entry_all AS " + body)
+
+    def _attach_databases(self, conn):
+        super()._attach_databases(conn)
+        if 'catalog' in self._attached:
+            self._create_catalog_view(conn)
+
+    def attach(self, filename, name):
+        attached = super().attach(filename, name)
+        if attached and name == 'catalog' and not self.is_closed():
+            self._create_catalog_view(self.connection())
+        return attached
+
+    def detach(self, name):
+        if name == 'catalog' and not self.is_closed():
+            self.execute_sql("DROP VIEW IF EXISTS temp.catalog_entry_all")
+        return super().detach(name)
+
 
 class ApplicationContext:
 

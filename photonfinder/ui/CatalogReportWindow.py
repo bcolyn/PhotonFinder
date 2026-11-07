@@ -1,13 +1,16 @@
 import csv
 import logging
 from copy import deepcopy
+from pathlib import Path
 
 from PySide6.QtCore import Signal, Qt, Slot
 from PySide6.QtGui import QBrush, QColor
-from PySide6.QtWidgets import QMainWindow, QTreeWidgetItem, QMenu, QHeaderView, QFileDialog, QMessageBox
+from PySide6.QtWidgets import (QMainWindow, QTreeWidgetItem, QMenu, QHeaderView, QFileDialog, QMessageBox,
+                               QInputDialog, QLineEdit)
 
-from photonfinder import reports
-from photonfinder.core import ApplicationContext
+from photonfinder import custom_catalog, reports
+from photonfinder.core import ApplicationContext, library_busy_message
+from photonfinder.custom_catalog import CatalogImportError
 from photonfinder.models import SearchCriteria, CatalogEntry, RootAndPath
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
 from photonfinder.ui.generated.CatalogReportWindow_ui import Ui_CatalogReportWindow
@@ -93,13 +96,19 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
         self.filterEdit.textChanged.connect(self._apply_text_filter)
         self.saveButton.clicked.connect(self._save_report)
 
+        custom_menu = QMenu(self.customButton)
+        custom_menu.addAction("Import CSV…", self._import_custom_catalog)
+        self._remove_action = custom_menu.addAction("Remove", self._remove_custom_catalog)
+        custom_menu.aboutToShow.connect(self._update_custom_menu)
+        self.customButton.setMenu(custom_menu)
+
         self.on_tabs_changed()
         self._populate_catalog_combo()
 
     def on_tabs_changed(self):
         self.tabname_label.setText(self.search_panel.title)
 
-    def _populate_catalog_combo(self):
+    def _populate_catalog_combo(self, select: str | None = None):
         catalogs = list(
             CatalogEntry.select(CatalogEntry.catalog)
             .distinct()
@@ -107,8 +116,11 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
             .tuples()
         )
         self.catalogCombo.blockSignals(True)
+        self.catalogCombo.clear()
         for (name,) in catalogs:
             self.catalogCombo.addItem(name)
+        if select:
+            self.context.settings.set_last_catalog(select)
         last = self.context.settings.get_last_catalog()
         idx = self.catalogCombo.findText(last)
         if idx >= 0:
@@ -116,6 +128,69 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
         self.catalogCombo.blockSignals(False)
         if self.catalogCombo.count() > 0:
             self.load_report()
+
+    def _update_custom_menu(self):
+        current = self.catalogCombo.currentText()
+        is_custom = bool(current) and custom_catalog.is_custom_catalog(current)
+        self._remove_action.setText(f"Remove \"{current}\"…" if is_custom else "Remove")
+        self._remove_action.setEnabled(is_custom)
+
+    def _import_custom_catalog(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Import Custom Catalog", "",
+                                              "CSV files (*.csv *.txt);;All files (*)")
+        if not path:
+            return
+        try:
+            parsed = custom_catalog.parse_file(path)
+        except (CatalogImportError, OSError) as e:
+            QMessageBox.warning(self, "Import Custom Catalog", f"Could not import {path}:\n{e}")
+            return
+
+        name = Path(path).stem
+        while True:
+            name, ok = QInputDialog.getText(self, "Import Custom Catalog", "Catalog name:",
+                                            QLineEdit.EchoMode.Normal, name)
+            name = name.strip()
+            if not ok:
+                return
+            if not name:
+                continue
+            if custom_catalog.is_builtin_name(self.context, name):
+                QMessageBox.warning(self, "Import Custom Catalog",
+                                    f"'{name}' is the name of a built-in catalog. Choose another name.")
+                continue
+            if custom_catalog.is_custom_catalog(name):
+                answer = QMessageBox.question(self, "Import Custom Catalog", f"Replace '{name}'?")
+                if answer != QMessageBox.StandardButton.Yes:
+                    continue
+            break
+
+        try:
+            stored = custom_catalog.import_catalog(self.context, name, parsed)
+        except CatalogImportError as e:
+            QMessageBox.warning(self, "Import Custom Catalog", str(e))
+            return
+        if not stored:
+            QMessageBox.warning(self, "Import Custom Catalog", self._busy_message())
+            return
+        QMessageBox.information(self, "Import Custom Catalog", f"'{name}': {parsed.summary()}")
+        self._populate_catalog_combo(select=name)
+
+    def _remove_custom_catalog(self):
+        name = self.catalogCombo.currentText()
+        if not name or not custom_catalog.is_custom_catalog(name):
+            return
+        answer = QMessageBox.question(self, "Remove Custom Catalog",
+                                      f"Remove the custom catalog '{name}' from this library?")
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if not custom_catalog.remove_catalog(self.context, name):
+            QMessageBox.warning(self, "Remove Custom Catalog", self._busy_message())
+            return
+        self._populate_catalog_combo()
+
+    def _busy_message(self) -> str:
+        return library_busy_message(self.context.library_write_lock.busy_with() or "Another job")
 
     def _on_catalog_changed(self, text: str):
         if text:

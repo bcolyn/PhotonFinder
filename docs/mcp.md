@@ -146,10 +146,13 @@ Read-only, always available once it is running:
 | `list_library_roots` | The configured library roots, with the description you gave each one |
 | `list_projects` / `get_project_details` | Projects and their summaries |
 | `list_distinct_values` | Valid values for filter, type, camera, telescope, object name |
-| `list_catalogs` / `lookup_object` | Resolve an object's RA/Dec from the local catalog |
+| `list_catalogs` / `lookup_object` | Resolve an object's RA/Dec from the local catalogs, including your [custom catalogs](menu-items.md#custom-catalogs) |
 
-`lookup_object` uses PhotonFinder's bundled catalog database only — no online service
+`lookup_object` uses PhotonFinder's bundled catalogs and your imported ones only — no online service
 (Simbad, Telescopius) is ever contacted.
+If you ask about a catalog PhotonFinder doesn't have, the agent is told to suggest
+importing it as a [custom catalog](menu-items.md#custom-catalogs) rather than substituting
+another one. The MCP server itself can't import catalogs.
 
 ### Describing your libraries
 

@@ -15,27 +15,30 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                  'way to orient yourself in an unfamiliar library. Use `get_project_details` to '
                  "inspect a single project, `get_file_details` to inspect one file's full metadata "
                  "and FITS header, and `lookup_object`/`list_catalogs` to resolve an object's "
-                 "RA/Dec from PhotonFinder's local catalog database (no online lookups such as "
-                 'Simbad or Telescopius are performed). `report_targets` and '
-                 "`report_catalog_coverage` give the same aggregates as the application's Report "
-                 'menu -- total integration per target (matched by object name; no plate solving '
-                 'required), and which catalog objects the library covers (only considering '
-                 'plate-solved images) -- and `get_header_values` reads a few named FITS/model/WCS '
-                 'fields across many files at once instead of one whole header at a time. '
-                 '`report_targets`, `report_catalog_coverage` and `get_header_values` all take the '
-                 'same optional `criteria` object as `search_files`, so scope them to the files '
-                 'you care about (an object, a filter, a date range, a library root...) instead of '
-                 'running them over the whole library. Those three also accept `format="csv"`, '
-                 'which returns the same rows far more compactly. Everything is answered from a '
-                 'local, indexed database, so you can assume most calls are fast: prefer several '
-                 'narrow, targeted calls (discover values first, then filter) over one broad call '
-                 'you have to page through. The exceptions are `report_catalog_coverage`, which '
-                 'can take tens of seconds on a large library, and `plate_solve_files`, which runs '
-                 'an external solver per file. Every one of these is read-only, and PhotonFinder '
-                 'never writes files on your behalf: report content is returned to you to save as '
-                 'you see fit. `plate_solve_files` is the sole exception and the user must opt '
-                 'into it in Settings; it plate-solves up to 10 files at once and writes the '
-                 'resulting WCS/coordinates to the library.',
+                 "RA/Dec from PhotonFinder's local catalogs -- the built-in ones plus any the user "
+                 'imported -- (no online lookups such as Simbad or Telescopius are performed). '
+                 "When the user asks about a catalog `list_catalogs` does not show, don't "
+                 'substitute another one: tell them they can import it as a CSV through the Custom '
+                 'button in the Catalog Report. `report_targets` and `report_catalog_coverage` '
+                 "give the same aggregates as the application's Report menu -- total integration "
+                 'per target (matched by object name; no plate solving required), and which '
+                 'catalog objects the library covers (only considering plate-solved images) -- and '
+                 '`get_header_values` reads a few named FITS/model/WCS fields across many files at '
+                 'once instead of one whole header at a time. `report_targets`, '
+                 '`report_catalog_coverage` and `get_header_values` all take the same optional '
+                 '`criteria` object as `search_files`, so scope them to the files you care about '
+                 '(an object, a filter, a date range, a library root...) instead of running them '
+                 'over the whole library. Those three also accept `format="csv"`, which returns '
+                 'the same rows far more compactly. Everything is answered from a local, indexed '
+                 'database, so you can assume most calls are fast: prefer several narrow, targeted '
+                 'calls (discover values first, then filter) over one broad call you have to page '
+                 'through. The exceptions are `report_catalog_coverage`, which can take tens of '
+                 'seconds on a large library, and `plate_solve_files`, which runs an external '
+                 'solver per file. Every one of these is read-only, and PhotonFinder never writes '
+                 'files on your behalf: report content is returned to you to save as you see fit. '
+                 '`plate_solve_files` is the sole exception and the user must opt into it in '
+                 'Settings; it plate-solves up to 10 files at once and writes the resulting '
+                 'WCS/coordinates to the library.',
  'tools': [{'name': 'search_files',
             'description': 'Search the file library.\n'
                            '\n'
@@ -1600,7 +1603,9 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            'catalog entry is\n'
                            'tested against the precise footprint of every matching image, not just '
                            'its centre.\n'
-                           '`catalog` is one of the names from `list_catalogs`.\n'
+                           '`catalog` is one of the names from `list_catalogs`, which includes any '
+                           'custom\n'
+                           'catalog the user imported (e.g. their own target list).\n'
                            '\n'
                            'Only **plate-solved** images are considered -- an unsolved library '
                            'yields an empty\n'
@@ -3254,20 +3259,30 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                             'type': 'object'},
             'annotations': {'title': 'File details', 'readOnlyHint': True, 'openWorldHint': False}},
            {'name': 'list_catalogs',
-            'description': 'List the local catalog names available for `lookup_object` (e.g. '
-                           '"NGC", "IC",\n'
-                           '"M"). Backed entirely by PhotonFinder\'s local catalog database; '
-                           'performs no\n'
-                           'online lookups.',
+            'description': 'List the local catalog names available for `lookup_object` and\n'
+                           '`report_catalog_coverage`: the built-in catalogs (e.g. "NGC", "IC", '
+                           '"Messier") plus\n'
+                           'any custom catalogs the user imported from CSV. Backed entirely by '
+                           "PhotonFinder's\n"
+                           'local data; performs no online lookups.\n'
+                           '\n'
+                           'If the catalog the user asks about is missing, tell them they can '
+                           'import it: in\n'
+                           "PhotonFinder's Catalog Report, Custom > Import CSV... takes a CSV with "
+                           'a header row\n'
+                           'and the columns id (or name), ra and dec (optional: magnitude, size, '
+                           'axis_ratio,\n'
+                           'angle, canonical_id).',
             'inputSchema': {'properties': {}, 'title': 'list_catalogsArguments', 'type': 'object'},
             'annotations': {'title': 'List catalogs',
                             'readOnlyHint': True,
                             'openWorldHint': False}},
            {'name': 'lookup_object',
             'description': "Resolve an object's RA/Dec (degrees) from PhotonFinder's local "
-                           'catalog\n'
-                           'database only -- no online services (Simbad, Telescopius, etc.) are '
-                           'contacted.\n'
+                           'catalogs only (the\n'
+                           'built-in ones plus any the user imported) -- no online services '
+                           '(Simbad,\n'
+                           'Telescopius, etc.) are contacted.\n'
                            '\n'
                            '`catalog` must be one of the names returned by `list_catalogs`. '
                            '`catalog_id` is\n'

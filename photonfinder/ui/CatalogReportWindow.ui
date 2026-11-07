@@ -54,6 +54,19 @@
        <widget class="QComboBox" name="catalogCombo"/>
       </item>
       <item>
+       <widget class="QToolButton" name="customButton">
+        <property name="toolTip">
+         <string>Import your own catalog from a CSV file, or remove one you imported</string>
+        </property>
+        <property name="text">
+         <string>Custom</string>
+        </property>
+        <property name="popupMode">
+         <enum>QToolButton::ToolButtonPopupMode::InstantPopup</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
        <spacer name="horizontalSpacer">
         <property name="orientation">
          <enum>Qt::Orientation::Horizontal</enum>

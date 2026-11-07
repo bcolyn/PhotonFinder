@@ -968,10 +968,38 @@ def diagnosis_counts(search_criteria: SearchCriteria) -> dict[str, int]:
     return counts
 
 
-CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS, Project, ProjectFile, ImageStats]
+class CustomCatalogEntry(Model):
+    """A catalog the user imported from CSV (see custom_catalog.py). Lives in the library
+    database because the bundled catalog.db is read-only. Same columns as CatalogEntry;
+    readers see both through the catalog_entry_all view, never this table directly."""
+    rowid = RowIDField()
+    ra = FloatField()
+    dec = FloatField()
+    catalog = TextField()
+    catalog_id = TextField()
+    canonical_id = TextField(null=True)
+    size = FloatField(default=0.0)
+    axis_ratio = FloatField(null=True)
+    angle = FloatField(null=True)
+    magnitude = FloatField(null=True)
+    healpix = IntegerField()
+
+    class Meta:
+        database = None
+        table_name = 'custom_catalog_entry'
+        indexes = (
+            (('catalog', 'catalog_id'), True),
+            (('healpix',), False),
+        )
+
+
+CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS, Project, ProjectFile, ImageStats,
+               CustomCatalogEntry]
 
 
 class CatalogEntry(Model):
+    """Built-in and custom catalogs together. Reads the per-connection TEMP view
+    catalog_entry_all (see LibraryDatabase); custom entries have negative rowids."""
     rowid = RowIDField()
     ra = FloatField()
     dec = FloatField()
@@ -985,8 +1013,7 @@ class CatalogEntry(Model):
     healpix = IntegerField()
 
     class Meta:
-        schema = 'catalog'
-        table_name = 'catalog_entry'
+        table_name = 'catalog_entry_all'
 
 
 CATALOG_MODELS = [CatalogEntry]
