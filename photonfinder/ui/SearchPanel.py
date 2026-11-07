@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame
 from photonfinder import plate_solution
 from photonfinder.core import ApplicationContext, Change, library_busy_message
 from photonfinder.filesystem import is_compressible, decode_header_blob
-from photonfinder.library_query import diagnosis_counts, distinct_values, search_row_stat
+from photonfinder.library_query import (
+    COLUMN_INDEX, RESULT_COLUMNS, cell, diagnosis_counts, distinct_values, search_row_stat,
+)
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
     ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, PROJECT_NAME_SEP
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask, ImageAnalysisTask
@@ -29,7 +31,7 @@ from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .MetadataReportDialog import MetadataReportDialog
 from .PlateSolveDialog import PlateSolveDialog
 from .ProgressDialog import ProgressDialog
-from .common import _format_ra, _format_dec, _format_date, _utc_to_local, _local_to_utc, _format_file_size, _format_timestamp, ensure_header_widths, \
+from .common import _format_ra, _format_dec, _format_date, _utc_to_local, _local_to_utc, ensure_header_widths, \
     ColumnVisibilityController
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
@@ -93,11 +95,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Initialize the data view model
         self.data_model = QStandardItemModel(self)
-        self.data_model.setHorizontalHeaderLabels([
-            "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
-            "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved",
-            "Projects", "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation", "Diagnosis",
-        ])
+        self.data_model.setHorizontalHeaderLabels([column.label for column in RESULT_COLUMNS])
         self.proxy_model = _FileDragProxyModel()
         self.proxy_model.setSortRole(SORT_ROLE)
         self.proxy_model.setSourceModel(self.data_model)
@@ -452,131 +450,15 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # Add results to the data model
 
         for file in results:
-            # Create row items
-            name_item = QStandardItem(file.name)
-            name_item.setData(file.name.lower(), SORT_ROLE)
-            path_item = QStandardItem(file.path)
-            path_item.setData(file.path.lower(), SORT_ROLE)
-
-            # Format size (convert bytes to KB, MB, etc.)
-            size_str = _format_file_size(file.size)
-            size_item = QStandardItem(size_str)
-            size_item.setData(file.size, SORT_ROLE)
-
-            # Get image data if available
-            type_item = QStandardItem("")
-            filter_item = QStandardItem("")
-            exposure_item = QStandardItem("")
-            gain_item = QStandardItem("")
-            offset_item = QStandardItem("")
-            binning_item = QStandardItem("")
-            set_temp_item = QStandardItem("")
-            camera_item = QStandardItem("")
-            telescope_item = QStandardItem("")
-            object_item = QStandardItem("")
-            date_obs_item = QStandardItem("")
-            ra_item = QStandardItem("")
-            dec_item = QStandardItem("")
-            solved_item = QStandardItem("True" if hasattr(file, 'has_wcs') and file.has_wcs else "False")
-            solved_item.setData(solved_item.text(), SORT_ROLE)
-
-            projects = ", ".join(file.projectfile.project_names.split(PROJECT_NAME_SEP)) \
-                if (hasattr(file, "projectfile") and hasattr(file.projectfile, "project_names")
-                    and file.projectfile.project_names) else ""
-            projects_item = QStandardItem(projects)
-            projects_item.setData(projects, SORT_ROLE)
-
-            localtime: datetime
-            try:
-                if hasattr(file, 'image') and file.image:
-                    if file.image.image_type is not None:
-                        type_item.setText(file.image.image_type)
-                        type_item.setData(file.image.image_type, SORT_ROLE)
-                    if file.image.filter is not None:
-                        filter_item.setText(file.image.filter)
-                        filter_item.setData(file.image.filter, SORT_ROLE)
-                    if file.image.exposure is not None:
-                        exposure_item.setText(str(file.image.exposure))
-                        exposure_item.setData(file.image.exposure, SORT_ROLE)
-                    if file.image.gain is not None:
-                        gain_item.setText(str(file.image.gain))
-                        gain_item.setData(file.image.gain, SORT_ROLE)
-                    if file.image.offset is not None:
-                        offset_item.setText(str(file.image.offset))
-                        offset_item.setData(file.image.offset, SORT_ROLE)
-                    if file.image.binning is not None:
-                        binning_item.setText(str(file.image.binning))
-                        binning_item.setData(file.image.binning, SORT_ROLE)
-                    if file.image.set_temp is not None:
-                        set_temp_item.setText(str(file.image.set_temp))
-                        set_temp_item.setData(file.image.set_temp, SORT_ROLE)
-                    if file.image.camera is not None:
-                        camera_item.setText(file.image.camera)
-                        camera_item.setData(file.image.camera, SORT_ROLE)
-                    if file.image.telescope is not None:
-                        telescope_item.setText(file.image.telescope)
-                        telescope_item.setData(file.image.telescope, SORT_ROLE)
-                    if file.image.object_name is not None:
-                        object_item.setText(file.image.object_name)
-                        object_item.setData(file.image.object_name, SORT_ROLE)
-                    if file.image.date_obs is not None:
-                        utctime = file.image.date_obs.replace(tzinfo=timezone.utc)
-                        localtime = utctime.astimezone(tz=None)
-                        date_obs_item.setText(_format_date(localtime))
-                        date_obs_item.setData(localtime, SORT_ROLE)
-                    if file.image.coord_ra is not None:
-                        ra_item.setText(_format_ra(file.image.coord_ra))
-                        ra_item.setData(file.image.coord_ra, SORT_ROLE)
-                    if file.image.coord_dec is not None:
-                        dec_item.setText(_format_dec(file.image.coord_dec))
-                        dec_item.setData(file.image.coord_dec, SORT_ROLE)
-            except Exception as e:
-                logging.error(f"Error getting image data: {e}")
-
-            # Format date from mtime_millis
-            date_item = QStandardItem(_format_timestamp(file.mtime_millis))
-            date_item.setData(file.mtime_millis, SORT_ROLE)
-
-            # Store the full filename in the name_item's data
-            name_item.setData(file, ROWID_ROLE)
-
-            # Columns 19-24: ImageStats (values come from aliased JOIN columns)
-            bg_median_item = QStandardItem("")
-            bg_rms_item = QStandardItem("")
-            stars_item = QStandardItem("")
-            fwhm_item = QStandardItem("")
-            elongation_item = QStandardItem("")
-            bg_median = search_row_stat(file, 'stats_background_median')
-            bg_rms = search_row_stat(file, 'stats_background_rms')
-            star_count = search_row_stat(file, 'stats_star_count')
-            fwhm = search_row_stat(file, 'stats_fwhm_median')
-            elongation = search_row_stat(file, 'stats_elongation_median')
-            if bg_median is not None:
-                bg_median_item.setText(f"{bg_median:.1f}")
-                bg_median_item.setData(bg_median, SORT_ROLE)
-            if bg_rms is not None:
-                bg_rms_item.setText(f"{bg_rms:.2f}")
-                bg_rms_item.setData(bg_rms, SORT_ROLE)
-            if star_count is not None:
-                stars_item.setText(str(star_count))
-                stars_item.setData(star_count, SORT_ROLE)
-            if fwhm is not None:
-                fwhm_item.setText(f"{fwhm:.2f}")
-                fwhm_item.setData(fwhm, SORT_ROLE)
-            if elongation is not None:
-                elongation_item.setText(f"{elongation:.3f}")
-                elongation_item.setData(elongation, SORT_ROLE)
-            diagnosis = search_row_stat(file, 'stats_diagnosis') or ""
-            diagnosis_item = QStandardItem(diagnosis)
-            diagnosis_item.setData(diagnosis, SORT_ROLE)
-
-            # Add row to model
-            self.data_model.appendRow([
-                name_item, type_item, filter_item, exposure_item, gain_item, offset_item,
-                binning_item, set_temp_item, camera_item, telescope_item, object_item, date_obs_item,
-                path_item, size_item, date_item, ra_item, dec_item, solved_item, projects_item,
-                bg_median_item, bg_rms_item, stars_item, fwhm_item, elongation_item, diagnosis_item,
-            ])
+            items = []
+            for column in RESULT_COLUMNS:
+                text, sort_value = cell(column, column.value(file))
+                item = QStandardItem(text)
+                if sort_value is not None:
+                    item.setData(sort_value, SORT_ROLE)
+                items.append(item)
+            items[0].setData(file, ROWID_ROLE)
+            self.data_model.appendRow(items)
 
         # Resize columns to content
         if page == 0:
@@ -925,15 +807,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         pointing position again, if it has one."""
         with self.context.database.bind_ctx(CORE_MODELS):
             ra, dec = plate_solution.clear(file)
-        # The source model: a sorted proxy moves the row as soon as a sort value changes.
-        model = self.data_model
+        # The source model's row: a sorted proxy moves the row as soon as a sort value changes.
         source_row = self.proxy_model.mapToSource(self.proxy_model.index(model_row, 0)).row()
-        model.setData(model.index(source_row, 15), _format_ra(ra) if ra is not None else "", Qt.DisplayRole)
-        model.setData(model.index(source_row, 15), ra, SORT_ROLE)
-        model.setData(model.index(source_row, 16), _format_dec(dec) if dec is not None else "", Qt.DisplayRole)
-        model.setData(model.index(source_row, 16), dec, SORT_ROLE)
-        model.setData(model.index(source_row, 17), "False", Qt.DisplayRole)
-        model.setData(model.index(source_row, 17), "False", SORT_ROLE)
+        _set_cells(self.data_model, source_row, coord_ra=ra, coord_dec=dec, solved="False")
 
     def on_item_double_clicked(self, index):
         """Handle double-click on an item in the data view."""
@@ -1734,21 +1610,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 continue
             r = result_map[file]
 
-            def _set(col, text, val, _row=row):
-                model.setData(model.index(_row, col), text, Qt.DisplayRole)
-                model.setData(model.index(_row, col), val, SORT_ROLE)
-
-            _set(24, "", "")  # re-analysing clears the stored diagnosis
-            if r.background_median is not None:
-                _set(19, f"{r.background_median:.1f}", r.background_median)
-            if r.background_rms is not None:
-                _set(20, f"{r.background_rms:.2f}", r.background_rms)
-            if r.star_count is not None:
-                _set(21, str(r.star_count), r.star_count)
-            if r.fwhm_median is not None:
-                _set(22, f"{r.fwhm_median:.2f}", r.fwhm_median)
-            if r.elongation_median is not None:
-                _set(23, f"{r.elongation_median:.3f}", r.elongation_median)
+            measured = dict(background=r.background_median, background_rms=r.background_rms,
+                            star_count=r.star_count, fwhm=r.fwhm_median, elongation=r.elongation_median)
+            # Re-analysing clears the stored diagnosis; a value not measured keeps its cell.
+            _set_cells(model, row, diagnosis="", **{k: v for k, v in measured.items() if v is not None})
 
     def on_files_solved(self, task: PlateSolveTask):
         solved_files = {f: f for f in task.solved_files}
@@ -1757,18 +1622,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             index = model.index(row, 0)
             file = solved_files.get(index.data(ROWID_ROLE))
             if file is not None:
-                ra_item = model.index(row, 15)
-                dec_item = model.index(row, 16)
-                solved_item = model.index(row, 17)
-
                 image = getattr(file, 'image', None)
                 if image:
-                    model.setData(ra_item, _format_ra(image.coord_ra), Qt.DisplayRole)
-                    model.setData(ra_item, image.coord_ra, SORT_ROLE)
-                    model.setData(dec_item, _format_dec(image.coord_dec), Qt.DisplayRole)
-                    model.setData(dec_item, image.coord_dec, SORT_ROLE)
-                model.setData(solved_item, "True", Qt.DisplayRole)
-                model.setData(solved_item, "True", SORT_ROLE)
+                    _set_cells(model, row, coord_ra=image.coord_ra, coord_dec=image.coord_dec)
+                _set_cells(model, row, solved="True")
 
         if solved_files and self.search_criteria.plate_solved is not None:
             self.refresh_data_grid()
@@ -1885,6 +1742,16 @@ class FilterButton(QPushButton):
             self.right_clicked.emit()
         else:
             super().mouseReleaseEvent(e)
+
+
+def _set_cells(model, source_row: int, **values):
+    """Set cells of a row of the source model (not the sorted proxy, which moves rows as sort
+    values change) by column key, formatted as the grid formats them."""
+    for key, value in values.items():
+        text, sort_value = cell(RESULT_COLUMNS[COLUMN_INDEX[key]], value)
+        index = model.index(source_row, COLUMN_INDEX[key])
+        model.setData(index, text, Qt.DisplayRole)
+        model.setData(index, sort_value, SORT_ROLE)
 
 
 class AdvancedFilter(Enum):

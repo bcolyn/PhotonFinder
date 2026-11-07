@@ -17,12 +17,13 @@ import logging
 import operator
 from datetime import datetime
 from functools import reduce
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 
 import astropy.units as u
 from peewee import JOIN, SQL, chunked, fn
 
 from photonfinder.core import hp
+from photonfinder.formatting import _format_date, _format_dec, _format_file_size, _format_ra, _format_timestamp, _utc_to_local
 from photonfinder.models import (
     DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_OK, DIAGNOSIS_SEPARATOR, DIAGNOSIS_VALUES, PROJECT_NAME_SEP, File, FileWCS, FitsHeader, Image, ImageStats,
     LibraryRoot, Project, ProjectFile, SearchCriteria, norm_db_path,
@@ -31,33 +32,103 @@ from photonfinder.models import (
 # The order of files when the criteria ask for no sort.
 DEFAULT_ORDER = (File.root, File.path, File.name)
 
-# Named sort targets for SearchCriteria.sorting_field -- independent of the GUI's
-# result-table column order (see SearchCriteria.sorting_index), so external callers
-# (e.g. the MCP server) can request a sort without knowing that layout.
-SORTABLE_FIELDS = {
-    "name": File.name,
-    "path": File.path,
-    "size": File.size,
-    "mtime": File.mtime_millis,
-    "type": Image.image_type,
-    "filter": Image.filter,
-    "exposure": Image.exposure,
-    "gain": Image.gain,
-    "offset": Image.offset,
-    "binning": Image.binning,
-    "temperature": Image.set_temp,
-    "camera": Image.camera,
-    "telescope": Image.telescope,
-    "object_name": Image.object_name,
-    "date_obs": Image.date_obs,
-    "coord_ra": Image.coord_ra,
-    "coord_dec": Image.coord_dec,
-    "star_count": ImageStats.star_count,
-    "fwhm": ImageStats.fwhm_median,
-    "elongation": ImageStats.elongation_median,
-    "background": ImageStats.background_median,
-    "background_rms": ImageStats.background_rms,
-}
+# The search result columns, in grid order. Each is selected by the search query, sorted on by
+# its key (SearchCriteria.sorting_field, which MCP callers use) or by its position
+# (SearchCriteria.sorting_index, which the grid uses and saved searches store), and shown in the
+# grid with its label. Positions and labels must stay as they are: saved searches store the
+# sort position, and column visibility and presets are stored by label.
+
+# Project names per file, joined into the search query once per search.
+_PROJECT_NAMES = (
+    ProjectFile
+    .select(ProjectFile.file.alias('file_id'),
+            fn.GROUP_CONCAT(Project.name, PROJECT_NAME_SEP).alias('project_names'))
+    .join(Project)
+    .group_by(ProjectFile.file)
+)
+
+
+def search_row_stat(row: File, alias: str):
+    """An aliased ImageStats column of a search row. Peewee keeps it on the joined model."""
+    return getattr(getattr(row, 'imagestats', None), alias, None)
+
+
+def _image_value(name):
+    def value(row):
+        image = row.__dict__.get('image')
+        return getattr(image, name, None) if image is not None else None
+    return value
+
+
+def _project_names(row) -> list:
+    names = getattr(getattr(row, 'projectfile', None), 'project_names', None)
+    return names.split(PROJECT_NAME_SEP) if names else []
+
+
+def _date_obs_local(row):
+    date_obs = _image_value('date_obs')(row)
+    return _utc_to_local(date_obs) if date_obs is not None else None
+
+
+def _number_text(digits):
+    return lambda value: f"{value:.{digits}f}"
+
+
+class ResultColumn(NamedTuple):
+    key: str                       # the sort name (SearchCriteria.sorting_field)
+    label: str                     # the grid header
+    field: object                  # what the search query selects, and sorts on
+    value: Callable                # a result row -> the cell's value (None: empty cell)
+    text: Callable = str           # a non-None value -> the cell's text
+    sort_value: Callable = None    # a value -> what the grid sorts loaded rows by (default: the value)
+
+
+RESULT_COLUMNS = (
+    ResultColumn("name", "File name", File.name, lambda row: row.name, sort_value=str.lower),
+    ResultColumn("type", "Type", Image.image_type, _image_value('image_type')),
+    ResultColumn("filter", "Filter", Image.filter, _image_value('filter')),
+    ResultColumn("exposure", "Exposure", Image.exposure, _image_value('exposure')),
+    ResultColumn("gain", "Gain", Image.gain, _image_value('gain')),
+    ResultColumn("offset", "Offset", Image.offset, _image_value('offset')),
+    ResultColumn("binning", "Binning", Image.binning, _image_value('binning')),
+    ResultColumn("temperature", "Set Temp", Image.set_temp, _image_value('set_temp')),
+    ResultColumn("camera", "Camera", Image.camera, _image_value('camera')),
+    ResultColumn("telescope", "Telescope", Image.telescope, _image_value('telescope')),
+    ResultColumn("object_name", "Object", Image.object_name, _image_value('object_name')),
+    ResultColumn("date_obs", "Observation Date", Image.date_obs, _date_obs_local, text=_format_date),
+    ResultColumn("path", "Path", File.path, lambda row: row.path, sort_value=str.lower),
+    ResultColumn("size", "Size", File.size, lambda row: row.size, text=_format_file_size),
+    ResultColumn("mtime", "Modified", File.mtime_millis, lambda row: row.mtime_millis, text=_format_timestamp),
+    ResultColumn("coord_ra", "RA", Image.coord_ra, _image_value('coord_ra'), text=_format_ra),
+    ResultColumn("coord_dec", "DEC", Image.coord_dec, _image_value('coord_dec'), text=_format_dec),
+    ResultColumn("solved", "Solved", FileWCS.wcs.is_null(False).alias('has_wcs'),
+                 lambda row: "True" if getattr(row, 'has_wcs', False) else "False"),
+    ResultColumn("projects", "Projects", _PROJECT_NAMES.c.project_names.alias('project_names'),
+                 lambda row: ", ".join(_project_names(row))),
+    ResultColumn("background", "Bg Median", ImageStats.background_median.alias('stats_background_median'),
+                 lambda row: search_row_stat(row, 'stats_background_median'), text=_number_text(1)),
+    ResultColumn("background_rms", "Bg RMS", ImageStats.background_rms.alias('stats_background_rms'),
+                 lambda row: search_row_stat(row, 'stats_background_rms'), text=_number_text(2)),
+    ResultColumn("star_count", "Stars", ImageStats.star_count.alias('stats_star_count'),
+                 lambda row: search_row_stat(row, 'stats_star_count')),
+    ResultColumn("fwhm", "FWHM", ImageStats.fwhm_median.alias('stats_fwhm_median'),
+                 lambda row: search_row_stat(row, 'stats_fwhm_median'), text=_number_text(2)),
+    ResultColumn("elongation", "Elongation", ImageStats.elongation_median.alias('stats_elongation_median'),
+                 lambda row: search_row_stat(row, 'stats_elongation_median'), text=_number_text(3)),
+    ResultColumn("diagnosis", "Diagnosis", ImageStats.diagnosis.alias('stats_diagnosis'),
+                 lambda row: search_row_stat(row, 'stats_diagnosis') or ""),
+)
+COLUMN_INDEX = {column.key: i for i, column in enumerate(RESULT_COLUMNS)}
+
+# Named sort targets for SearchCriteria.sorting_field: every result column, by key.
+SORTABLE_FIELDS = {column.key: column.field for column in RESULT_COLUMNS}
+
+
+def cell(column: ResultColumn, value) -> tuple:
+    """(text, sort value) of a cell holding `value`; ("", None) for an empty cell."""
+    if value is None:
+        return "", None
+    return column.text(value), (column.sort_value or (lambda v: v))(value)
 
 
 class SearchPage(NamedTuple):
@@ -195,11 +266,6 @@ def _files_query(criteria: SearchCriteria, require_image: bool = False, with_hea
                            with_solution=with_solution)
 
 
-def search_row_stat(row: File, alias: str):
-    """An aliased ImageStats column of a search row. Peewee keeps it on the joined model."""
-    return getattr(getattr(row, 'imagestats', None), alias, None)
-
-
 _SERIALIZED_IMAGE_FIELDS = (
     "image_type", "camera", "filter", "exposure", "gain", "offset", "binning",
     "set_temp", "telescope", "object_name", "coord_ra", "coord_dec",
@@ -246,37 +312,17 @@ def serialize_search_row(row: File) -> dict:
 
 
 def _result_query(criteria: SearchCriteria):
-    """The unordered search-result query, and its selected fields in result-table column
-    order (what SearchCriteria.sorting_index refers to; keep in sync with SearchPanel)."""
-    project_names_subq = (
-        ProjectFile
-        .select(
-            ProjectFile.file.alias('file_id'),
-            fn.GROUP_CONCAT(Project.name, PROJECT_NAME_SEP).alias('project_names')
-        )
-        .join(Project)
-        .group_by(ProjectFile.file)
-    )
-
-    fields = [File.name, Image.image_type, Image.filter, Image.exposure, Image.gain, Image.offset,
-              Image.binning, Image.set_temp, Image.camera, Image.telescope, Image.object_name,
-              Image.date_obs, File.path, File.size, File.mtime_millis, Image.coord_ra, Image.coord_dec,
-              FileWCS.wcs.is_null(False).alias('has_wcs'),
-              project_names_subq.c.project_names.alias('project_names'),
-              ImageStats.background_median.alias('stats_background_median'),
-              ImageStats.background_rms.alias('stats_background_rms'),
-              ImageStats.star_count.alias('stats_star_count'),
-              ImageStats.fwhm_median.alias('stats_fwhm_median'),
-              ImageStats.elongation_median.alias('stats_elongation_median'),
-              ImageStats.diagnosis.alias('stats_diagnosis')]
+    """The unordered search-result query, and its selected fields in RESULT_COLUMNS order
+    (what SearchCriteria.sorting_index refers to)."""
+    fields = [column.field for column in RESULT_COLUMNS]
     query = (File
              .select(*(fields + [File, Image, LibraryRoot]))
              .join_from(File, LibraryRoot)
              .join_from(File, Image, JOIN.LEFT_OUTER)
              .join_from(File, FileWCS, JOIN.LEFT_OUTER)
              .join_from(File, ImageStats, JOIN.LEFT_OUTER)
-             .join_from(File, project_names_subq, JOIN.LEFT_OUTER,
-                        on=(File.rowid == project_names_subq.c.file_id))
+             .join_from(File, _PROJECT_NAMES, JOIN.LEFT_OUTER,
+                        on=(File.rowid == _PROJECT_NAMES.c.file_id))
              )
     return _where_criteria(query, criteria), fields
 

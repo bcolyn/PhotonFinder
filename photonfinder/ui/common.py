@@ -1,73 +1,11 @@
-import logging
-from datetime import datetime, timezone
-
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter, QPen, QAction, QColor
 from PySide6.QtSvg import QSvgRenderer
+from photonfinder.formatting import (  # pylint: disable=unused-import  # re-exported for the GUI
+    _format_date, _format_dec, _format_file_size, _format_ra, _format_timestamp, _local_to_utc, _utc_to_local,
+)
 from PySide6.QtWidgets import QStyle, QTableView, QMenu, QInputDialog, QMessageBox, QDialog, QVBoxLayout, QListWidget, QPushButton, QDialogButtonBox, QHBoxLayout
 
-
-def _format_file_size(size_bytes):
-    """Format file size from bytes to human-readable format."""
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / (1024 * 1024):.1f} MB"
-    else:
-        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
-
-
-def _format_date(value: datetime):
-    if not value:
-        return ""
-    try:
-        return value.strftime("%Y-%m-%d %H:%M:%S")
-    except Exception as ex:
-        logging.exception(f"Error formatting date {ex}", exc_info=ex)
-        return None
-
-
-def _utc_to_local(value: datetime) -> datetime:
-    """A naive UTC time, as stored in ``Image.date_obs`` and ``SearchCriteria``, as naive local
-    wall-clock time: what the grid shows and what the user types into a date dialog."""
-    return value.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
-
-
-def _local_to_utc(value: datetime) -> datetime:
-    """The inverse of ``_utc_to_local``: naive local wall-clock time to naive UTC."""
-    return value.astimezone(timezone.utc).replace(tzinfo=None)
-
-
-def _format_ra(ra_deg: float):
-    """Format RA from decimal degrees to string format."""
-    if ra_deg is None:
-        return ""
-    total_hours = ra_deg / 15.0
-    hours = int(total_hours)
-    minutes = int((total_hours - hours) * 60)
-    seconds = int(((total_hours - hours) * 60 - minutes) * 60)
-    return f"{hours:02d}h{minutes:02d}'{seconds:02d}\""
-
-
-def _format_dec(dec_deg: float):
-    """Format DEC from decimal degrees to string format."""
-    if dec_deg is None:
-        return ""
-    sign = "+" if dec_deg >= 0 else "-"
-    abs_deg = abs(dec_deg)
-    degrees = int(abs_deg)
-    minutes = int((abs_deg - degrees) * 60)
-    seconds = int(((abs_deg - degrees) * 60 - minutes) * 60)
-
-    return f"{sign}{degrees:02d}:{minutes:02d}:{seconds:02d}"
-
-
-def _format_timestamp(timestamp_ms: int):
-    dt = datetime.fromtimestamp(timestamp_ms / 1000)
-    date_str = _format_date(dt)
-    return date_str
 
 def create_colored_svg_icon(svg_path: str, size: QSize, color, add_slash=False) -> QIcon:
     renderer = QSvgRenderer(svg_path)

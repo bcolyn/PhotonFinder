@@ -269,3 +269,72 @@ def test_a_row_carries_its_image_root_and_joined_columns(library):
     assert (row.image.filter, row.root.name, bool(row.has_wcs)) == ("Ha", "Main", True)
     assert row.projectfile.project_names == "Andromeda"
     assert row.imagestats.stats_star_count == 500
+
+
+# --- the result columns -----------------------------------------------------------------------
+
+def test_result_columns_keep_their_positions_and_labels():
+    """Saved searches store the sort column's position; column visibility and presets are
+    stored by label. Neither may move."""
+    from photonfinder.library_query import RESULT_COLUMNS
+    assert [c.label for c in RESULT_COLUMNS] == [
+        "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
+        "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved",
+        "Projects", "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation", "Diagnosis",
+    ]
+
+
+def test_every_column_sorts_by_name_and_the_old_names_still_work():
+    from photonfinder.library_query import RESULT_COLUMNS, SORTABLE_FIELDS
+    assert list(SORTABLE_FIELDS) == [c.key for c in RESULT_COLUMNS]
+    assert {"name", "path", "size", "mtime", "type", "filter", "exposure", "gain", "offset", "binning",
+            "temperature", "camera", "telescope", "object_name", "date_obs", "coord_ra", "coord_dec",
+            "star_count", "fwhm", "elongation", "background", "background_rms"} <= set(SORTABLE_FIELDS)
+
+
+@pytest.mark.parametrize("key", ["solved", "projects", "diagnosis", "exposure", "name"])
+def test_sorting_by_name_matches_sorting_by_position(library, key):
+    from photonfinder.library_query import COLUMN_INDEX
+    for desc in (False, True):
+        by_name = search_files(SearchCriteria(sorting_field=key, sorting_desc=desc)).rows
+        by_index = search_files(SearchCriteria(sorting_index=COLUMN_INDEX[key], sorting_desc=desc)).rows
+        assert [r.name for r in by_name] == [r.name for r in by_index]
+
+
+# Where each column's value is in an MCP search row.
+_SERIALIZED = {
+    "name": lambda r: r["name"], "path": lambda r: r["path"], "size": lambda r: r["size"],
+    "mtime": lambda r: r["mtime_millis"],
+    "type": lambda r: (r["image"] or {}).get("image_type"),
+    "temperature": lambda r: (r["image"] or {}).get("set_temp"),
+    "date_obs": lambda r: (r["image"] or {}).get("date_obs"),
+    "solved": lambda r: r["has_wcs"],
+    "projects": lambda r: r["projects"],
+    "background": lambda r: r["stats"]["background_median"],
+    "fwhm": lambda r: r["stats"]["fwhm_median"],
+    "elongation": lambda r: r["stats"]["elongation_median"],
+}
+for _key in ("filter", "exposure", "gain", "offset", "binning", "camera", "telescope", "object_name",
+             "coord_ra", "coord_dec"):
+    _SERIALIZED[_key] = lambda r, k=_key: (r["image"] or {}).get(k)
+for _key in ("background_rms", "star_count", "diagnosis"):
+    _SERIALIZED[_key] = lambda r, k=_key: r["stats"][k]
+
+
+def test_the_grid_columns_and_the_mcp_rows_show_the_same_values(library):
+    from photonfinder.formatting import _utc_to_local
+    from photonfinder.library_query import RESULT_COLUMNS, serialize_search_row
+    assert set(_SERIALIZED) == {c.key for c in RESULT_COLUMNS}
+    for row in search_files(SearchCriteria()).rows:
+        serialized = serialize_search_row(row)
+        for column in RESULT_COLUMNS:
+            shown, sent = column.value(row), _SERIALIZED[column.key](serialized)
+            if column.key == "solved":
+                sent = "True" if sent else "False"
+            elif column.key == "projects":
+                sent = ", ".join(sent)
+            elif column.key == "diagnosis":
+                sent = sent or ""
+            elif column.key == "date_obs" and sent is not None:
+                sent = _utc_to_local(datetime.fromisoformat(sent))
+            assert shown == sent, (row.name, column.key)
