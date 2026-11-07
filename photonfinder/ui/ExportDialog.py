@@ -17,13 +17,13 @@ from PySide6.QtWidgets import (QDialog, QFileDialog, QMessageBox, QDialogButtonB
                                 QHeaderView, QLabel, QComboBox, QPushButton, QVBoxLayout,
                                 QPlainTextEdit, QAbstractItemView, QTableWidgetItem)
 from astropy.io import fits
-from peewee import JOIN
 
+from photonfinder import library_query
 from photonfinder.calibration import CalibrationMatcher, CalibrationCandidate, SessionKey, session_date_for
 from photonfinder.export_plan import CALIB_TYPES, ExportEntry, ExportPlan
 from photonfinder.core import ApplicationContext, Settings, decompress as decompress_blob, Change
 from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict, repair_header
-from photonfinder.models import Image, File, SearchCriteria, FileWCS, Project, ProjectFile
+from photonfinder.models import Image, File, SearchCriteria, Project, ProjectFile
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
 from photonfinder.ui.generated.ExportDialog_ui import Ui_ExportDialog
 
@@ -511,13 +511,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         if files:
             return files
         with self.context.database.bind_ctx([File, Image]):
-            query = (File
-                     .select(File, Image, FileWCS)
-                     .join_from(File, Image, JOIN.LEFT_OUTER)
-                     .join_from(File, FileWCS, JOIN.LEFT_OUTER)
-                     .order_by(File.root, File.path, File.name))
-            query = Image.apply_search_criteria(query, self.search_criteria)
-            return list(query)
+            return library_query.matching_files(self.search_criteria, with_solution=True)
 
     @staticmethod
     def _partition_lights(files: List[File]) -> tuple:

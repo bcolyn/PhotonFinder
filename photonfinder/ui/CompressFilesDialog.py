@@ -4,11 +4,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PySide6.QtCore import Qt, QEvent, Signal
 from PySide6.QtWidgets import QDialog, QListWidgetItem, QMessageBox
-from peewee import JOIN
 
+from photonfinder import library_query
 from photonfinder.core import ApplicationContext, library_busy_message
 from photonfinder.filesystem import compress_file, is_compressible
-from photonfinder.models import File, Image, LibraryRoot, CORE_MODELS, SearchCriteria
+from photonfinder.models import File, CORE_MODELS, SearchCriteria
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
 from photonfinder.ui.generated.CompressFilesDialog_ui import Ui_CompressFilesDialog
 
@@ -101,12 +101,8 @@ class CompressFilesDialog(QDialog, Ui_CompressFilesDialog):
             compressible = [f for f in files if is_compressible(f.name)]
         else:
             with self.context.database.bind_ctx(CORE_MODELS):
-                query = (File.select(File, Image, LibraryRoot)
-                         .join_from(File, LibraryRoot)
-                         .join_from(File, Image, JOIN.LEFT_OUTER)
-                         .order_by(File.root, File.path, File.name))
-                query = Image.apply_search_criteria(query, search_criteria)
-                compressible = [f for f in query if is_compressible(f.name)]
+                compressible = [f for f in library_query.matching_files(search_criteria)
+                                if is_compressible(f.name)]
 
         for f in compressible:
             label = '/'.join(filter(None, [f.root.name, f.path, f.name]))

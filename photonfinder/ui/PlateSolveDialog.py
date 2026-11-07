@@ -8,9 +8,9 @@ from PySide6.QtWidgets import (
 from astropy.wcs import WCS
 from astropy.wcs.utils import proj_plane_pixel_scales
 
+from photonfinder import library_query
 from photonfinder.core import ApplicationContext, decompress, library_busy_message
 from photonfinder.filesystem import decode_header_blob
-from peewee import JOIN
 from photonfinder.models import File, FileWCS, FitsHeader, Image, SearchCriteria
 from photonfinder.platesolver import (
     ASTAPSolver, AstrometryNetSolver, SolveFieldSolver, SolverHint
@@ -209,14 +209,9 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
                 with_wcs = [f for f in self.files if getattr(f, 'has_wcs', False)]
                 without_wcs = [f for f in self.files if not getattr(f, 'has_wcs', False)]
                 return (with_wcs + without_wcs)[:n]
-            query = (File
-                     .select(File, Image, FileWCS)
-                     .join_from(File, Image)
-                     .join_from(File, FileWCS, JOIN.LEFT_OUTER)
-                     .order_by(FileWCS.wcs.is_null())
-                     .limit(n))
-            query = Image.apply_search_criteria(query, self.search_criteria)
-            return list(query)
+            query = library_query.select_matching(self.search_criteria, File, Image, FileWCS,
+                                                  require_image=True, with_solution=True)
+            return list(query.order_by(FileWCS.wcs.is_null()).limit(n))  # solved ones first
         except Exception:
             return []
 
@@ -315,11 +310,9 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
                 return (Image.select(Image.camera)
                         .where(Image.file.in_(self.files) & Image.camera.is_null(False))
                         .exists())
-            query = (File.select(Image.camera)
-                     .join(Image)
-                     .where(Image.camera.is_null(False)))
-            query = Image.apply_search_criteria(query, self.search_criteria)
-            return query.exists()
+            return (library_query.select_matching(self.search_criteria, Image.camera, require_image=True)
+                    .where(Image.camera.is_null(False))
+                    .exists())
         except Exception:
             return True  # safe default — don't disable if check fails
 

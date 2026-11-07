@@ -8,11 +8,12 @@ from PySide6.QtGui import QIcon, QPalette, QAction, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QTabWidget,
                                QToolButton, QWidget)
 
+from photonfinder import library_query
 from photonfinder.core import ApplicationContext, LibraryBusyError, StatusReporter, backup_database, \
     library_busy_message
 from photonfinder.filesystem import Importer, ScanCancelled, update_fits_header_cache, check_missing_header_cache, \
     repair_truncated_header_cache
-from photonfinder.models import SearchCriteria, Project, File, ProjectFile, RootAndPath, Image, LibraryRoot
+from photonfinder.models import SearchCriteria, Project, File, ProjectFile, RootAndPath, LibraryRoot
 from .AboutDialog import AboutDialog
 from .ImageViewerWindow import ImageViewerWindow
 from .LibraryRootDialog import LibraryRootDialog
@@ -846,11 +847,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)
         temp_criteria = deepcopy(self.get_current_search_panel().search_criteria)
         temp_criteria.paths = [root_and_path]
-        query = (File.select(File, LibraryRoot, Image)
-                 .join_from(File, LibraryRoot)
-                 .join_from(File, Image))
-        query = Image.apply_search_criteria(query, temp_criteria)
-        for file in list(query.execute()):
+        for file in library_query.matching_files(temp_criteria, require_image=True):
             edit_dialog.add_file(ProjectFile(project=project, file=file))
         edit_dialog.show()
         edit_dialog.refresh_table()

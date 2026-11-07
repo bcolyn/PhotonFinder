@@ -20,6 +20,7 @@ from typing import Optional
 import numpy as np
 from peewee import JOIN, chunked, fn
 
+from photonfinder import library_query
 from photonfinder.calibration import CalibrationMatcher, load_session_info, session_date_for
 from photonfinder.core import ApplicationContext
 from photonfinder.models import (
@@ -223,8 +224,7 @@ def frames_needing_analysis(scope: DiagnosisScope, settings: DiagnosisSettings) 
 
 
 def _lights_in_search(criteria: SearchCriteria) -> set[int]:
-    query = File.select(File.rowid).join_from(File, Image, JOIN.LEFT_OUTER)
-    query = Image.apply_search_criteria(query, criteria).where(fn.UPPER(Image.image_type) == "LIGHT")
+    query = library_query.select_matching(criteria, File.rowid).where(fn.UPPER(Image.image_type) == "LIGHT")
     return {rowid for rowid, in query.tuples()}
 
 

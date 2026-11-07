@@ -12,6 +12,7 @@ text that doesn't parse is skipped; `SearchCriteria.validate` reports it instead
 
 The models must be bound to a database (e.g. inside `context.database.bind_ctx(CORE_MODELS)`).
 """
+import dataclasses
 import logging
 import operator
 from datetime import datetime
@@ -23,7 +24,7 @@ from peewee import JOIN, SQL, chunked, fn
 
 from photonfinder.core import hp
 from photonfinder.models import (
-    DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_OK, PROJECT_NAME_SEP, File, FileWCS, FitsHeader, Image, ImageStats,
+    DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_OK, DIAGNOSIS_SEPARATOR, DIAGNOSIS_VALUES, PROJECT_NAME_SEP, File, FileWCS, FitsHeader, Image, ImageStats,
     LibraryRoot, Project, ProjectFile, SearchCriteria, norm_db_path,
 )
 
@@ -85,50 +86,91 @@ def count_files(criteria: SearchCriteria) -> int:
     return _files_query(criteria).count()
 
 
-def matching_files(criteria: SearchCriteria, *, with_header: bool = False, with_solution: bool = False,
-                   page: int | None = None, page_size: int = 100) -> list[File]:
+def matching_files(criteria: SearchCriteria, *, require_image: bool = False, with_header: bool = False,
+                   with_solution: bool = False, page: int | None = None, page_size: int = 100) -> list[File]:
     """Every file matching the criteria, in DEFAULT_ORDER, with its LibraryRoot and Image
-    loaded (a file without an Image row is included, its `image` None). `with_header` and
-    `with_solution` also load its FitsHeader and FileWCS, None when it has none. With `page`
-    (zero-based), only that page; count_files gives the total.
+    loaded. A file without an Image row (its header couldn't be read) is included, its `image`
+    None, unless `require_image`. `with_header` and `with_solution` also load its FitsHeader
+    and FileWCS, None when it has none. With `page` (zero-based), only that page; count_files
+    gives the total.
 
     A list rather than a query: iterating a query lazily holds a read snapshot open, and once
     anything else commits, every write made from behind it fails with "database is locked".
     """
-    query = _files_query(criteria, with_header, with_solution).order_by(*DEFAULT_ORDER)
+    query = _files_query(criteria, require_image, with_header, with_solution).order_by(*DEFAULT_ORDER)
     if page is not None:
         query = query.paginate(page + 1, page_size)
     return list(query)
 
 
-def select_matching(criteria: SearchCriteria, *columns, with_header: bool = False,
-                    with_solution: bool = False, solved_only: bool = False):
-    """An unordered query of `columns` over the files matching the criteria, for callers that
-    project or aggregate (the reports add their own WHERE, GROUP BY and ORDER BY).
+def files_in_cone(criteria: SearchCriteria) -> list[File]:
+    """The matching files whose image centre lies strictly within `coord_radius` of the
+    criteria's cone centre, as matching_files(require_image=True) loads them.
 
-    Columns may come from File, LibraryRoot and Image (outer-joined: NULL for a file without
-    an Image row), and from FitsHeader / FileWCS with `with_header` / `with_solution`.
-    `solved_only` keeps only plate-solved files, whatever the criteria's `plate_solved` says
-    (so plate_solved=False leaves nothing).
+    The cone criterion itself only selects the HEALPix pixels the cone touches, which takes in
+    files somewhat beyond the radius; this measures the actual distance. Raises ValueError
+    when the criteria have no cone, and what SearchCriteria.cone_center raises when it can't
+    be parsed.
+    """
+    if not (criteria.coord_ra and criteria.coord_dec):
+        raise ValueError("files_in_cone needs criteria with coord_ra and coord_dec")
+    center = criteria.cone_center()
+    return [file for file in matching_files(criteria, require_image=True)
+            if (coord := file.image.get_sky_coord()) is not None
+            and coord.separation(center).deg < criteria.coord_radius]
+
+
+def distinct_values(criteria: SearchCriteria, column) -> list:
+    """The values `column` (an Image column) takes in the files matching the criteria, sorted,
+    leaving out the criterion on `column` itself: the choices a filter combo box still offers.
+    NULL (None) is one of them when a matching image has no value."""
+    query = select_matching(criteria, fn.DISTINCT(column), require_image=True, exclude=column)
+    return [value for value, in query.order_by(column).tuples()]
+
+
+def diagnosis_counts(criteria: SearchCriteria) -> dict[str, int]:
+    """Files per diagnosis value within a search, ignoring its diagnosis filter.
+
+    A file with several Bad values counts under each of them.
+    """
+    criteria = dataclasses.replace(criteria, diagnosis_hidden=[])
+    query = select_matching(criteria, ImageStats.diagnosis, fn.COUNT(File.rowid), with_stats=True)
+    counts = dict.fromkeys(DIAGNOSIS_VALUES, 0)
+    for diagnosis, count in query.group_by(ImageStats.diagnosis).tuples():
+        for value in diagnosis.split(DIAGNOSIS_SEPARATOR) if diagnosis else [DIAGNOSIS_NOT_ANALYSED]:
+            counts[value] = counts.get(value, 0) + count
+    return counts
+
+
+def select_matching(criteria: SearchCriteria, *columns, require_image: bool = False, with_header: bool = False,
+                    with_solution: bool = False, with_stats: bool = False, solved_only: bool = False,
+                    exclude=None):
+    """An unordered query of `columns` over the files matching the criteria, for callers that
+    project or aggregate (they add their own WHERE, GROUP BY, ORDER BY or LIMIT).
+
+    Columns may come from File, LibraryRoot and Image, and from FitsHeader / FileWCS /
+    ImageStats with `with_header` / `with_solution` / `with_stats` (outer-joined: NULL when a
+    file has none). Image is outer-joined too, NULL for a file without an Image row, unless
+    `require_image`, which leaves such files out. `solved_only` keeps only plate-solved files,
+    whatever the criteria's `plate_solved` says (so plate_solved=False leaves nothing).
+    `exclude` is a column whose criterion is ignored (see distinct_values).
     """
     query = (File.select(*columns)
              .join_from(File, LibraryRoot)
-             .join_from(File, Image, JOIN.LEFT_OUTER))
-    if with_header:
-        query = query.join_from(File, FitsHeader, JOIN.LEFT_OUTER)
-    if with_solution:
-        query = query.join_from(File, FileWCS, JOIN.LEFT_OUTER)
+             .join_from(File, Image, JOIN.INNER if require_image else JOIN.LEFT_OUTER))
+    for model, wanted in ((FitsHeader, with_header), (FileWCS, with_solution), (ImageStats, with_stats)):
+        if wanted:
+            query = query.join_from(File, model, JOIN.LEFT_OUTER)
     if solved_only:
         query = query.where(File.rowid.in_(FileWCS.select(FileWCS.file)))
-    return where_criteria(query, criteria)
+    return where_criteria(query, criteria, exclude)
 
 
 def unsolved_lights(criteria: SearchCriteria) -> list[File]:
     """The files a plate-solve run works through: the matching LIGHT and MASTER LIGHT frames,
     and frames without a type, that have no stored solution. A file without an Image row (its
     header couldn't be read) is left out. In DEFAULT_ORDER, as matching_files."""
-    query = (_files_query(criteria)
-             .where(Image.rowid.is_null(False))
+    query = (_files_query(criteria, require_image=True)
              .where((Image.image_type == "LIGHT") | (Image.image_type == "MASTER LIGHT") |
                     Image.image_type.is_null())
              .where(File.rowid.not_in(FileWCS.select(FileWCS.file))))
@@ -139,15 +181,18 @@ def files_by_id(file_ids, *, with_header: bool = False, with_solution: bool = Fa
     """The files with these ids, loaded as matching_files loads them. Unknown ids are skipped."""
     files = []
     for batch in chunked(file_ids, 500):  # SQLite caps the parameters of one statement
-        files.extend(_files_query(SearchCriteria(), with_header, with_solution).where(File.rowid.in_(batch)))
+        files.extend(_files_query(SearchCriteria(), with_header=with_header, with_solution=with_solution)
+                     .where(File.rowid.in_(batch)))
     return files
 
 
-def _files_query(criteria: SearchCriteria, with_header: bool = False, with_solution: bool = False):
+def _files_query(criteria: SearchCriteria, require_image: bool = False, with_header: bool = False,
+                 with_solution: bool = False):
     """File with LibraryRoot, Image and, when asked, FitsHeader / FileWCS loaded, filtered."""
     models = [File, Image, LibraryRoot,
               *(model for model, wanted in ((FitsHeader, with_header), (FileWCS, with_solution)) if wanted)]
-    return select_matching(criteria, *models, with_header=with_header, with_solution=with_solution)
+    return select_matching(criteria, *models, require_image=require_image, with_header=with_header,
+                           with_solution=with_solution)
 
 
 def search_row_stat(row: File, alias: str):

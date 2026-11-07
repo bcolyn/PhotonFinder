@@ -13,9 +13,8 @@ from photonfinder.calibration import _session_info_from_blob, _session_info_from
 from photonfinder.image_analysis import ImageAnalysisResult
 from photonfinder.models import (
     DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED, File, FitsHeader, Image, ImageStats, LibraryRoot, SearchCriteria,
-    diagnosis_counts,
 )
-from photonfinder.library_query import search_files, search_row_stat
+from photonfinder.library_query import diagnosis_counts, search_files, search_row_stat
 from photonfinder.mcp_server import _criteria_from_dict
 from photonfinder.models import DIAGNOSIS_MISSING_METRICS, DIAGNOSIS_OK
 from photonfinder.quality_diagnosis import (

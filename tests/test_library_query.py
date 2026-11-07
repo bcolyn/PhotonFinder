@@ -7,7 +7,8 @@ from astropy.io.fits import Header
 
 from photonfinder.core import compress, hp
 from photonfinder.library_query import (
-    DEFAULT_ORDER, count_files, files_by_id, matching_files, search_files, select_matching, unsolved_lights,
+    DEFAULT_ORDER, count_files, distinct_values, files_by_id, files_in_cone, matching_files, search_files,
+    select_matching, unsolved_lights,
 )
 from photonfinder.models import (
     DIAGNOSIS_BAD_FWHM, DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_OK, NO_PROJECT, File, FileWCS, FitsHeader, Image,
@@ -223,6 +224,37 @@ def test_select_matching_solved_only_keeps_plate_solved_files(library):
     assert names(SearchCriteria()) == {"m31_ha"}
     assert names(SearchCriteria(camera="ASI533")) == set()
     assert names(SearchCriteria(plate_solved=False)) == set()
+
+
+def test_require_image_leaves_out_a_file_without_an_image_row(library):
+    criteria = SearchCriteria(paths=[RootAndPath(library["main"].rowid)], paths_as_prefix=False)
+    assert [f.name for f in matching_files(criteria)] == ["notes.txt"]
+    assert matching_files(criteria, require_image=True) == []
+    assert {name for name, in select_matching(SearchCriteria(), File.name, require_image=True).tuples()} == \
+           ALL - {"notes.txt"}
+
+
+def test_distinct_values_follow_the_criteria_but_not_their_own(library):
+    assert distinct_values(SearchCriteria(), Image.filter) == [None, "Ha", "OIII"]
+    assert distinct_values(SearchCriteria(type="LIGHT"), Image.filter) == ["Ha", "OIII"]
+    # the filter combo still lists the other filters while one is chosen
+    assert distinct_values(SearchCriteria(type="LIGHT", filter="Ha"), Image.filter) == ["Ha", "OIII"]
+    assert distinct_values(SearchCriteria(filter="Ha"), Image.camera) == ["ASI2600", "ASI533"]
+    assert distinct_values(SearchCriteria(paths=[RootAndPath(library["other"].rowid)]), Image.image_type) == ["FLAT"]
+
+
+def test_files_in_cone_measure_the_distance_the_pixels_only_approximate(library):
+    near = File.create(root=library["main"], path="lights/m31/", name="m31_edge", size=1, mtime_millis=1)
+    edge = SkyCoord(ra=10.68, dec=41.27 + 0.45, unit="deg")  # 0.45° from M31's centre, in a touched pixel
+    Image.create(file=near, image_type="LIGHT", coord_ra=edge.ra.deg, coord_dec=edge.dec.deg,
+                 coord_pix256=int(hp.skycoord_to_healpix(edge)))
+    cone = dict(coord_ra=str(10.68 / 15), coord_dec="41.27")
+    assert {f.name for f in search_files(SearchCriteria(**cone, coord_radius=0.4)).rows} >= {"m31_ha", "m31_edge"}
+    assert [f.name for f in files_in_cone(SearchCriteria(**cone, coord_radius=0.4))] == ["m31_ha"]
+    assert [f.name for f in files_in_cone(SearchCriteria(**cone, coord_radius=0.5))] == ["m31_edge", "m31_ha"]
+    assert files_in_cone(SearchCriteria(**cone, coord_radius=0.5, type="DARK")) == []
+    with pytest.raises(ValueError):
+        files_in_cone(SearchCriteria())
 
 
 def test_files_by_id_load_those_files(library):

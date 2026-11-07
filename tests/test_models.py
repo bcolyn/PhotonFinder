@@ -53,39 +53,6 @@ class TestModels:
             yield
             transaction.rollback()
 
-    def test_get_filters_empty_criteria(self):
-        """Test get_filters with empty search criteria returns all distinct filters."""
-        # Create empty search criteria
-        search_criteria = SearchCriteria()
-
-        # Get all filters
-        filters = Image.get_distinct_values_available(search_criteria, Image.filter)
-
-        # Assert that all filters are returned
-        assert filters == ["Blue", "Green", "Luminance", "Red"]
-
-    def test_get_image_type(self):
-        types = Image.get_distinct_values_available(SearchCriteria(), Image.image_type)
-        assert types == ["Dark", "Light"]
-
-    def test_get_file_sizes(self):
-        # not expected to be used this way, but we can test it anyway.
-        sizes = Image.get_distinct_values_available(SearchCriteria(), File.size)
-        assert sizes == [1000, 2000]
-
-    def test_get_filters_with_path(self):
-        """Test get_filters with a specific RootAndPath returns only filters in that path."""
-        # Create search criteria with a specific path
-        search_criteria = SearchCriteria([
-            RootAndPath(1, "dummy", "subdir1")
-        ])
-
-        # Get filters for the specific path
-        filters = Image.get_distinct_values_available(search_criteria, Image.filter)
-
-        # Assert that only filters in the specified path are returned
-        assert filters == ["Blue", "Green"]
-
     def test_find_by_filename(self):
         file = File.find_by_filename("C:/test_path/subdir1/file2.fits")
         assert file is not None

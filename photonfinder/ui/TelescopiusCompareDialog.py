@@ -12,8 +12,9 @@ from PySide6.QtGui import QIntValidator, QAction, QKeySequence
 from PySide6.QtWidgets import QDialog, QMessageBox, QFileDialog, QDialogButtonBox, QTableWidgetItem, QApplication
 from astropy.coordinates import SkyCoord, Angle
 
+from photonfinder import library_query
 from photonfinder.core import ApplicationContext
-from photonfinder.models import SearchCriteria, File, Image, LibraryRoot
+from photonfinder.models import SearchCriteria, File
 from photonfinder.ui.BackgroundLoader import ProgressBackgroundTask
 from photonfinder.ui.generated.TelescopiusCompareDialog_ui import Ui_TelescopiusCompareDialog
 
@@ -112,23 +113,11 @@ def enrich_telescopius_data(targets: List[TelescopiusTarget],
     results = []
     for target in targets:
         try:
-            query = (File.select(File, Image, LibraryRoot)
-                     .join_from(File, Image)
-                     .join_from(File, LibraryRoot))
             full_criteria = deepcopy(search_criteria)
             full_criteria.coord_ra = str(target.coord().ra.hourangle)
             full_criteria.coord_dec = str(target.coord().dec.deg)
             full_criteria.coord_radius = tolerance
-            query = Image.apply_search_criteria(query, full_criteria, None)
-            files = query.execute()
-            paths = set()
-            for file in files:
-                image = file.image
-                img_coord = image.get_sky_coord()
-                # check distance to target
-                if img_coord.separation(target.coord()).deg < tolerance:
-                    paths.add(file.root.name + ":" + file.path)
-
+            paths = {file.root.name + ":" + file.path for file in library_query.files_in_cone(full_criteria)}
             results.append(TelescopiusMatch(target, sorted(paths)))
         except Exception as e:
             logging.error(f"Error processing target {target.name}: {e}", exc_info=True)

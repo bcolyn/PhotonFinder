@@ -1,4 +1,3 @@
-import dataclasses
 import json
 import os
 import typing
@@ -523,25 +522,6 @@ class Image(Model):
         from photonfinder.library_query import where_criteria  # pylint: disable=import-outside-toplevel,cyclic-import
         return where_criteria(query, criteria, exclude_ref)
 
-    @staticmethod
-    def get_distinct_values_available(search_criteria: SearchCriteria, field_ref) -> list[str | None]:
-        query = Image.select(fn.Distinct(field_ref)).join(File, JOIN.INNER, on=(File.rowid == Image.file)).order_by(
-            field_ref)
-        query = Image.apply_search_criteria(query, search_criteria, field_ref)
-        return list(map(lambda x: x[0], query.tuples()))
-
-    @staticmethod
-    def load_filters(search_criteria: SearchCriteria):
-        return Image.get_distinct_values_available(search_criteria, Image.filter)
-
-    @staticmethod
-    def load_types(search_criteria: SearchCriteria):
-        return Image.get_distinct_values_available(search_criteria, Image.image_type)
-
-    @staticmethod
-    def load_cameras(search_criteria: SearchCriteria):
-        return Image.get_distinct_values_available(search_criteria, Image.camera)
-
 
 # Remove coord_scale from Peewee's write-path field registry so it is never
 # included in INSERT / UPDATE / bulk_create (SQLite rejects writes to GENERATED columns).
@@ -737,24 +717,6 @@ class ImageStats(Model):
 
     class Meta:
         database = None
-
-
-def diagnosis_counts(search_criteria: SearchCriteria) -> dict[str, int]:
-    """Files per diagnosis value within a search, ignoring its diagnosis filter.
-
-    A file with several Bad values counts under each of them.
-    """
-    criteria = dataclasses.replace(search_criteria, diagnosis_hidden=[])
-    query = (File
-             .select(ImageStats.diagnosis, fn.COUNT(File.rowid))
-             .join_from(File, Image, JOIN.LEFT_OUTER)
-             .join_from(File, ImageStats, JOIN.LEFT_OUTER))
-    query = Image.apply_search_criteria(query, criteria).group_by(ImageStats.diagnosis)
-    counts = dict.fromkeys(DIAGNOSIS_VALUES, 0)
-    for diagnosis, count in query.tuples():
-        for value in diagnosis.split(DIAGNOSIS_SEPARATOR) if diagnosis else [DIAGNOSIS_NOT_ANALYSED]:
-            counts[value] = counts.get(value, 0) + count
-    return counts
 
 
 class CustomCatalogEntry(Model):

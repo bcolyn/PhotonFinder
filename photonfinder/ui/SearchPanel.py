@@ -4,6 +4,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from enum import Enum
+from functools import partial
 from logging import DEBUG
 from types import SimpleNamespace
 from typing import Collection, List, Optional
@@ -16,9 +17,9 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame
 
 from photonfinder.core import ApplicationContext, decompress, Change, library_busy_message
 from photonfinder.filesystem import is_compressible, parse_FITS_header, decode_header_blob
-from photonfinder.library_query import search_row_stat
+from photonfinder.library_query import diagnosis_counts, distinct_values, search_row_stat
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
-    FileWCS, ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, diagnosis_counts, PROJECT_NAME_SEP
+    FileWCS, ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, PROJECT_NAME_SEP
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask, ImageAnalysisTask
 from .DateRangeDialog import DateRangeDialog
 from .HeaderDialog import HeaderDialog
@@ -341,9 +342,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def refresh_combo_options(self):
         tasks = [
-            (self.filter_filter_combo, Image.load_filters),
-            (self.filter_type_combo, Image.load_types),
-            (self.filter_cam_combo, Image.load_cameras)
+            (self.filter_filter_combo, partial(distinct_values, column=Image.filter)),
+            (self.filter_type_combo, partial(distinct_values, column=Image.image_type)),
+            (self.filter_cam_combo, partial(distinct_values, column=Image.camera))
         ]
         self.combo_loader.run_tasks(tasks, self.search_criteria)
 

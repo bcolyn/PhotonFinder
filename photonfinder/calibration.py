@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from astropy.io.fits import Card
 from peewee import JOIN, chunked
 
+from photonfinder import library_query
 from photonfinder.core import ApplicationContext, decompress
 from photonfinder.fits_handlers import _datetime, _float
 from photonfinder.models import File, Image, FitsHeader, SearchCriteria
@@ -350,12 +351,7 @@ class CalibrationMatcher:
     def _query_files(self, criteria: SearchCriteria) -> list[File]:
         """Run a SearchCriteria query and return File rows with joined Image data."""
         with self.context.database.bind_ctx([File, Image]):
-            query = (File
-                     .select(File, Image)
-                     .join(Image, JOIN.LEFT_OUTER)
-                     .order_by(File.root, File.path, File.name))
-            query = Image.apply_search_criteria(query, criteria)
-            return list(query)
+            return library_query.matching_files(criteria)
 
     def find_candidates(self, criteria: SearchCriteria) -> list[CalibrationCandidate]:
         """Run a calibration search and group results by night into CalibrationCandidate list.
