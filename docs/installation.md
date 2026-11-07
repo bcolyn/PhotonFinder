@@ -16,5 +16,4 @@ the sky each image points) needs at least one of these:
   It solves offline, with or without a known position, from a Gaia DR3 quad index that you build
   in SASpro first (its plate-solve settings). PhotonFinder finds SASpro in its standard install
   folder; if you installed it elsewhere, set the path to `SetiAstroSuitePro.exe` on the same tab.
-  It works out each image's position from its star pattern, so headers with wrong coordinates are
-  no problem.
+  See [Plate Solving with Seti Astro Suite Pro](saspro-solver.md).
