@@ -3,7 +3,7 @@ from typing import List, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QListWidgetItem, QMessageBox, QDialogButtonBox, QFileDialog
-from photonfinder import library_query, reports
+from photonfinder import reports
 from photonfinder.core import ApplicationContext
 from photonfinder.models import SearchCriteria, File, Image
 from photonfinder.platesolver import SolverBase
@@ -24,10 +24,7 @@ class MetadataReportTask(FileProcessingTask):
         super().start()
 
     def load_files(self) -> List[File]:
-        return library_query.matching_files(
-            self.search_criteria,
-            with_header=any(value == "fits" for _, value in self.field_list),
-            with_solution=any(value == "platesolving" for _, value in self.field_list))
+        return reports.header_value_files(self.search_criteria, {source for _, source in self.field_list})
 
     def _process_files(self):
         # newline='' as the csv module requires, or every row ends in CR CR LF on Windows.

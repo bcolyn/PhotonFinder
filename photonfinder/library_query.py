@@ -85,17 +85,42 @@ def count_files(criteria: SearchCriteria) -> int:
     return _files_query(criteria).count()
 
 
-def matching_files(criteria: SearchCriteria, *, with_header: bool = False,
-                   with_solution: bool = False) -> list[File]:
+def matching_files(criteria: SearchCriteria, *, with_header: bool = False, with_solution: bool = False,
+                   page: int | None = None, page_size: int = 100) -> list[File]:
     """Every file matching the criteria, in DEFAULT_ORDER, with its LibraryRoot and Image
-    loaded (a file without an Image row is included). `with_header` and `with_solution` also
-    load its FitsHeader and FileWCS, either of which may be missing.
+    loaded (a file without an Image row is included, its `image` None). `with_header` and
+    `with_solution` also load its FitsHeader and FileWCS, None when it has none. With `page`
+    (zero-based), only that page; count_files gives the total.
 
     A list rather than a query: iterating a query lazily holds a read snapshot open, and once
     anything else commits, every write made from behind it fails with "database is locked".
     """
-    extra = [model for model, wanted in ((FitsHeader, with_header), (FileWCS, with_solution)) if wanted]
-    return list(_files_query(criteria, extra).order_by(*DEFAULT_ORDER))
+    query = _files_query(criteria, with_header, with_solution).order_by(*DEFAULT_ORDER)
+    if page is not None:
+        query = query.paginate(page + 1, page_size)
+    return list(query)
+
+
+def select_matching(criteria: SearchCriteria, *columns, with_header: bool = False,
+                    with_solution: bool = False, solved_only: bool = False):
+    """An unordered query of `columns` over the files matching the criteria, for callers that
+    project or aggregate (the reports add their own WHERE, GROUP BY and ORDER BY).
+
+    Columns may come from File, LibraryRoot and Image (outer-joined: NULL for a file without
+    an Image row), and from FitsHeader / FileWCS with `with_header` / `with_solution`.
+    `solved_only` keeps only plate-solved files, whatever the criteria's `plate_solved` says
+    (so plate_solved=False leaves nothing).
+    """
+    query = (File.select(*columns)
+             .join_from(File, LibraryRoot)
+             .join_from(File, Image, JOIN.LEFT_OUTER))
+    if with_header:
+        query = query.join_from(File, FitsHeader, JOIN.LEFT_OUTER)
+    if with_solution:
+        query = query.join_from(File, FileWCS, JOIN.LEFT_OUTER)
+    if solved_only:
+        query = query.where(File.rowid.in_(FileWCS.select(FileWCS.file)))
+    return where_criteria(query, criteria)
 
 
 def unsolved_lights(criteria: SearchCriteria) -> list[File]:
@@ -110,22 +135,19 @@ def unsolved_lights(criteria: SearchCriteria) -> list[File]:
     return list(query.order_by(*DEFAULT_ORDER))
 
 
-def files_by_id(file_ids) -> list[File]:
+def files_by_id(file_ids, *, with_header: bool = False, with_solution: bool = False) -> list[File]:
     """The files with these ids, loaded as matching_files loads them. Unknown ids are skipped."""
     files = []
     for batch in chunked(file_ids, 500):  # SQLite caps the parameters of one statement
-        files.extend(_files_query(SearchCriteria()).where(File.rowid.in_(batch)))
+        files.extend(_files_query(SearchCriteria(), with_header, with_solution).where(File.rowid.in_(batch)))
     return files
 
 
-def _files_query(criteria: SearchCriteria, extra_models=()):
-    """File with LibraryRoot, Image (outer) and any extra one-per-file models (outer), filtered."""
-    query = (File.select(File, Image, LibraryRoot, *extra_models)
-             .join_from(File, LibraryRoot)
-             .join_from(File, Image, JOIN.LEFT_OUTER))
-    for model in extra_models:
-        query = query.join_from(File, model, JOIN.LEFT_OUTER)
-    return where_criteria(query, criteria)
+def _files_query(criteria: SearchCriteria, with_header: bool = False, with_solution: bool = False):
+    """File with LibraryRoot, Image and, when asked, FitsHeader / FileWCS loaded, filtered."""
+    models = [File, Image, LibraryRoot,
+              *(model for model, wanted in ((FitsHeader, with_header), (FileWCS, with_solution)) if wanted)]
+    return select_matching(criteria, *models, with_header=with_header, with_solution=with_solution)
 
 
 def search_row_stat(row: File, alias: str):

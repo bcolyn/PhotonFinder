@@ -7,7 +7,7 @@ from astropy.io.fits import Header
 
 from photonfinder.core import compress, hp
 from photonfinder.library_query import (
-    DEFAULT_ORDER, count_files, files_by_id, matching_files, search_files, unsolved_lights,
+    DEFAULT_ORDER, count_files, files_by_id, matching_files, search_files, select_matching, unsolved_lights,
 )
 from photonfinder.models import (
     DIAGNOSIS_BAD_FWHM, DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_OK, NO_PROJECT, File, FileWCS, FitsHeader, Image,
@@ -206,6 +206,23 @@ def test_unsolved_lights_are_the_unsolved_light_frames_and_untyped_frames(librar
     assert [f.name for f in unsolved_lights(SearchCriteria(camera="ASI2600"))] == [
         "m42_oiii", "master_light", "untyped"]
     assert unsolved_lights(SearchCriteria(plate_solved=True)) == []
+
+
+def test_select_matching_projects_columns_of_the_matching_files(library):
+    rows = select_matching(SearchCriteria(type="LIGHT"), File.name, Image.filter, FitsHeader.header,
+                           with_header=True).order_by(File.name).tuples()
+    assert [(name, filter_, bool(header)) for name, filter_, header in rows] == [
+        ("m31_ha", "Ha", True), ("m42_oiii", "OIII", True)]
+    no_image = select_matching(SearchCriteria(file_name="notes"), File.name, Image.image_type).tuples()
+    assert list(no_image) == [("notes.txt", None)]
+
+
+def test_select_matching_solved_only_keeps_plate_solved_files(library):
+    def names(criteria):
+        return {name for name, in select_matching(criteria, File.name, solved_only=True).tuples()}
+    assert names(SearchCriteria()) == {"m31_ha"}
+    assert names(SearchCriteria(camera="ASI533")) == set()
+    assert names(SearchCriteria(plate_solved=False)) == set()
 
 
 def test_files_by_id_load_those_files(library):

@@ -150,9 +150,9 @@ def test_catalog_report_ignores_unsolved_images(sample):
 
 # --- Metadata field extraction ------------------------------------------------------
 
-def _load_file(rowid, sources=("fits", "platesolving")):
-    return reports.header_values_query(SearchCriteria(), set(sources)) \
-        .where(File.rowid == rowid).get()
+def _load_file(rowid):
+    file, = (f for f in reports.header_value_files(SearchCriteria(), {"fits", "platesolving"}) if f.rowid == rowid)
+    return file
 
 
 def test_extract_photonfinder_field(sample):
@@ -200,26 +200,31 @@ def test_parse_field_spec():
     assert reports.parse_field_spec("FOCTEMP") == ("FOCTEMP", "fits")
 
 
-def test_header_values_query_joins_only_what_is_asked_for(sample):
+def test_header_value_files_load_only_what_is_asked_for(sample):
+    # An unused header or solution is not read: only a source that needs it loads it.
+    plain = reports.header_value_files(SearchCriteria(), {"photonfinder"})
+    assert not any(hasattr(f, "fitsheader") or hasattr(f, "filewcs") for f in plain)
+    with_fits = reports.header_value_files(SearchCriteria(), {"fits"})
+    assert all(hasattr(f, "fitsheader") and not hasattr(f, "filewcs") for f in with_fits)
+    with_wcs = reports.header_value_files(SearchCriteria(), {"platesolving"})
+    assert all(hasattr(f, "filewcs") and not hasattr(f, "fitsheader") for f in with_wcs)
+
+
+def test_header_value_files_come_a_page_at_a_time(sample):
     _, data = sample
-    # Without the fits source the FitsHeader join is absent, so the memoised header is
-    # never populated -- the point being that an unused join is not paid for.
-    sql, _ = reports.header_values_query(SearchCriteria(), {"photonfinder"}).sql()
-    assert "fitsheader" not in sql.lower()
-    assert "filewcs" not in sql.lower()
-    sql, _ = reports.header_values_query(SearchCriteria(), {"fits"}).sql()
-    assert "fitsheader" in sql.lower()
+    pages = [reports.header_value_files(SearchCriteria(), {"fits"}, page, 1) for page in (0, 1, 2)]
+    assert [[f.rowid for f in page] for page in pages] == [[data["dark"].rowid], [data["light"].rowid], []]
 
 
-def test_header_values_query_with_header_text_criterion(sample):
-    """The report joins FitsHeader to read values; a header_text criterion must not join it again."""
+def test_header_value_files_with_header_text_criterion(sample):
+    """The report loads FitsHeader to read values; a header_text criterion must not join it again."""
     _, data = sample
     for header_text in ("M31", "GAIN=100"):
-        files = list(reports.header_values_query(SearchCriteria(header_text=header_text), {"fits"}))
+        files = reports.header_value_files(SearchCriteria(header_text=header_text), {"fits"})
         assert [f.rowid for f in files] == [data["light"].rowid]
         assert reports.extract_field_value(files[0], "OBJECT", "fits") == "M31"
 
 
-def test_header_values_query_header_text_excludes_non_matching(sample):
-    files = list(reports.header_values_query(SearchCriteria(header_text="GAIN=200"), {"fits"}))
+def test_header_value_files_header_text_excludes_non_matching(sample):
+    files = reports.header_value_files(SearchCriteria(header_text="GAIN=200"), {"fits"})
     assert files == []

@@ -51,7 +51,8 @@ from photonfinder.models import (
     Project, ProjectFile, FitsHeader, FileWCS, CatalogEntry,
 )
 from photonfinder.library_query import (
-    SORTABLE_FIELDS, search_files as run_search_files, serialize_search_row, _SERIALIZED_IMAGE_FIELDS,
+    SORTABLE_FIELDS, count_files, search_files as run_search_files, serialize_search_row,
+    _SERIALIZED_IMAGE_FIELDS,
 )
 from photonfinder.platesolver import (
     ASTAPSolver, AstrometryNetSolver, SolveFieldSolver, SolverHint,
@@ -505,10 +506,9 @@ def query_header_values(context: ApplicationContext, fields: Optional[list] = No
 
     with _bound(context, CORE_MODELS):
         sc = _criteria_from_dict(criteria, "get_header_values")
-        query = reports.header_values_query(sc, sources)
-        total = query.count()
+        total = count_files(sc)
         results = []
-        for file in query.paginate(page + 1, page_size):
+        for file in reports.header_value_files(sc, sources, page, page_size):
             values = {}
             for spec, field_name, source in specs:
                 value = reports.extract_field_value(file, field_name, source)

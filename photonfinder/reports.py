@@ -22,12 +22,13 @@ from pathlib import Path
 from typing import Callable, NamedTuple, Optional
 
 from astropy.io.fits import Header
-from peewee import JOIN, OP, SQL, Expression, fn
+from peewee import OP, SQL, Expression, fn
 
+from photonfinder import library_query
 from photonfinder.core import decompress
 from photonfinder.filesystem import decode_header_blob
 from photonfinder.models import (
-    CatalogEntry, File, FileWCS, FitsHeader, Image, LibraryRoot, SearchCriteria,
+    CatalogEntry, File, FileWCS, Image, LibraryRoot, SearchCriteria,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,18 +88,17 @@ def target_report(criteria: SearchCriteria) -> list:
     ORDER BY
       LOWER(image.object_name), image.filter;
     """
-    query = (File.select(Image.object_name,
-                         Image.filter,
-                         Image.telescope,
-                         Image.camera,
-                         fn.SUM(Image.exposure),
-                         fn.MAX(Image.date_obs),
-                         fn.RTRIM(fn.REPLACE(fn.GROUP_CONCAT(fn.DISTINCT(File.path + ":")), ":,", "\n"), ":"),
-                         fn.COUNT(File.rowid))
-             .join_from(File, Image))
-    query = Image.apply_search_criteria(query, criteria)
-    query = (query
-             .where(Image.object_name.is_null(False))
+    query = (library_query.select_matching(
+                 criteria,
+                 Image.object_name,
+                 Image.filter,
+                 Image.telescope,
+                 Image.camera,
+                 fn.SUM(Image.exposure),
+                 fn.MAX(Image.date_obs),
+                 fn.RTRIM(fn.REPLACE(fn.GROUP_CONCAT(fn.DISTINCT(File.path + ":")), ":,", "\n"), ":"),
+                 fn.COUNT(File.rowid))
+             .where(Image.object_name.is_null(False))  # also drops files without an Image row
              .where(Image.object_name != "")
              .group_by(Image.object_name,
                        Image.filter,
@@ -179,7 +179,7 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
                    limit: Optional[int] = None, offset: int = 0) -> CatalogReportResult:
     """Which entries of `catalog` fall inside the footprint of a plate-solved image.
 
-    Only plate-solved images are considered -- the image query inner-joins FileWCS.
+    Only plate-solved images are considered.
 
     With `only_matching` the full catalog is never scanned: entries are fetched by rowid
     after the footprint test, which is the difference between reading a few hundred rows
@@ -211,26 +211,21 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
     # Phase 1: fetch criteria-filtered images with WCS coords from the main DB.
     # No catalog interaction yet — just the image side of the M×N problem.
     t1 = time.monotonic()
-    img_q = (
-        Image.select(
-            File.rowid.alias('file_id'),
-            LibraryRoot.rowid.alias('root_id'),
-            LibraryRoot.name.alias('root_name'),
-            LibraryRoot.path.alias('root_path'),
-            File.path.alias('file_path'),
-            File.name.alias('file_name'),
-            Image.object_name,
-            Image.coord_ra,
-            Image.coord_dec,
-            Image.coord_pix256,
-            Image.coord_radius,
-        )
-        .join_from(Image, File)
-        .join_from(File, LibraryRoot)
-        .join_from(File, FileWCS)   # inner join: plate-solved images only
-        .where(Image.coord_ra.is_null(False))
-    )
-    img_q = Image.apply_search_criteria(img_q, criteria)
+    img_q = library_query.select_matching(
+        criteria,
+        File.rowid.alias('file_id'),
+        LibraryRoot.rowid.alias('root_id'),
+        LibraryRoot.name.alias('root_name'),
+        LibraryRoot.path.alias('root_path'),
+        File.path.alias('file_path'),
+        File.name.alias('file_name'),
+        Image.object_name,
+        Image.coord_ra,
+        Image.coord_dec,
+        Image.coord_pix256,
+        Image.coord_radius,
+        solved_only=True,
+    ).where(Image.coord_ra.is_null(False))  # also drops files without an Image row
     image_rows = list(img_q.tuples())
     images_considered = len(image_rows)
     logger.debug("Phase 1: %d candidate images in %.2fs", images_considered, time.monotonic() - t1)
@@ -399,24 +394,15 @@ def parse_field_spec(spec: str) -> tuple:
     return spec, "fits"
 
 
-def header_values_query(criteria: SearchCriteria, sources) -> tuple:
-    """Build the File query for a set of field sources, joining only what is needed."""
-    tables = [File, Image, LibraryRoot]
-    if "fits" in sources:
-        tables.append(FitsHeader)
-    if "platesolving" in sources:
-        tables.append(FileWCS)
-
-    query = (File
-             .select(*tables)
-             .join_from(File, LibraryRoot)
-             .join_from(File, Image, JOIN.LEFT_OUTER))
-    if "fits" in sources:
-        query = query.join_from(File, FitsHeader, JOIN.LEFT_OUTER)
-    if "platesolving" in sources:
-        query = query.join_from(File, FileWCS, JOIN.LEFT_OUTER)
-    query = Image.apply_search_criteria(query, criteria)
-    return query.order_by(File.root, File.path, File.name)
+def header_value_files(criteria: SearchCriteria, sources, page: Optional[int] = None,
+                       page_size: int = 100) -> list:
+    """The files of a header-values report (the GUI metadata report, MCP get_header_values),
+    loading the FITS header and plate solution only when a requested field's source reads
+    them. `sources` holds source types as parse_field_spec returns them. With `page`
+    (zero-based), only that page; library_query.count_files gives the total."""
+    return library_query.matching_files(criteria, with_header="fits" in sources,
+                                        with_solution="platesolving" in sources,
+                                        page=page, page_size=page_size)
 
 
 def extract_field_value(file: File, field_name: str, source_type: str):
