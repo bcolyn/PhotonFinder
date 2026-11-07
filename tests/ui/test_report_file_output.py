@@ -74,6 +74,16 @@ def test_a_file_list_holds_one_path_per_line(qtbot, sample, tmp_path):
     assert len(lines) == 2 and all(line.endswith(".fits") for line in lines)
 
 
+def test_a_file_list_without_a_selection_follows_the_image_criteria(qtbot, sample, tmp_path):
+    out = tmp_path / "files.txt"
+
+    finished, errors = _run(qtbot, FileListTask(sample[0], SearchCriteria(type="DARK"), None), str(out))
+
+    assert finished and not errors
+    assert [line.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+            for line in out.read_text(encoding="utf-8").splitlines()] == ["dark.fits"]
+
+
 @pytest.mark.parametrize("make_task", [
     lambda ctx, path: (FileListTask(ctx, SearchCriteria(), None), (path,)),
     lambda ctx, path: (MetadataReportTask(ctx, SearchCriteria(), None), (path, FIELDS, "csv")),

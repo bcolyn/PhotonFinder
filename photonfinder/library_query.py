@@ -19,7 +19,7 @@ from functools import reduce
 from typing import NamedTuple
 
 import astropy.units as u
-from peewee import JOIN, SQL, fn
+from peewee import JOIN, SQL, chunked, fn
 
 from photonfinder.core import hp
 from photonfinder.models import (
@@ -82,10 +82,50 @@ def search_files(criteria: SearchCriteria, page: int = 0, page_size: int = 100) 
 
 def count_files(criteria: SearchCriteria) -> int:
     """How many files match the criteria."""
-    query = (File.select(File.rowid)
+    return _files_query(criteria).count()
+
+
+def matching_files(criteria: SearchCriteria, *, with_header: bool = False,
+                   with_solution: bool = False) -> list[File]:
+    """Every file matching the criteria, in DEFAULT_ORDER, with its LibraryRoot and Image
+    loaded (a file without an Image row is included). `with_header` and `with_solution` also
+    load its FitsHeader and FileWCS, either of which may be missing.
+
+    A list rather than a query: iterating a query lazily holds a read snapshot open, and once
+    anything else commits, every write made from behind it fails with "database is locked".
+    """
+    extra = [model for model, wanted in ((FitsHeader, with_header), (FileWCS, with_solution)) if wanted]
+    return list(_files_query(criteria, extra).order_by(*DEFAULT_ORDER))
+
+
+def unsolved_lights(criteria: SearchCriteria) -> list[File]:
+    """The files a plate-solve run works through: the matching LIGHT and MASTER LIGHT frames,
+    and frames without a type, that have no stored solution. A file without an Image row (its
+    header couldn't be read) is left out. In DEFAULT_ORDER, as matching_files."""
+    query = (_files_query(criteria)
+             .where(Image.rowid.is_null(False))
+             .where((Image.image_type == "LIGHT") | (Image.image_type == "MASTER LIGHT") |
+                    Image.image_type.is_null())
+             .where(File.rowid.not_in(FileWCS.select(FileWCS.file))))
+    return list(query.order_by(*DEFAULT_ORDER))
+
+
+def files_by_id(file_ids) -> list[File]:
+    """The files with these ids, loaded as matching_files loads them. Unknown ids are skipped."""
+    files = []
+    for batch in chunked(file_ids, 500):  # SQLite caps the parameters of one statement
+        files.extend(_files_query(SearchCriteria()).where(File.rowid.in_(batch)))
+    return files
+
+
+def _files_query(criteria: SearchCriteria, extra_models=()):
+    """File with LibraryRoot, Image (outer) and any extra one-per-file models (outer), filtered."""
+    query = (File.select(File, Image, LibraryRoot, *extra_models)
              .join_from(File, LibraryRoot)
              .join_from(File, Image, JOIN.LEFT_OUTER))
-    return where_criteria(query, criteria).count()
+    for model in extra_models:
+        query = query.join_from(File, model, JOIN.LEFT_OUTER)
+    return where_criteria(query, criteria)
 
 
 def search_row_stat(row: File, alias: str):

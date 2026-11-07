@@ -3,11 +3,9 @@ from typing import List, Tuple
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QListWidgetItem, QMessageBox, QDialogButtonBox, QFileDialog
-from peewee import JOIN
-
-from photonfinder import reports
+from photonfinder import library_query, reports
 from photonfinder.core import ApplicationContext
-from photonfinder.models import SearchCriteria, File, Image, FitsHeader, FileWCS
+from photonfinder.models import SearchCriteria, File, Image
 from photonfinder.platesolver import SolverBase
 from photonfinder.ui.BackgroundLoader import FileProcessingTask
 from photonfinder.ui.generated.MetadataReportDialog_ui import Ui_MetadataReportDialog
@@ -25,21 +23,11 @@ class MetadataReportTask(FileProcessingTask):
         self.output_filename = output_filename
         super().start()
 
-    def get_tables(self) -> List:
-        tables = super().get_tables()
-        if any(value == "fits" for _, value in self.field_list):
-            tables.append(FitsHeader)
-        if any(value == "platesolving" for _, value in self.field_list):
-            tables.append(FileWCS)
-        return tables
-
-    def create_query(self):
-        query = super().create_query()
-        if any(value == "fits" for _, value in self.field_list):
-            query = query.join_from(File, FitsHeader, JOIN.LEFT_OUTER)
-        if any(value == "platesolving" for _, value in self.field_list):
-            query = query.join_from(File, FileWCS, JOIN.LEFT_OUTER)
-        return query
+    def load_files(self) -> List[File]:
+        return library_query.matching_files(
+            self.search_criteria,
+            with_header=any(value == "fits" for _, value in self.field_list),
+            with_solution=any(value == "platesolving" for _, value in self.field_list))
 
     def _process_files(self):
         # newline='' as the csv module requires, or every row ends in CR CR LF on Windows.

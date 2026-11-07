@@ -7,12 +7,13 @@ from typing import Callable, List, Optional
 from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
 from astropy.io.fits import Header
-from peewee import JOIN, chunked
+from peewee import JOIN
 
 from photonfinder.core import ApplicationContext, decompress, library_busy_message
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, \
     Project, ImageStats
+from photonfinder import library_query
 from photonfinder.library_query import search_files
 from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
 from photonfinder.filesystem import decode_header_blob, build_wcs_from_header
@@ -389,9 +390,7 @@ class FileProcessingTask(ProgressBackgroundTask):
                     self.progress.emit(i + 1)  # files done, so the last one fills the bar
             else:
                 with self.context.database.bind_ctx([File, Image]):
-                    # A list, as iterating lazily holds a read snapshot open: once anything else
-                    # commits, every write from behind it fails with "database is locked".
-                    files = list(self.create_query())
+                    files = self.load_files()
                     self.total = len(files)
                     self.total_found.emit(self.total)
                     for i, file in enumerate(files):
@@ -405,14 +404,9 @@ class FileProcessingTask(ProgressBackgroundTask):
             logging.error(f"Error processing files: {e}", exc_info=True)
             self.error.emit(str(e))
 
-    def create_query(self):
-        query = (File
-                 .select(* self.get_tables())
-                 .join_from(File, LibraryRoot)
-                 .join_from(File, Image, JOIN.LEFT_OUTER)
-                 .order_by(File.root, File.path, File.name))
-        query = Image.apply_search_criteria(query, self.search_criteria)
-        return query
+    def load_files(self) -> List[File]:
+        """The files to process when none were selected: those matching the search criteria."""
+        return library_query.matching_files(self.search_criteria)
 
     def _process_file(self, file, index):
         """Process one file. The loop reports progress once it returns."""
@@ -426,9 +420,6 @@ class FileProcessingTask(ProgressBackgroundTask):
             logging.error(f"Could not open {path} for writing: {e}")
             self.error.emit(f"Could not write {path}:\n{e}")
             return None
-
-    def get_tables(self) -> List:
-        return [File, Image, LibraryRoot]
 
 
 class PlateSolveTask(FileProcessingTask):
@@ -456,11 +447,6 @@ class PlateSolveTask(FileProcessingTask):
         if isinstance(solver, SolveFieldSolver):
             return "solve-field"
         return type(solver).__name__
-
-    def get_tables(self) -> List:
-        tables = super().get_tables()
-        tables.append(FileWCS)
-        return tables
 
     def _process_files(self):
         primary_name = self._solver_name(self.solver)
@@ -491,9 +477,7 @@ class PlateSolveTask(FileProcessingTask):
                     self.progress.emit(i + 1)  # files done, so the last one fills the bar
             else:
                 with self.context.database.bind_ctx([File, Image]):
-                    # A list, as iterating lazily holds a read snapshot open: once anything else
-                    # commits, every write from behind it fails with "database is locked".
-                    files = list(self.create_query())
+                    files = self.load_files()
                     self.total = len(files)
                     self.total_found.emit(self.total)
                     for i, file in enumerate(files):
@@ -514,14 +498,8 @@ class PlateSolveTask(FileProcessingTask):
             logging.error(f"Error processing files: {e}", exc_info=True)
             self.error.emit(str(e))
 
-    def create_query(self):
-        query = super().create_query()
-        query = (query
-                 .where((Image.image_type == "LIGHT") | (Image.image_type == "MASTER LIGHT") |
-                        (Image.image_type.is_null()))
-                 .join_from(File, FileWCS, JOIN.LEFT_OUTER)
-                 .where(FileWCS.wcs.is_null()))
-        return query
+    def load_files(self) -> List[File]:
+        return library_query.unsolved_lights(self.search_criteria)
 
     def _process_file(self, file, index):
         super()._process_file(file, index)
@@ -590,14 +568,6 @@ class FileListTask(FileProcessingTask):
     def start(self, output_filename: str = None):
         self.output_filename = output_filename
         super().start()
-
-    def create_query(self):
-        query = (File
-                 .select(File, LibraryRoot)
-                 .join_from(File, LibraryRoot)
-                 .order_by(File.root, File.path, File.name))
-        query = Image.apply_search_criteria(query, self.search_criteria)
-        return query
 
     def _process_files(self):
         if self.output_filename is None:
@@ -692,18 +662,9 @@ class MissingFramesAnalysisTask(ImageAnalysisTask):
         super().__init__(context, SearchCriteria(), [])
         self.file_ids = file_ids
 
-    def _load_files(self) -> List[File]:
-        files = []
-        for batch in chunked(self.file_ids, 500):
-            files.extend(File.select(File, Image, LibraryRoot)
-                         .join_from(File, LibraryRoot)
-                         .join_from(File, Image, JOIN.LEFT_OUTER)
-                         .where(File.rowid.in_(batch)))
-        return files
-
     def _analyse(self):
         try:
-            self.files = self._load_files()
+            self.files = library_query.files_by_id(self.file_ids)
         except Exception as e:
             logging.error(f"Error loading files to analyse: {e}", exc_info=True)
             self.error.emit(str(e))

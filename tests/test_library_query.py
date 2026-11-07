@@ -6,7 +6,9 @@ from astropy.coordinates import SkyCoord
 from astropy.io.fits import Header
 
 from photonfinder.core import compress, hp
-from photonfinder.library_query import DEFAULT_ORDER, count_files, search_files
+from photonfinder.library_query import (
+    DEFAULT_ORDER, count_files, files_by_id, matching_files, search_files, unsolved_lights,
+)
 from photonfinder.models import (
     DIAGNOSIS_BAD_FWHM, DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_OK, NO_PROJECT, File, FileWCS, FitsHeader, Image,
     ImageStats, LibraryRoot, Project, ProjectFile, RootAndPath, SearchCriteria,
@@ -172,6 +174,45 @@ def test_pages_split_the_files_and_count_them_all(library):
     assert (len(first.rows), first.total, first.has_more) == (2, 5, True)
     assert (len(last.rows), last.total, last.has_more) == (1, 5, False)
     assert count_files(SearchCriteria()) == 5
+
+
+def test_matching_files_follow_the_criteria_in_the_default_order(library):
+    files = matching_files(SearchCriteria(camera="ASI2600"))
+    assert [file.name for file in files] == ["dark", "m31_ha", "m42_oiii"]
+    assert (files[1].image.filter, files[1].root.name) == ("Ha", "Main")
+
+
+def test_matching_files_include_a_file_without_an_image(library):
+    files = matching_files(SearchCriteria(file_name="notes"))
+    assert [file.name for file in files] == ["notes.txt"]
+    assert files[0].image is None
+
+
+def test_matching_files_load_the_header_and_solution_when_asked(library):
+    plain, = matching_files(SearchCriteria(file_name="m31"))
+    loaded = {file.name: file for file in matching_files(SearchCriteria(), with_header=True, with_solution=True)}
+    assert not hasattr(plain, "fitsheader") and not hasattr(plain, "filewcs")
+    assert loaded["m31_ha"].fitsheader.header and loaded["m31_ha"].filewcs.wcs
+    assert loaded["dark"].fitsheader is None and loaded["dark"].filewcs is None
+
+
+def test_unsolved_lights_are_the_unsolved_light_frames_and_untyped_frames(library):
+    master = File.create(root=library["main"], path="masters/", name="master_light", size=1, mtime_millis=1)
+    Image.create(file=master, image_type="MASTER LIGHT", camera="ASI2600")
+    untyped = File.create(root=library["main"], path="masters/", name="untyped", size=1, mtime_millis=1)
+    Image.create(file=untyped, camera="ASI2600")
+    # m31_ha is a solved LIGHT, dark and flat are calibration, notes.txt has no Image row
+    assert [f.name for f in unsolved_lights(SearchCriteria())] == ["m42_oiii", "master_light", "untyped"]
+    assert [f.name for f in unsolved_lights(SearchCriteria(camera="ASI2600"))] == [
+        "m42_oiii", "master_light", "untyped"]
+    assert unsolved_lights(SearchCriteria(plate_solved=True)) == []
+
+
+def test_files_by_id_load_those_files(library):
+    wanted = [f.rowid for f in matching_files(SearchCriteria(type="LIGHT"))]
+    files = files_by_id([*wanted, 999_999])
+    assert sorted(f.name for f in files) == ["m31_ha", "m42_oiii"]
+    assert {f.image.image_type for f in files} == {"LIGHT"}
 
 
 def test_a_row_carries_its_image_root_and_joined_columns(library):
