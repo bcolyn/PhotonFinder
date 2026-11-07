@@ -11,7 +11,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from astropy.io.fits import Card
-from peewee import JOIN, chunked
+from peewee import chunked
 
 from photonfinder import library_query
 from photonfinder.core import ApplicationContext, decompress
