@@ -1,6 +1,5 @@
 import copy
 import logging
-import math
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -8,13 +7,13 @@ from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
 
 from photonfinder.core import ApplicationContext, library_busy_message
-from photonfinder.models import File, Image, LibraryRoot, SearchCriteria, FileWCS, \
+from photonfinder.models import File, Image, LibraryRoot, SearchCriteria, \
     Project, ImageStats
 from photonfinder import library_query
 from photonfinder.library_query import search_files
 from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
 from photonfinder.filesystem import reindex_library
-from photonfinder import solve_service, solvers
+from photonfinder import solve_service
 from photonfinder.platesolver import SolverBase, SolverHint
 
 logger = logging.getLogger(__name__)
@@ -353,58 +352,34 @@ class FileProcessingTask(ProgressBackgroundTask):
 
 
 class PlateSolveTask(FileProcessingTask):
+    """The Qt side of a solve run (solve_service.SolveRun): it runs on a worker thread and
+    turns each file's outcome into log lines, progress and the results the dialog shows."""
     writer_name = "Plate solving"
 
     def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File],
                  solver: SolverBase, backup_solver: SolverBase = None, hint: SolverHint = None,
-                 camera_scale_cache: dict = None, use_camera_scales: bool = False):
+                 camera_scales: Optional[solve_service.CameraScales] = None):
         super().__init__(context, search_criteria, files)
         self.solved_files = list()
         self.file_results = list()  # list of (file, success: bool, error_msg: str | None)
         self.first_solution: tuple | None = None  # (ra, dec, scale_arcsec) of first successful solve
-        self.solver = solver
-        self.backup_solver = backup_solver
-        self.hint = hint
-        self.camera_scale_cache = camera_scale_cache if camera_scale_cache is not None else {}
-        self.use_camera_scales = use_camera_scales
+        self.solve_run = solve_service.SolveRun(solver, backup_solver, hint, camera_scales,
+                                                output=self.message.emit, cancelled=lambda: self.cancelled)
 
     def _process_files(self):
-        primary_name = solvers.label_of(self.solver)
-        backup_name = solvers.label_of(self.backup_solver) if self.backup_solver else None
-        header = f"Solver: {primary_name}"
-        if backup_name:
-            header += f"  |  Backup: {backup_name}"
-        if self.hint:
-            parts = []
-            if self.hint.ra is not None:
-                parts.append(f"RA {self.hint.ra:.3f}°")
-            if self.hint.dec is not None:
-                parts.append(f"Dec {self.hint.dec:.3f}°")
-            if self.hint.scale is not None:
-                parts.append(f"scale {self.hint.scale:.3f} arcsec/px")
-            if parts:
-                header += f"  |  Hints ({self.hint.mode}): {', '.join(parts)}"
-        self.message.emit(header)
+        self.message.emit(self.solve_run.describe())
         self.message.emit("")
         try:
             if self.files is not None and len(self.files) > 0:
                 self.total = len(self.files)
                 self.total_found.emit(self.total)
-                for i, file in enumerate(self.files):
-                    if self.cancelled:
-                        break
-                    self._process_file(file, i)
-                    self.progress.emit(i + 1)  # files done, so the last one fills the bar
+                self._solve_all(self.files)
             else:
                 with self.context.database.bind_ctx([File, Image]):
                     files = self.load_files()
                     self.total = len(files)
                     self.total_found.emit(self.total)
-                    for i, file in enumerate(files):
-                        if self.cancelled:
-                            break
-                        self._process_file(file, i)
-                        self.progress.emit(i + 1)  # files done, so the last one fills the bar
+                    self._solve_all(files)
             solved = len(self.solved_files)
             self.message.emit("")
             if self.total == 0:
@@ -421,53 +396,22 @@ class PlateSolveTask(FileProcessingTask):
     def load_files(self) -> List[File]:
         return library_query.unsolved_lights(self.search_criteria)
 
-    def _process_file(self, file, index):
-        super()._process_file(file, index)
-        self.message.emit(f"Processing file {index + 1}/{self.total}:\n {file.full_filename()}")
+    def _announcing(self, files):
+        """The files, each announced in the log as the run reaches it."""
+        for index, file in enumerate(files):
+            self.message.emit(f"Processing file {index + 1}/{self.total}:\n {file.full_filename()}")
+            yield file
 
-        file_wcs = FileWCS.get_or_none(FileWCS.file == file)
+    def _solve_all(self, files):
+        for index, (file, outcome) in enumerate(self.solve_run.run(self._announcing(files))):
+            self._report(file, outcome)
+            self.progress.emit(index + 1)  # files done, so the last one fills the bar
 
-        # Build list of hints to try: original hint first, then cached scales for this camera
-        hints_to_try = [self.hint]
-        if self.use_camera_scales and file.image:
-            camera = getattr(file.image, 'camera', None)
-            if camera:
-                tried_scale = self.hint.scale if self.hint else None
-                for s in self.camera_scale_cache.get(camera, []):
-                    if s != tried_scale:
-                        hints_to_try.append(SolverHint(
-                            ra=self.hint.ra if self.hint else None,
-                            dec=self.hint.dec if self.hint else None,
-                            scale=s,
-                            mode='fallback',
-                        ))
-
-        outcome = None
-        for i, attempt_hint in enumerate(hints_to_try):
-            outcome = solve_service.solve_file(
-                file, self.solver, self.backup_solver, hint=attempt_hint, file_wcs=file_wcs,
-                output_callback=lambda line: self.message.emit(f"    {line}"),
-                cancelled=lambda: self.cancelled,
-            )
-            if outcome.success or outcome.cancelled or i == len(hints_to_try) - 1:
-                break
-            cached_scale = attempt_hint.scale if attempt_hint else None
-            scale_str = f"{cached_scale:.2f}\"/px" if cached_scale else "no scale"
-            self.message.emit(f"  → {scale_str} failed, trying next cached scale…")
-
+    def _report(self, file, outcome):
         if outcome.success:
             self.context.status_reporter.update_status(f"Solved file {file.full_filename()}")
             self.solved_files.append(file)
             self.file_results.append((file, True, None))
-
-            camera = getattr(file.image, 'camera', None) if file.image else None
-            if self.use_camera_scales and camera and outcome.radius and outcome.width and outcome.height:
-                diag_px = math.hypot(outcome.width, outcome.height)
-                new_scale = round((outcome.radius * 2 * 3600) / diag_px, 2)
-                scales = self.camera_scale_cache.setdefault(camera, [])
-                if new_scale not in scales:
-                    scales.append(new_scale)
-
             if self.first_solution is None:
                 self.first_solution = (outcome.ra, outcome.dec, outcome.scale_arcsec)
             self.message.emit(f"  ✓ Solved: RA {outcome.ra:.4f}°  Dec {outcome.dec:.4f}°")
@@ -476,7 +420,6 @@ class PlateSolveTask(FileProcessingTask):
         else:
             self.file_results.append((file, False, outcome.error))
             self.message.emit(f"  ✗ {outcome.error}")
-
 
 
 class FileListTask(FileProcessingTask):

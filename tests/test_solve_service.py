@@ -207,7 +207,7 @@ class TestCameraScaleRetries:
 
     def _task(self, context, light, solver):
         return PlateSolveTask(context, SearchCriteria(), [light], solver=solver,
-                              camera_scale_cache={"ASI2600": [1.0, 2.0]}, use_camera_scales=True)
+                              camera_scales=solve_service.CameraScales({"ASI2600": [1.0, 2.0]}))
 
     def test_every_cached_scale_is_tried_when_not_cancelled(self, context, light):
         solver = FakeSolver(fails=True)
@@ -228,3 +228,133 @@ class TestCameraScaleRetries:
         assert len(solver.solved) == 1
         assert task.file_results == []  # cancelled, not reported as failed
         assert task.solved_files == []
+
+
+# --- the solve run, without Qt -----------------------------------------------------------------
+
+class SolvesAtScale(FakeSolver):
+    """Solves only when hinted one of `scales` (None: the hint without a scale)."""
+
+    def __init__(self, *scales):
+        super().__init__()
+        self.scales = scales
+
+    def solve(self, image_path, image=None, hint=None, output_callback=None, file_wcs=None, cancelled=None):
+        self.solved.append(image_path.name)
+        self.hints.append(hint)
+        scale = hint.scale if hint else None
+        if not any(scale == s or (scale and s and abs(scale - s) < 0.01) for s in self.scales):
+            raise SolverFailure(f"no match at {scale}", None)
+        return self.solution.copy()
+
+
+class TestSolveRun:
+    @pytest.fixture
+    def files(self, sample):
+        _, objs = sample
+        FileWCS.delete().execute()
+        return [_load(objs["dark"]), _load(objs["light"])]
+
+    def test_files_are_solved_in_order(self, files):
+        run = solve_service.SolveRun(FakeSolver())
+
+        results = list(run.run(files))
+
+        assert [f.name for f, _ in results] == ["dark.fits", "m31.fits"]
+        assert all(outcome.success for _, outcome in results)
+
+    def test_a_failing_primary_falls_back_to_the_backup(self, files):
+        run = solve_service.SolveRun(FakeSolver(fails=True), FakeSolver())
+
+        outcome = run.solve(files[0])
+
+        assert outcome.success and outcome.used_solver == "FakeSolver"
+
+    def test_without_camera_scales_a_failure_is_not_retried(self, files):
+        solver = SolvesAtScale(1.0)
+
+        outcome = solve_service.SolveRun(solver).solve(files[0])
+
+        assert not outcome.success and len(solver.hints) == 1
+
+    def test_a_failure_is_retried_with_each_cached_scale_of_the_camera(self, files):
+        solver = SolvesAtScale(2.0)
+        scales = solve_service.CameraScales({"ASI2600": [1.0, 2.0, 3.0], "Other": [9.0]})
+        lines = []
+
+        outcome = solve_service.SolveRun(solver, camera_scales=scales, output=lines.append).solve(files[0])
+
+        assert outcome.success
+        assert [h.scale if h else None for h in solver.hints] == [None, 1.0, 2.0]
+        assert '  → 1.00"/px failed, trying next cached scale…' in lines
+
+    def test_the_hinted_scale_is_not_tried_twice(self, files):
+        solver = SolvesAtScale()
+        hint = solve_service.SolverHint(scale=1.0)
+        scales = solve_service.CameraScales({"ASI2600": [1.0, 2.0]})
+
+        solve_service.SolveRun(solver, hint=hint, camera_scales=scales).solve(files[0])
+
+        assert [h.scale for h in solver.hints] == [1.0, 2.0]
+
+    def test_a_new_solve_teaches_the_next_file_its_scale(self, files):
+        """fixed_solution_header() is 3.6"/px: the first file solves without a scale, the second
+        only at the scale the first one taught."""
+        dark, light = files
+        solver = SolvesAtScale(None)
+        scales = solve_service.CameraScales()
+        run = solve_service.SolveRun(solver, camera_scales=scales)
+
+        assert run.solve(dark).success
+        learned = scales.for_camera("ASI2600")
+        assert learned == [pytest.approx(3.6, abs=0.05)]
+        solver.scales = tuple(learned)
+        assert run.solve(light).success
+        assert [h.scale if h else None for h in solver.hints] == [None, None, learned[0]]
+
+    def test_a_cancel_stops_before_the_next_file(self, files):
+        cancelled = []
+        solver = FakeSolver(on_solve=lambda: cancelled.append(True))
+        run = solve_service.SolveRun(solver, cancelled=lambda: bool(cancelled))
+
+        results = list(run.run(files))
+
+        assert len(results) == 1 and solver.solved == ["dark.fits"]
+
+    def test_the_cache_drops_rare_scales_and_merges_close_ones(self, sample):
+        context, objs = sample
+        root = objs["root"]
+        for i, (scale_radius, count) in enumerate([(0.50, 30), (0.52, 10), (2.0, 1)]):
+            for j in range(count):
+                file = File.create(root=root, path="more/", name=f"s{i}_{j}.fits", size=1, mtime_millis=1)
+                Image.create(file=file, camera="Cam", coord_radius=scale_radius, width=1000, height=1000)
+
+        scales = solve_service.CameraScales.load().for_camera("Cam")
+
+        assert scales == [pytest.approx(round(0.5 * 2 * 3600 / (2 ** 0.5 * 1000), 2))]
+
+
+class TestHoldingTheLibrary:
+    def test_a_held_library_is_refused_with_who_holds_it(self, sample):
+        context, _ = sample
+        assert context.library_write_lock.acquire(blocking=False, holder="Library scan")
+        try:
+            refused = solve_service.try_hold_library(context, "Plate solving")
+            with pytest.raises(solve_service.SolveLockBusy, match="Library scan is writing"):
+                with solve_service.holding_library(context, "Plate solving (MCP)"):
+                    pass
+        finally:
+            context.library_write_lock.release()
+
+        assert refused.startswith("Plate solving not started: Library scan is writing")
+        assert context.writers.running() == []
+
+    def test_holding_releases_the_lock_and_the_writer_afterwards(self, sample):
+        context, _ = sample
+
+        with solve_service.holding_library(context, "Plate solving (MCP)"):
+            assert context.library_write_lock.busy_with() == "Plate solving (MCP)"
+            assert context.writers.running() == ["Plate solving (MCP)"]
+
+        assert context.library_write_lock.busy_with() is None
+        assert context.writers.running() == []

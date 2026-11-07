@@ -669,3 +669,42 @@ def test_the_diagnosis_filter_stays_out_of_mcp_input(sample):
 
     assert data["light"].rowid in {r["rowid"] for r in result["results"]}  # dropped, like any unknown field
     assert "diagnosis_hidden" not in mcp_server.SearchCriteriaInput.model_fields
+
+
+class _SolvesAtLibraryScale(_FakeSolver):
+    """Solves only when hinted the scale the library's solved ASI2600 frame has."""
+
+    def __init__(self, scale):
+        super().__init__(header=_fixed_solution_header())
+        self.scale = scale
+        self.hints = []
+
+    def solve(self, image_path, image=None, hint=None, output_callback=None, file_wcs=None, cancelled=None):
+        self.hints.append(hint.scale if hint else None)
+        if not (hint and hint.scale and abs(hint.scale - self.scale) < 0.01):
+            from photonfinder.platesolver import SolverFailure
+            raise SolverFailure("no match", None)
+        return self._header.copy()
+
+
+@pytest.mark.parametrize("use_camera_scales, solved", [(False, 0), (True, 1)])
+def test_plate_solve_retries_with_the_camera_scales_only_when_asked(sample, monkeypatch, use_camera_scales, solved):
+    ctx, data = sample
+    library_scale = Image.get(Image.file == data["light"]).coord_scale  # the solved M31 frame, same camera
+    fake = _SolvesAtLibraryScale(library_scale)
+    monkeypatch.setattr(solvers, "build_solver", lambda settings, index: fake)
+
+    result = mcp_server.query_plate_solve(ctx, [data["dark"].rowid], use_camera_scales=use_camera_scales)
+
+    assert result["solved"] == solved
+    assert fake.hints == ([None, library_scale] if use_camera_scales else [None])
+
+
+def test_plate_solve_without_a_primary_solver_configured(sample, monkeypatch):
+    ctx, data = sample
+    monkeypatch.setattr(ctx.settings, "get_plate_solve_primary_solver", lambda: 9)
+
+    result = mcp_server.query_plate_solve(ctx, [data["dark"].rowid])
+
+    assert result == {"error": "No primary solver configured (index 9)."}
+    assert ctx.library_write_lock.busy_with() is None and ctx.writers.running() == []

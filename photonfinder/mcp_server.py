@@ -45,7 +45,7 @@ from peewee import JOIN
 from pydantic import BaseModel, Field
 
 from photonfinder import reports, solve_service, solvers
-from photonfinder.core import ApplicationContext, LibraryBusyError, library_busy_message, mcp_port_file
+from photonfinder.core import ApplicationContext, LibraryBusyError, mcp_port_file
 from photonfinder.models import (
     CORE_MODELS, CATALOG_MODELS, SearchCriteria, InvalidCriteria, File, Image, LibraryRoot,
     Project, ProjectFile, FitsHeader, FileWCS, CatalogEntry,
@@ -541,7 +541,7 @@ MCP_SOLVE_WRITER = "Plate solving (MCP)"
 def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Optional[str] = None,
                        backup_solver: Optional[str] = None, hint_ra: Optional[float] = None,
                        hint_dec: Optional[float] = None, hint_scale: Optional[float] = None,
-                       hint_mode: Optional[str] = None) -> dict:
+                       hint_mode: Optional[str] = None, use_camera_scales: bool = False) -> dict:
     # Checked here rather than by leaving the tool unregistered, so that the advertised
     # tool set is the same for every run and can be generated ahead of time. The gate is
     # unchanged: without the setting, no solver runs.
@@ -564,61 +564,67 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
     if context.database is None:
         raise NoLibraryOpen()
     try:
-        context.writers.begin(MCP_SOLVE_WRITER)
+        with solve_service.holding_library(context, MCP_SOLVE_WRITER):
+            return _solve_files(context, rowids, primary_index, backup_index, hint_ra, hint_dec,
+                                hint_scale, hint_mode, use_camera_scales)
     except LibraryBusyError as e:
         return {"error": f"{e} Try again shortly."}
-    if not context.library_write_lock.acquire(blocking=False, holder=MCP_SOLVE_WRITER):
-        context.writers.end(MCP_SOLVE_WRITER)
-        busy = context.library_write_lock.busy_with() or "Another job"
-        return {"error": f"Plate solving not started: {library_busy_message(busy)}"}
+    except solve_service.SolveLockBusy as e:
+        return {"error": str(e)}
+
+
+def _solve_files(context, rowids, primary_index, backup_index, hint_ra, hint_dec, hint_scale,
+                 hint_mode, use_camera_scales) -> dict:
+    """The MCP side of a solve run: the given files in order, each outcome as a dict."""
+    s = context.settings
     try:
-        try:
-            primary, backup = solvers.build_solvers(s, primary_index, backup_index)
-        except solvers.SolverConfigError as e:
-            return {"error": str(e)}
-        except Exception as e:
-            return {"error": f"Could not build solver: {e}"}
+        primary, backup = solvers.build_solvers(s, primary_index, backup_index)
+    except solvers.SolverConfigError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"Could not build solver: {e}"}
 
-        hint = SolverHint(
-            ra=hint_ra if hint_ra is not None else (float(s.get_plate_solve_hint_ra()) if s.get_plate_solve_hint_ra() else None),
-            dec=hint_dec if hint_dec is not None else (float(s.get_plate_solve_hint_dec()) if s.get_plate_solve_hint_dec() else None),
-            scale=hint_scale if hint_scale is not None else (s.get_plate_solve_hint_scale() or None),
-            mode=hint_mode or s.get_plate_solve_hint_mode(),
-        )
+    hint = SolverHint(
+        ra=hint_ra if hint_ra is not None else (float(s.get_plate_solve_hint_ra()) if s.get_plate_solve_hint_ra() else None),
+        dec=hint_dec if hint_dec is not None else (float(s.get_plate_solve_hint_dec()) if s.get_plate_solve_hint_dec() else None),
+        scale=hint_scale if hint_scale is not None else (s.get_plate_solve_hint_scale() or None),
+        mode=hint_mode or s.get_plate_solve_hint_mode(),
+    )
 
-        results = []
-        solved = failed = 0
-        with _bound(context, CORE_MODELS):
-            for rowid in rowids:
-                file = (File.select(File, Image)
-                        .join_from(File, Image, JOIN.LEFT_OUTER)
-                        .where(File.rowid == rowid)).get_or_none()
-                if file is None:
-                    results.append({"rowid": rowid, "success": False, "error": f"No file with rowid {rowid}"})
-                    failed += 1
-                    continue
-                file_wcs = FileWCS.get_or_none(FileWCS.file == file)
-                outcome = solve_service.solve_file(file, primary, backup, hint=hint, file_wcs=file_wcs)
-                if outcome.success:
-                    solved += 1
-                    result = {
-                        "rowid": rowid, "path": file.full_filename(), "success": True,
-                        "ra": outcome.ra, "dec": outcome.dec, "scale_arcsec": outcome.scale_arcsec,
-                        "solver": outcome.used_solver,
-                    }
-                    if outcome.warning:
-                        result["warning"] = outcome.warning
-                    results.append(result)
-                else:
-                    failed += 1
-                    results.append({
-                        "rowid": rowid, "path": file.full_filename(), "success": False,
-                        "error": outcome.error,
-                    })
-        return {"results": results, "solved": solved, "failed": failed}
-    finally:
-        context.library_write_lock.release()
-        context.writers.end(MCP_SOLVE_WRITER)
+    results = []
+    solved = failed = 0
+    with _bound(context, CORE_MODELS):
+        camera_scales = solve_service.CameraScales.load() if use_camera_scales else None
+        run = solve_service.SolveRun(primary, backup, hint, camera_scales)
+        files = {f.rowid: f for f in (File.select(File, Image)
+                                      .join_from(File, Image, JOIN.LEFT_OUTER)
+                                      .where(File.rowid.in_(rowids)))}
+        missing = [rowid for rowid in rowids if rowid not in files]
+        outcomes = dict((file.rowid, outcome) for file, outcome
+                        in run.run(files[rowid] for rowid in rowids if rowid in files))
+        for rowid in rowids:
+            if rowid in missing:
+                results.append({"rowid": rowid, "success": False, "error": f"No file with rowid {rowid}"})
+                failed += 1
+                continue
+            file, outcome = files[rowid], outcomes[rowid]
+            if outcome.success:
+                solved += 1
+                result = {
+                    "rowid": rowid, "path": file.full_filename(), "success": True,
+                    "ra": outcome.ra, "dec": outcome.dec, "scale_arcsec": outcome.scale_arcsec,
+                    "solver": outcome.used_solver,
+                }
+                if outcome.warning:
+                    result["warning"] = outcome.warning
+                results.append(result)
+            else:
+                failed += 1
+                results.append({
+                    "rowid": rowid, "path": file.full_filename(), "success": False,
+                    "error": outcome.error,
+                })
+    return {"results": results, "solved": solved, "failed": failed}
 
 
 class _RootAndPathInput(BaseModel):
@@ -1056,6 +1062,9 @@ def build_mcp(context: ApplicationContext):
             'solver; `hint_mode` is "fallback" (only used if the file has no usable '
             'coordinates/scale) or "override" (always used). Omitted hint fields fall back '
             "to the values configured in Settings. "
+            "With `use_camera_scales` true, a file that fails is retried with each pixel scale "
+            "earlier solves found for its camera; off by default, as every retry is another "
+            "solve and a failing batch then takes much longer. "
             "Returns {results, solved, failed}. `results` is a list of per-file dicts "
             "with `rowid`, `path`, `success`, and on success `ra`/`dec`/`scale_arcsec`/`solver`, "
             "or on failure `error`. One file's failure does not abort the rest of the batch. "
@@ -1080,10 +1089,11 @@ def build_mcp(context: ApplicationContext):
                                 backup_solver: Optional[str] = None,
                                 hint_ra: Optional[float] = None, hint_dec: Optional[float] = None,
                                 hint_scale: Optional[float] = None,
-                                hint_mode: Optional[str] = None) -> dict:
+                                hint_mode: Optional[str] = None,
+                                use_camera_scales: bool = False) -> dict:
         return await anyio.to_thread.run_sync(
             query_plate_solve, context, rowids, solver, backup_solver,
-            hint_ra, hint_dec, hint_scale, hint_mode)
+            hint_ra, hint_dec, hint_scale, hint_mode, use_camera_scales)
 
     return mcp
 

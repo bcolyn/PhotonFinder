@@ -3311,14 +3311,17 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            '(degrees) and `hint_scale` (arcsec/pixel) seed the solver; `hint_mode` '
                            'is "fallback" (only used if the file has no usable coordinates/scale) '
                            'or "override" (always used). Omitted hint fields fall back to the '
-                           'values configured in Settings. Returns {results, solved, failed}. '
-                           '`results` is a list of per-file dicts with `rowid`, `path`, `success`, '
-                           'and on success `ra`/`dec`/`scale_arcsec`/`solver`, or on failure '
-                           "`error`. One file's failure does not abort the rest of the batch. "
-                           'Returns {"error": ...} if the batch is empty, too large, if another '
-                           'job is writing to the library (a plate-solve, scan, compression or '
-                           'analysis, here or in another PhotonFinder window), or if the user has '
-                           'not enabled agent-triggered plate solving in Settings.',
+                           'values configured in Settings. With `use_camera_scales` true, a file '
+                           'that fails is retried with each pixel scale earlier solves found for '
+                           'its camera; off by default, as every retry is another solve and a '
+                           'failing batch then takes much longer. Returns {results, solved, '
+                           'failed}. `results` is a list of per-file dicts with `rowid`, `path`, '
+                           '`success`, and on success `ra`/`dec`/`scale_arcsec`/`solver`, or on '
+                           "failure `error`. One file's failure does not abort the rest of the "
+                           'batch. Returns {"error": ...} if the batch is empty, too large, if '
+                           'another job is writing to the library (a plate-solve, scan, '
+                           'compression or analysis, here or in another PhotonFinder window), or '
+                           'if the user has not enabled agent-triggered plate solving in Settings.',
             'inputSchema': {'properties': {'rowids': {'items': {'type': 'integer'},
                                                       'title': 'Rowids',
                                                       'type': 'array'},
@@ -3345,7 +3348,10 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                            'hint_mode': {'anyOf': [{'type': 'string'},
                                                                    {'type': 'null'}],
                                                          'default': None,
-                                                         'title': 'Hint Mode'}},
+                                                         'title': 'Hint Mode'},
+                                           'use_camera_scales': {'default': False,
+                                                                 'title': 'Use Camera Scales',
+                                                                 'type': 'boolean'}},
                             'required': ['rowids'],
                             'title': 'plate_solve_filesArguments',
                             'type': 'object'},

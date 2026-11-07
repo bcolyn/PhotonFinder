@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from photonfinder import library_query, plate_solution, solvers
+from photonfinder import library_query, plate_solution, solve_service, solvers
 from photonfinder.core import ApplicationContext, library_busy_message
 from photonfinder.filesystem import decode_header_blob
 from photonfinder.models import File, FileWCS, FitsHeader, Image, SearchCriteria
@@ -98,7 +98,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self._load_settings()
         self._infer_hints()
         self._update_title()
-        self._camera_scale_cache = self._load_camera_scale_cache()
+        self._camera_scales = solve_service.CameraScales.load()
         if not self._any_file_has_camera():
             self.use_camera_scales_check.setChecked(False)
             self.use_camera_scales_check.setEnabled(False)
@@ -198,94 +198,6 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         except Exception:
             return []
 
-    def _load_camera_scale_cache(self) -> dict:
-        """Returns {camera: [scale, ...]} from solved Image records (one DB query).
-
-        Only distinct (camera, coord_scale) pairs are fetched. Scales within 30% of
-        each other are collapsed to the most common one — they represent the same
-        optical setup and would not give the solver useful new information.
-        """
-        from peewee import fn
-        cache: dict[str, dict[float, int]] = {}  # camera → {scale: count}
-        try:
-            rows = (Image
-                    .select(Image.camera, Image.coord_scale,
-                            fn.COUNT(Image.rowid).alias('cnt'))
-                    .where(Image.camera.is_null(False)
-                           & Image.coord_scale.is_null(False))
-                    .group_by(Image.camera, Image.coord_scale))
-            for img in rows:
-                cache.setdefault(img.camera, {})[img.coord_scale] = img.cnt
-        except Exception:
-            logging.exception("Failed to load camera scale cache")
-            return {}
-        return {cam: self._dedupe_scales(counts) for cam, counts in cache.items()}
-
-    @staticmethod
-    def _otsu_threshold(counts: list[int]) -> float:
-        """Return the Otsu optimal split threshold for a list of counts.
-
-        Tries every midpoint between adjacent unique count values, picks the one
-        that maximises between-class variance.  Returns 0 (keep all) when there
-        are fewer than two distinct values or the two classes are too similar
-        (lower-class mean ≥ 20 % of upper-class mean — both are legitimate setups).
-        """
-        unique = sorted(set(counts))
-        if len(unique) < 2:
-            return 0
-        best_var, best_t = -1.0, 0.0
-        n = len(counts)
-        for i in range(1, len(unique)):
-            t = (unique[i - 1] + unique[i]) / 2.0
-            below = [c for c in counts if c <= t]
-            above = [c for c in counts if c > t]
-            if not below or not above:
-                continue
-            w0, w1 = len(below) / n, len(above) / n
-            m0, m1 = sum(below) / len(below), sum(above) / len(above)
-            if m0 >= 0.25 * m1:         # classes too similar — not a real outlier (< 4:1 ratio)
-                continue
-            var = w0 * w1 * (m0 - m1) ** 2
-            if var > best_var:
-                best_var, best_t = var, t
-        return best_t
-
-    @staticmethod
-    def _dedupe_scales(scale_counts: dict[float, int]) -> list[float]:
-        """Return representative scales, removing near-duplicates and rare outliers.
-
-        Steps:
-        1. Sort scales and merge those within a 30% ratio band, accumulating their
-           solve counts and keeping the value with the highest individual count.
-        2. Apply an Otsu threshold on the per-band totals to drop bands whose
-           accumulated count is clearly in the noise tier (only triggers when one
-           class is less than 20% as common as the other).
-        """
-        if not scale_counts:
-            return []
-
-        # Step 1 — 30% band merge
-        bands: list[tuple[float, int, int]] = []   # (representative_scale, rep_count, band_total)
-        for scale in sorted(scale_counts):
-            cnt = scale_counts[scale]
-            if not bands or scale / bands[-1][0] >= 1.30:
-                bands.append((scale, cnt, cnt))
-            else:
-                rep_s, rep_c, total = bands[-1]
-                winner, winner_c = (scale, cnt) if cnt > rep_c else (rep_s, rep_c)
-                bands[-1] = (winner, winner_c, total + cnt)
-
-        # Step 2 — Otsu on band totals, drop noise tier
-        if len(bands) >= 2:
-            totals = [total for _, _, total in bands]
-            threshold = PlateSolveDialog._otsu_threshold(totals)
-            if threshold > 0:
-                filtered = [(s, rc, t) for s, rc, t in bands if t > threshold]
-                if filtered:
-                    bands = filtered
-
-        return [s for s, _, _ in bands]
-
     def _any_file_has_camera(self) -> bool:
         """Return True if at least one file to be solved has a camera field set."""
         try:
@@ -326,9 +238,9 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self._run_task(files)
 
     def _run_task(self, files):
-        if not self.context.library_write_lock.acquire(blocking=False, holder=PlateSolveTask.writer_name):
-            busy = self.context.library_write_lock.busy_with() or "Another job"
-            QMessageBox.warning(self, "Library busy", f"Plate solving not started: {library_busy_message(busy)}")
+        refused = solve_service.try_hold_library(self.context, PlateSolveTask.writer_name)
+        if refused:
+            QMessageBox.warning(self, "Library busy", refused)
             return
         self._lock_held = True
 
@@ -350,8 +262,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
             solver=primary_solver,
             backup_solver=backup_solver,
             hint=hint,
-            camera_scale_cache=self._camera_scale_cache,
-            use_camera_scales=self.use_camera_scales_check.isChecked(),
+            camera_scales=self._camera_scales if self.use_camera_scales_check.isChecked() else None,
         )
         assert self._task is not None
         self._task.progress.connect(self.progressBar.setValue)
