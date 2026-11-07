@@ -104,62 +104,38 @@ def test_infer_scale_fits_file_uses_decoded_header():
 # _infer_scale_from_wcs
 # ---------------------------------------------------------------------------
 
-def test_infer_scale_from_wcs_no_record_returns_none():
-    file = _mock_file()
-    with patch("photonfinder.ui.PlateSolveDialog.FileWCS") as mock_FileWCS:
-        mock_FileWCS.get_or_none.return_value = None
-        assert _infer_scale_from_wcs(file) is None
+def _file_with_solution(name, blob=None):
+    """A file in the test library, with `blob` stored as its plate solution when given."""
+    from photonfinder.models import File, FileWCS, LibraryRoot
+    root = LibraryRoot.get_or_create(name="r", path="/data/")[0]
+    file = File.create(root=root, path="", name=name, size=1, mtime_millis=1)
+    if blob is not None:
+        FileWCS.create(file=file, wcs=blob)
+    return file
 
 
-def test_infer_scale_from_wcs_valid_header():
-    file = _mock_file()
-    raw_wcs = fix_embedded_header(wcs_header_m106)
-    mock_rec = MagicMock()
-    with patch("photonfinder.ui.PlateSolveDialog.FileWCS") as mock_FileWCS, \
-         patch("photonfinder.ui.PlateSolveDialog.decompress", return_value=raw_wcs):
-        mock_FileWCS.get_or_none.return_value = mock_rec
-        result = _infer_scale_from_wcs(file)
-    # wcs_header_m106: CDELT ~3.4455e-4 deg/pix → ~1.240 arcsec/pix
-    assert result is not None
+def _m106_blob():
+    from photonfinder.core import compress
+    return compress(fix_embedded_header(wcs_header_m106))
+
+
+def test_infer_scale_from_wcs_without_a_solution_is_none(context):
+    assert _infer_scale_from_wcs(_file_with_solution("unsolved.fits")) is None
+
+
+def test_infer_scale_from_wcs_reads_the_stored_solution(context):
+    result = _infer_scale_from_wcs(_file_with_solution("m106.fits", _m106_blob()))
+
+    # wcs_header_m106: CDELT ~3.4455e-4 deg/pix -> ~1.240 arcsec/pix, rounded to 3 decimals
     assert result == pytest.approx(1.240, abs=0.01)
-
-
-def test_infer_scale_from_wcs_result_is_positive():
-    file = _mock_file()
-    raw_wcs = fix_embedded_header(wcs_header_m106)
-    mock_rec = MagicMock()
-    with patch("photonfinder.ui.PlateSolveDialog.FileWCS") as mock_FileWCS, \
-         patch("photonfinder.ui.PlateSolveDialog.decompress", return_value=raw_wcs):
-        mock_FileWCS.get_or_none.return_value = mock_rec
-        result = _infer_scale_from_wcs(file)
-    assert result > 0
-
-
-def test_infer_scale_from_wcs_rounded_to_3dp():
-    file = _mock_file()
-    raw_wcs = fix_embedded_header(wcs_header_m106)
-    mock_rec = MagicMock()
-    with patch("photonfinder.ui.PlateSolveDialog.FileWCS") as mock_FileWCS, \
-         patch("photonfinder.ui.PlateSolveDialog.decompress", return_value=raw_wcs):
-        mock_FileWCS.get_or_none.return_value = mock_rec
-        result = _infer_scale_from_wcs(file)
     assert result == round(result, 3)
 
 
-def test_infer_scale_from_wcs_db_exception_returns_none():
-    file = _mock_file()
-    with patch("photonfinder.ui.PlateSolveDialog.FileWCS") as mock_FileWCS:
-        mock_FileWCS.get_or_none.side_effect = Exception("db error")
-        assert _infer_scale_from_wcs(file) is None
-
-
-def test_infer_scale_from_wcs_decompress_exception_returns_none():
-    file = _mock_file()
-    mock_rec = MagicMock()
-    with patch("photonfinder.ui.PlateSolveDialog.FileWCS") as mock_FileWCS, \
-         patch("photonfinder.ui.PlateSolveDialog.decompress", side_effect=Exception("corrupt")):
-        mock_FileWCS.get_or_none.return_value = mock_rec
-        assert _infer_scale_from_wcs(file) is None
+@pytest.mark.parametrize("blob", [b"not compressed", None])
+def test_infer_scale_from_wcs_with_an_unusable_solution_is_none(context, blob):
+    from photonfinder.core import compress
+    stored = blob if blob is not None else compress(b"SIMPLE  =                    T" + b" " * 50 + b"END" + b" " * 77)
+    assert _infer_scale_from_wcs(_file_with_solution("bad.fits", stored)) is None
 
 
 # ---------------------------------------------------------------------------

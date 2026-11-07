@@ -7,6 +7,7 @@ the radius and the image dimensions) is known. Without a solution the centre is 
 position from the file's header, if it has one, and radius and scale are NULL. This module is
 the one place that changes these together.
 """
+import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -18,6 +19,8 @@ from astropy.wcs.utils import proj_plane_pixel_scales
 from photonfinder.core import compress, decompress, hp
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import File, FileWCS, FitsHeader, Image
+
+logger = logging.getLogger(__name__)
 
 _ORIGIN_PREFIX = "WCS_ORIGIN="
 
@@ -53,26 +56,94 @@ def origin_of(solution: Header) -> Optional[str]:
     return stamps[-1][len(_ORIGIN_PREFIX):] if stamps else None
 
 
+class SolvedField:
+    """A stored solution ready to use: its WCS, with the image dimensions resolved (the
+    solution's NAXIS1/NAXIS2, else the ones given), so the field's footprint is known. Without
+    dimensions only the reference point and the pixel scale are."""
+
+    def __init__(self, solution: Header, width: Optional[int] = None, height: Optional[int] = None):
+        missing = [k for k in ('CTYPE1', 'CTYPE2', 'CRVAL1', 'CRVAL2', 'CRPIX1', 'CRPIX2') if k not in solution]
+        if missing:
+            raise ValueError(f"Not a usable plate solution, it has no {', '.join(missing)}")
+        self.header = solution
+        self.width = int(solution.get('NAXIS1') or width or 0) or None
+        self.height = int(solution.get('NAXIS2') or height or 0) or None
+        self.wcs = WCS(solution)
+        if self.has_size:
+            self.wcs.array_shape = (self.height, self.width)
+
+    @property
+    def has_size(self) -> bool:
+        return bool(self.width and self.height)
+
+    def centre(self) -> SkyCoord:
+        """The centre of the image; the reference point when its size isn't known."""
+        if not self.has_size:
+            return SkyCoord(self.header['CRVAL1'], self.header['CRVAL2'], unit='deg', frame='icrs')
+        return self.wcs.pixel_to_world((self.width - 1) / 2.0, (self.height - 1) / 2.0)
+
+    def radius(self) -> Optional[float]:
+        """Degrees from the centre to the furthest corner; None when the size isn't known."""
+        if not self.has_size:
+            return None
+        w, h = self.width, self.height
+        corners = self.wcs.pixel_to_world([0, w - 1, 0, w - 1], [0, 0, h - 1, h - 1])
+        return float(self.centre().separation(corners).max().deg)
+
+    def pixel_scale_arcsec(self) -> float:
+        return float(proj_plane_pixel_scales(self.wcs)[0]) * 3600
+
+    def contains(self, ra, dec):
+        """For each (ra, dec) in degrees (scalars or arrays), whether it falls on the image.
+        Needs the size: raises ValueError without it."""
+        import numpy as np
+        if not self.has_size:
+            raise ValueError("The image size isn't known, so neither is its footprint")
+        ra, dec = np.atleast_1d(ra).astype(float), np.atleast_1d(dec).astype(float)
+        with np.errstate(invalid='ignore'):
+            x, y = self.wcs.all_world2pix(ra, dec, 0, quiet=True)
+            # Pixel centres run from 0 to size - 1; the pixels' edges reach half a pixel further.
+            return (x >= -0.5) & (x < self.width - 0.5) & (y >= -0.5) & (y < self.height - 0.5)
+
+
+def field_of(file: File, width: Optional[int] = None, height: Optional[int] = None) -> Optional[SolvedField]:
+    """The file's stored solution as a SolvedField, or None when it has none. The image size
+    comes from the solution, else from `width`/`height`, else from the file's Image row."""
+    solution = load(file)
+    if solution is None:
+        return None
+    if not (width and height):
+        image = Image.get_or_none(Image.file == file)
+        width, height = (image.width, image.height) if image else (None, None)
+    return SolvedField(solution, width, height)
+
+
+def fields_of(file_ids) -> dict:
+    """{file id: SolvedField} for each of the files that has a solution, sized as `field_of`
+    sizes it; None for one whose solution can't be used. Read in a few queries, for reports
+    that look at many files."""
+    from peewee import JOIN, chunked
+    result = {}
+    for chunk in chunked(list(file_ids), 500):
+        rows = list(FileWCS.select(FileWCS.file, FileWCS.wcs, Image.width, Image.height)
+                    .join(Image, JOIN.LEFT_OUTER, on=(Image.file == FileWCS.file))
+                    .where(FileWCS.file.in_(chunk)).tuples())
+        for file_id, blob, width, height in rows:
+            try:
+                result[file_id] = SolvedField(decode(blob), width, height)
+            except Exception as e:  # one bad solution must not take the report down
+                logger.warning("Unusable plate solution for file %s: %s", file_id, e)
+                result[file_id] = None
+    return result
+
+
 def image_centre(solution: Header, width: Optional[int] = None, height: Optional[int] = None):
     """(ra, dec, healpix, radius) of the solved field, in degrees. The dimensions come from the
     solution's NAXIS1/NAXIS2, else from `width`/`height`; without either the centre is the
     reference point and the radius is None."""
-    missing = [k for k in ('CTYPE1', 'CTYPE2', 'CRVAL1', 'CRVAL2', 'CRPIX1', 'CRPIX2') if k not in solution]
-    if missing:
-        raise ValueError(f"Not a usable plate solution, it has no {', '.join(missing)}")
-    width = solution.get('NAXIS1') or width
-    height = solution.get('NAXIS2') or height
-    wcs = WCS(solution)
-    if width and height:
-        centre = wcs.pixel_to_world((width - 1) / 2.0, (height - 1) / 2.0)
-        corners = wcs.pixel_to_world([0, width - 1, 0, width - 1], [0, 0, height - 1, height - 1])
-        radius = float(centre.separation(corners).max().deg)
-        ra, dec = float(centre.ra.deg), float(centre.dec.deg)
-    else:
-        ra, dec = solution['CRVAL1'], solution['CRVAL2']
-        centre = SkyCoord(ra, dec, unit='deg', frame='icrs')
-        radius = None
-    return ra, dec, int(hp.skycoord_to_healpix(centre)), radius
+    solved = SolvedField(solution, width, height)
+    centre = solved.centre()
+    return float(centre.ra.deg), float(centre.dec.deg), int(hp.skycoord_to_healpix(centre)), solved.radius()
 
 
 def store(file: File, solution: Header, origin: str) -> StoredSolution:
@@ -85,7 +156,7 @@ def store(file: File, solution: Header, origin: str) -> StoredSolution:
     # Everything that can fail on the solution comes before the first write, so that a failure
     # keeps whatever solution the file already had.
     values = _derived_values(solution, image and image.width, image and image.height)
-    scale_arcsec = round(float(proj_plane_pixel_scales(WCS(solution))[0]) * 3600, 3)
+    scale_arcsec = round(SolvedField(solution).pixel_scale_arcsec(), 3)
     with FileWCS._meta.database.atomic():
         FileWCS.insert(file=file, wcs=_encode(solution)).on_conflict_replace().execute()
         updated = Image.update(**values).where(Image.file == file).execute() > 0
@@ -118,7 +189,7 @@ def save_indexed(file: File, image: Optional[Image], embedded: Optional[Header])
 
 
 def decode(blob: bytes) -> Header:
-    """A stored solution, from its FileWCS.wcs blob."""
+    """A stored solution, from its FileWCS.wcs blob. The one place a stored solution is read."""
     return Header.fromstring(decompress(blob))
 
 

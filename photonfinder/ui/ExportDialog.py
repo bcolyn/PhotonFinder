@@ -18,10 +18,10 @@ from PySide6.QtWidgets import (QDialog, QFileDialog, QMessageBox, QDialogButtonB
                                 QPlainTextEdit, QAbstractItemView, QTableWidgetItem)
 from astropy.io import fits
 
-from photonfinder import library_query
+from photonfinder import library_query, plate_solution
 from photonfinder.calibration import CalibrationMatcher, CalibrationCandidate, SessionKey, session_date_for
 from photonfinder.export_plan import CALIB_TYPES, ExportEntry, ExportPlan
-from photonfinder.core import ApplicationContext, Settings, decompress as decompress_blob, Change
+from photonfinder.core import ApplicationContext, Settings, Change
 from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict, repair_header
 from photonfinder.models import Image, File, SearchCriteria, Project, ProjectFile
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
@@ -315,8 +315,7 @@ class ExportWorker(BackgroundLoaderBase):
 
     def _copy_wcs(self, file: File, header):
         if self.override_platesolve and hasattr(file, 'filewcs') and file.filewcs:
-            wcs_str = decompress_blob(file.filewcs.wcs)
-            wcs_header = fits.Header.fromstring(wcs_str)
+            wcs_header = plate_solution.decode(file.filewcs.wcs)
             for card in wcs_header.cards:
                 key = card.keyword
                 if key.startswith('NAXIS'):

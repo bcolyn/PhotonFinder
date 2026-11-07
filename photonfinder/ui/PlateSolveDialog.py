@@ -5,11 +5,9 @@ from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QGridLayout, QLabel, QMessageBox,
     QPlainTextEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
-from astropy.wcs import WCS
-from astropy.wcs.utils import proj_plane_pixel_scales
 
 from photonfinder import library_query, plate_solution
-from photonfinder.core import ApplicationContext, decompress, library_busy_message
+from photonfinder.core import ApplicationContext, library_busy_message
 from photonfinder.filesystem import decode_header_blob
 from photonfinder.models import File, FileWCS, FitsHeader, Image, SearchCriteria
 from photonfinder.platesolver import (
@@ -77,20 +75,15 @@ def _infer_scale_from_header(file: File):
 
 
 def _infer_scale_from_wcs(file: File):
+    """The pixel scale, in arcsec, of the file's stored solution; None without a usable one."""
     try:
-        from astropy.io.fits import Header as AstroHeader
-        wcs_rec = FileWCS.get_or_none(FileWCS.file == file)
-        if wcs_rec is None:
+        solution = plate_solution.load(file)
+        if solution is None:
             return None
-        raw = decompress(wcs_rec.wcs)
-        header = AstroHeader.fromstring(raw.decode())
-        wcs = WCS(header)
-        pixel_scales = proj_plane_pixel_scales(wcs)  # in degrees/pixel
-        scale = float(pixel_scales[0]) * 3600  # convert to arcsec/pixel
-        scale = round(scale, 3)
+        scale = round(plate_solution.SolvedField(solution).pixel_scale_arcsec(), 3)
         return scale if scale > 0 else None
     except Exception as e:
-        print(e)
+        logging.getLogger(__name__).warning("Unusable plate solution for %s: %s", file, e)
         return None
 
 

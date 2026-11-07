@@ -22,7 +22,7 @@ from astroquery.utils import url_helpers
 from xisf import XISF
 
 from photonfinder import plate_solution
-from photonfinder.core import get_default_astap_path, decompress
+from photonfinder.core import get_default_astap_path
 from photonfinder.image_processing import is_linear
 from photonfinder.filesystem import fopen, Importer, header_from_xisf_dict, repair_header
 
@@ -105,9 +105,7 @@ class SolverBase(metaclass=ABCMeta):
     @staticmethod
     def _merge_wcs_into_header(header: Header, file_wcs) -> None:
         """Overwrite WCS cards in *header* with those stored in *file_wcs*."""
-        raw = decompress(file_wcs.wcs)
-        wcs_header = Header.fromstring(raw.decode())
-        for card in wcs_header.cards:
+        for card in plate_solution.decode(file_wcs.wcs).cards:
             if card.keyword:
                 header[card.keyword] = (card.value, card.comment)
 

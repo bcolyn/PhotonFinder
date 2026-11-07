@@ -1101,14 +1101,12 @@ class ImageViewerWindow(QMainWindow):
             self._clear_annotations()
 
     def _on_annotate(self):
-        from astropy.io.fits import Header
-        from astropy.wcs import WCS
         from astropy.wcs.utils import proj_plane_pixel_scales
         import astropy.units as u
         from astropy.coordinates import SkyCoord
         from collections import defaultdict
-        from photonfinder.models import FileWCS, CatalogEntry, hp
-        from photonfinder.core import decompress
+        from photonfinder import plate_solution
+        from photonfinder.models import CatalogEntry, hp
 
         file = self._current_file
         if not file or not self._context:
@@ -1116,48 +1114,29 @@ class ImageViewerWindow(QMainWindow):
 
         self._clear_annotations()
 
-        wcs_record = FileWCS.get_or_none(FileWCS.file == file)
-        if not wcs_record:
+        # The size of the image shown counts when the solution doesn't record one.
+        raw = self._raw_uint16
+        solved = plate_solution.field_of(file, *((raw.shape[-1], raw.shape[-2]) if raw is not None else (None, None)))
+        if solved is None:
             logger.warning("No WCS record found for current file")
             return
-
-        wcs_header = Header.fromstring(decompress(wcs_record.wcs).decode())
-        naxis1 = wcs_header.get('NAXIS1', 0)
-        naxis2 = wcs_header.get('NAXIS2', 0)
-        if (not naxis1 or not naxis2) and self._raw_uint16 is not None:
-            naxis2, naxis1 = self._raw_uint16.shape[-2], self._raw_uint16.shape[-1]
-            logger.debug("WCS header missing NAXIS1/NAXIS2, using image shape %dx%d", naxis1, naxis2)
-        if not naxis1 or not naxis2:
+        if not solved.has_size:
             logger.warning("Cannot determine image dimensions for annotation")
             return
+        wcs = solved.wcs
 
-        wcs = WCS(wcs_header)
-        wcs.array_shape = (naxis2, naxis1)
-
-        # Image centre in sky coordinates
-        cx, cy = (naxis1 - 1) / 2.0, (naxis2 - 1) / 2.0
-        center = wcs.pixel_to_world(cx, cy)
-
-        # Cone search radius = furthest corner from centre + 5% margin
-        corner_coords = wcs.pixel_to_world(
-            [0, naxis1 - 1, 0, naxis1 - 1],
-            [0, 0, naxis2 - 1, naxis2 - 1],
-        )
-        radius_deg = float(center.separation(corner_coords).max().deg) * 1.05
-
-        # Broad HEALPix candidate search
-        pixels = hp.cone_search_skycoord(center, radius_deg * u.deg)
-        candidates = (CatalogEntry
-                      .select()
-                      .where(CatalogEntry.healpix.in_(pixels.tolist()))
-                      .order_by(CatalogEntry.magnitude.asc(nulls='last')))
+        # Broad HEALPix candidate search: furthest corner from the centre + 5% margin
+        center = solved.centre()
+        pixels = hp.cone_search_skycoord(center, solved.radius() * 1.05 * u.deg)
+        candidates = list(CatalogEntry
+                          .select()
+                          .where(CatalogEntry.healpix.in_(pixels.tolist()))
+                          .order_by(CatalogEntry.magnitude.asc(nulls='last')))
 
         # Refine with exact WCS footprint
-        found = []
-        for obj in candidates:
-            coord = SkyCoord(obj.ra, obj.dec, unit=u.deg, frame='icrs')
-            if wcs.footprint_contains(coord):
-                found.append(obj)
+        inside = solved.contains([obj.ra for obj in candidates], [obj.dec for obj in candidates]) \
+            if candidates else []
+        found = [obj for obj, on_image in zip(candidates, inside) if on_image]
 
         if not found:
             logger.info("No catalog objects found in image footprint")
@@ -1369,19 +1348,16 @@ class ImageViewerWindow(QMainWindow):
     def _on_show_metadata(self):
         if self._current_file is None or self._context is None:
             return
-        from photonfinder.models import CORE_MODELS, FitsHeader, FileWCS
-        from photonfinder.filesystem import parse_FITS_header, decode_header_blob
-        from photonfinder.core import decompress
+        from photonfinder import plate_solution
+        from photonfinder.models import CORE_MODELS, FitsHeader
+        from photonfinder.filesystem import decode_header_blob
         from .HeaderDialog import HeaderDialog
         file = self._current_file
         with self._context.database.bind_ctx(CORE_MODELS):
             try:
                 fits_header = FitsHeader.get(FitsHeader.file == file)
-                wcs = FileWCS.get_or_none(FileWCS.file == file)
                 header = decode_header_blob(fits_header.header)
-                wcs_header = None
-                if wcs:
-                    wcs_header = parse_FITS_header(decompress(wcs.wcs))
+                wcs_header = plate_solution.load(file)
                 dialog = HeaderDialog(header, wcs_header, parent=self)
                 dialog.setAttribute(Qt.WA_DeleteOnClose)
                 dialog.setWindowFlags(Qt.Window)

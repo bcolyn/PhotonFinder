@@ -320,3 +320,55 @@ def test_rebuild_index_gives_the_rows_import_gave(root, monkeypatch, header_name
 
     assert _row(file) == imported
     _assert_invariant()
+
+
+# --- one decoder: SolvedField, field_of, fields_of --------------------------------------------
+
+def test_the_footprint_is_the_image_as_astropy_draws_it(root):
+    """contains() is what the viewer annotation and the catalog report both test with."""
+    import numpy as np
+    from astropy.coordinates import SkyCoord
+    solved = plate_solution.SolvedField(_m106_solution())
+    centre = solved.centre()
+    offsets = np.linspace(-1.5, 1.5, 41)
+    ras = np.array([centre.ra.deg + dx / np.cos(np.radians(centre.dec.deg)) for dx in offsets for _ in offsets])
+    decs = np.array([centre.dec.deg + dy for _ in offsets for dy in offsets])
+
+    inside = solved.contains(ras, decs)
+
+    expected = solved.wcs.footprint_contains(SkyCoord(ras, decs, unit="deg"))
+    assert inside.any() and not inside.all()
+    assert (inside == expected).mean() > 0.99  # they may differ right on the edge only
+
+
+def test_a_field_without_a_size_has_no_footprint():
+    solved = plate_solution.SolvedField(_m106_solution(with_size=False))
+
+    assert not solved.has_size and solved.radius() is None
+    assert solved.pixel_scale_arcsec() == pytest.approx(1.24, abs=0.01)
+    with pytest.raises(ValueError):
+        solved.contains(185.0, 47.0)
+
+
+def test_field_of_takes_the_size_from_the_solution_then_the_caller_then_the_image(root):
+    file = _sized_file(root, "m106.fits", (100, 50))
+    FileWCS.create(file=file, wcs=compress(_m106_solution(with_size=False).tostring().encode()))
+
+    assert (plate_solution.field_of(file).width, plate_solution.field_of(file).height) == (100, 50)
+    assert plate_solution.field_of(file, *M106_SIZE).width == M106_SIZE[0]
+    FileWCS.update(wcs=compress(_m106_solution().tostring().encode())).execute()
+    assert plate_solution.field_of(file, 10, 10).width == M106_SIZE[0]
+    assert plate_solution.field_of(_sized_file(root, "unsolved.fits", None)) is None
+
+
+def test_fields_of_reads_many_and_survives_a_bad_one(root):
+    good = _sized_file(root, "good.fits", M106_SIZE)
+    bad = _sized_file(root, "bad.fits", M106_SIZE)
+    unsolved = _sized_file(root, "unsolved.fits", M106_SIZE)
+    FileWCS.create(file=good, wcs=compress(_m106_solution(with_size=False).tostring().encode()))
+    FileWCS.create(file=bad, wcs=compress(b"not a header"))
+
+    fields = plate_solution.fields_of([good.rowid, bad.rowid, unsolved.rowid])
+
+    assert set(fields) == {good.rowid, bad.rowid}
+    assert fields[good.rowid].has_size and fields[bad.rowid] is None

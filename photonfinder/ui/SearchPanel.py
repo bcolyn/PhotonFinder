@@ -16,11 +16,11 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame
                                QMessageBox, QPushButton, QSizePolicy, QToolBar, QWidget)
 
 from photonfinder import plate_solution
-from photonfinder.core import ApplicationContext, decompress, Change, library_busy_message
-from photonfinder.filesystem import is_compressible, parse_FITS_header, decode_header_blob
+from photonfinder.core import ApplicationContext, Change, library_busy_message
+from photonfinder.filesystem import is_compressible, decode_header_blob
 from photonfinder.library_query import diagnosis_counts, distinct_values, search_row_stat
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, NO_PROJECT, \
-    FileWCS, ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, PROJECT_NAME_SEP
+    ProjectFile, LibraryRoot, DIAGNOSIS_BAD_VALUES, PROJECT_NAME_SEP
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask, ImageAnalysisTask
 from .DateRangeDialog import DateRangeDialog
 from .HeaderDialog import HeaderDialog
@@ -979,15 +979,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             try:
                 # Try to get the FitsHeader for this file
                 fits_header = FitsHeader.get(FitsHeader.file == file)
-                wcs: FileWCS = FileWCS.get_or_none(FileWCS.file == file)
-                from astropy.io.fits import Header
-                header: Header = decode_header_blob(fits_header.header)
-
-                if wcs:
-                    wcs_bytes = decompress(wcs.wcs)
-                    wcs_header: Header = parse_FITS_header(wcs_bytes)
-                else:
-                    wcs_header = None
+                header = decode_header_blob(fits_header.header)
+                wcs_header = plate_solution.load(file)
 
                 # Show the header dialog
                 dialog = HeaderDialog(header, wcs_header, parent=self)

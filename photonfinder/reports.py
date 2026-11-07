@@ -21,14 +21,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, NamedTuple, Optional
 
-from astropy.io.fits import Header
 from peewee import OP, SQL, Expression, fn
 
-from photonfinder import library_query
-from photonfinder.core import decompress
+from photonfinder import library_query, plate_solution
 from photonfinder.filesystem import decode_header_blob
 from photonfinder.models import (
-    CatalogEntry, File, FileWCS, Image, LibraryRoot, SearchCriteria,
+    CatalogEntry, File, Image, LibraryRoot, SearchCriteria,
 )
 
 logger = logging.getLogger(__name__)
@@ -185,11 +183,10 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
     after the footprint test, which is the difference between reading a few hundred rows
     and reading all 785k of NGC.
     """
-    # Imported here rather than at module scope: numpy/astropy.wcs are expensive and this
+    # Imported here rather than at module scope: numpy/astropy are expensive and this
     # is the only report that needs them.
     import time
     import numpy as np
-    from astropy.wcs import WCS
     import astropy.units as u
     from photonfinder.core import hp
 
@@ -301,56 +298,30 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
 
     # Phase 3: decode WCS once per FoV group; check precise rectangular footprint.
     t3 = time.monotonic()
-    wcs_cache = {}      # rep_file_id -> WCS | None
     matches_map = {}    # ce_rowid -> list of MatchedFile
 
     groups_with_candidates = [g for g in fov_groups.values() if g.get('ce_candidates')]
     total_groups = len(groups_with_candidates)
     logger.debug("Phase 3: %d groups have catalog candidates", total_groups)
 
-    # Batch-load all representative WCS blobs in one query (avoids N round-trips).
-    rep_ids = [g['rep_file_id'] for g in groups_with_candidates]
-    wcs_blobs = {r.file_id: r.wcs for r in FileWCS.select().where(_in_json(FileWCS.file, rep_ids))}  # pylint: disable=not-an-iterable  # Peewee query
-    logger.debug("Phase 3: fetched %d WCS blobs in %.2fs", len(wcs_blobs), time.monotonic() - t3)
+    fields = plate_solution.fields_of(g['rep_file_id'] for g in groups_with_candidates)
+    logger.debug("Phase 3: fetched %d solutions in %.2fs", len(fields), time.monotonic() - t3)
 
     for i, group in enumerate(groups_with_candidates):
         progress(i + 1, total_groups)
 
-        rep_id = group['rep_file_id']
-        if rep_id not in wcs_cache:
-            raw_wcs = wcs_blobs.get(rep_id)
-            if raw_wcs is None:
-                logger.warning("catalog_report: no WCS record for rep %s", rep_id)
-                wcs_cache[rep_id] = None
-            else:
-                try:
-                    wcs_header = Header.fromstring(decompress(raw_wcs).decode())
-                    naxis1 = wcs_header.get('NAXIS1', 0)
-                    naxis2 = wcs_header.get('NAXIS2', 0)
-                    if naxis1 and naxis2:
-                        wcs_obj = WCS(wcs_header)
-                        wcs_obj.array_shape = (naxis2, naxis1)
-                        wcs_cache[rep_id] = wcs_obj
-                    else:
-                        logger.warning("catalog_report: no NAXIS in WCS for rep %s", rep_id)
-                        wcs_cache[rep_id] = None
-                except Exception as e:
-                    logger.warning("catalog_report: bad WCS for rep %s: %s", rep_id, e)
-                    wcs_cache[rep_id] = None
-
-        wcs_obj = wcs_cache[rep_id]
-        if wcs_obj is None:
+        solved = fields.get(group['rep_file_id'])
+        if solved is None or not solved.has_size:
+            logger.warning("catalog_report: no usable solution with a size for rep %s", group['rep_file_id'])
             continue
 
-        # Vectorized: project all candidate coords to pixel space in one call.
+        # Vectorized: test all candidate coords against the footprint in one call.
         candidates = list(group['ce_candidates'].items())
-        world = np.array([(ce_ra, ce_dec) for _, (ce_ra, ce_dec) in candidates])
         try:
-            pix = wcs_obj.all_world2pix(world, 0)
+            inside = solved.contains(np.array([ra for _, (ra, _dec) in candidates]),
+                                     np.array([dec for _, (_ra, dec) in candidates]))
         except Exception:
             continue
-        ny, nx = wcs_obj.array_shape
-        inside = (pix[:, 0] >= 0) & (pix[:, 0] < nx) & (pix[:, 1] >= 0) & (pix[:, 1] < ny)
         file_data = group['file_data']
         for j, (ce_rowid, _) in enumerate(candidates):
             if inside[j]:
@@ -470,9 +441,7 @@ def extract_platesolving_field(file: File, field_name: str):
             header = file.filewcs_obj
         else:
             if hasattr(file, 'filewcs') and file.filewcs:
-                # Decompress the WCS data and parse it as FITS header
-                wcs_data = decompress(file.filewcs.wcs)
-                header = Header.fromstring(wcs_data.decode('utf-8'))
+                header = plate_solution.decode(file.filewcs.wcs)
                 file.filewcs_obj = header
             else:
                 header = None
