@@ -269,3 +269,54 @@ def test_a_copy_overwrites_a_solution_only_when_asked(root):
     assert replaced.copied == [target]
     assert plate_solution.origin_of(plate_solution.load(target)) == "COPY:source.fits/ASTAP"
     _assert_agrees_with_its_solution(target)
+
+
+# --- import and Rebuild index share one path --------------------------------------------------
+
+def _import(root, monkeypatch, name, header_text):
+    """Import a file the way a scan does, without Qt; only reading its header off disk is stood in for."""
+    from unittest.mock import MagicMock
+    from photonfinder import filesystem
+    from photonfinder.core import StatusReporter
+    header_bytes = Header.fromstring(header_text.strip(), "\n").tostring().encode("ascii")
+    monkeypatch.setattr(filesystem, "read_fits_header", lambda *_: header_bytes)
+    file = File.create(root=root, path="", name=name, size=1, mtime_millis=1)
+    filesystem.update_fits_header_cache(filesystem.ChangeList(new_files=[file]), StatusReporter(), MagicMock())
+    return file
+
+
+def _row(file):
+    image = Image.select().where(Image.file == file).dicts().get()
+    image.pop("rowid")
+    solution = plate_solution.load(file)
+    return image, solution.tostring() if solution is not None else None
+
+
+def test_a_freshly_imported_pre_solved_file_has_radius_and_scale(root, monkeypatch):
+    from tests.sample_headers import header_sgp_fixed_wcs
+
+    file = _import(root, monkeypatch, "solved.fits", header_sgp_fixed_wcs)
+
+    image = _image(file)
+    assert image.coord_radius is not None and image.coord_scale is not None
+    assert plate_solution.origin_of(plate_solution.load(file)) == "IMPORT"
+    _assert_agrees_with_its_solution(file)
+    _assert_invariant()
+
+
+@pytest.mark.parametrize("header_name", ["header_sgp_fixed_wcs", "header_nina", "header_apt"])
+def test_rebuild_index_gives_the_rows_import_gave(root, monkeypatch, header_name):
+    from unittest.mock import MagicMock
+    from photonfinder.core import StatusReporter
+    from photonfinder.filesystem import reindex_library
+    import tests.sample_headers as headers
+    file = _import(root, monkeypatch, "frame.fits", getattr(headers, header_name))
+    imported = _row(file)
+    # What an older version may have left: no solution, a stale position.
+    FileWCS.delete().where(FileWCS.file == file).execute()
+    Image.update(coord_ra=1.0, coord_dec=2.0, coord_pix256=3, coord_radius=4.0).where(Image.file == file).execute()
+
+    reindex_library(StatusReporter(), MagicMock())
+
+    assert _row(file) == imported
+    _assert_invariant()

@@ -82,17 +82,21 @@ class TestRepairingTruncatedHeaders:
         assert (image.gain, image.offset) == (120, 30)
 
     def test_the_repair_keeps_the_plate_solution_and_stats(self, context, root, tmp_path):
+        from tests.conftest import fixed_solution_header
+        from photonfinder import plate_solution
         file = self._truncated_file(root, tmp_path)
-        Image.update(coord_ra=10.5, coord_dec=41.25, coord_pix256=1234, coord_radius=0.75).execute()
-        FileWCS.create(file=file, wcs=compress(b"the stored solution"))
+        stored = compress(fixed_solution_header().tostring().encode("ascii"))
+        FileWCS.create(file=file, wcs=stored)
         ImageStats.create(file=file, star_count=100)
 
         self._repair(context)
 
         image = Image.get(Image.file == file)
         assert image.gain == 120
-        assert (image.coord_ra, image.coord_dec, image.coord_pix256, image.coord_radius) == (10.5, 41.25, 1234, 0.75)
-        assert decompress(FileWCS.get(FileWCS.file == file).wcs) == b"the stored solution"
+        ra, dec, healpix, radius = plate_solution.image_centre(fixed_solution_header())
+        assert (image.coord_ra, image.coord_dec, image.coord_pix256, image.coord_radius) == (
+            pytest.approx(ra), pytest.approx(dec), healpix, pytest.approx(radius))
+        assert FileWCS.get(FileWCS.file == file).wcs == stored
         assert ImageStats.get(ImageStats.file == file).star_count == 100
 
     def test_a_solution_lost_with_the_truncation_is_recovered(self, context, root, tmp_path):

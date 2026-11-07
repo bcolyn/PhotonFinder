@@ -8,7 +8,7 @@ from astropy.wcs import WCS
 
 from photonfinder.core import ApplicationContext, StatusReporter, compress
 from photonfinder.models import File, FileWCS, FitsHeader, Image, ImageStats, LibraryRoot
-from photonfinder.ui import BackgroundLoader
+from photonfinder import filesystem
 from photonfinder.ui.BackgroundLoader import ImageReindexWorker
 
 COUNT = 25
@@ -28,7 +28,7 @@ class Reporter(StatusReporter):
 
 @pytest.fixture
 def context(tmp_path, qapp, monkeypatch):
-    monkeypatch.setattr(BackgroundLoader, "REINDEX_BATCH_SIZE", 10)
+    monkeypatch.setattr(filesystem, "REINDEX_BATCH_SIZE", 10)
     context = ApplicationContext(str(tmp_path / "library.db"), MagicMock())
     context.set_status_reporter(Reporter())
     with context:
@@ -73,14 +73,14 @@ def test_a_rebuild_replaces_every_row(context):
 def test_a_rebuild_survives_a_write_from_another_connection(context, monkeypatch):
     """The failure seen on a real library: every batch after the other write got "database is locked".
     It needs a write while the rows are still being read, so more rows than the old batch of 1000."""
-    monkeypatch.setattr(BackgroundLoader, "REINDEX_BATCH_SIZE", 1000)
+    monkeypatch.setattr(filesystem, "REINDEX_BATCH_SIZE", 1000)
     root = LibraryRoot.get()
     header = compress(Header({"IMAGETYP": "LIGHT", "OBJECT": "new"}).tostring().encode("ascii"))
     with context.database.atomic():
         for i in range(1100):
             file = File.create(root=root, path="more/", name=f"m{i:04}.fits", size=1, mtime_millis=1)
             FitsHeader.create(file=file, header=header)
-    real_normalize = BackgroundLoader.normalize_fits_header
+    real_normalize = filesystem.normalize_fits_header
     calls = []
 
     def another_connection_commits(*args, **kwargs):
@@ -91,7 +91,7 @@ def test_a_rebuild_survives_a_write_from_another_connection(context, monkeypatch
             other.commit()
             other.close()
         return real_normalize(*args, **kwargs)
-    monkeypatch.setattr(BackgroundLoader, "normalize_fits_header", another_connection_commits)
+    monkeypatch.setattr(filesystem, "normalize_fits_header", another_connection_commits)
 
     _rebuild(context)
 

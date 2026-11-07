@@ -84,26 +84,61 @@ def store(file: File, solution: Header, origin: str) -> StoredSolution:
     stamp_origin(solution, origin)
     # Everything that can fail on the solution comes before the first write, so that a failure
     # keeps whatever solution the file already had.
-    ra, dec, healpix, radius = image_centre(solution, image and image.width, image and image.height)
+    values = _derived_values(solution, image and image.width, image and image.height)
     scale_arcsec = round(float(proj_plane_pixel_scales(WCS(solution))[0]) * 3600, 3)
-    values = dict(coord_ra=ra, coord_dec=dec, coord_pix256=healpix, coord_radius=radius)
-    width, height = solution.get('NAXIS1'), solution.get('NAXIS2')
-    if width and height:
-        values.update(width=int(width), height=int(height))
     with FileWCS._meta.database.atomic():
-        FileWCS.insert(file=file, wcs=compress(solution.tostring().encode())).on_conflict_replace().execute()
+        FileWCS.insert(file=file, wcs=_encode(solution)).on_conflict_replace().execute()
         updated = Image.update(**values).where(Image.file == file).execute() > 0
     _update_loaded(file, values)
-    return StoredSolution(ra=ra, dec=dec, radius=radius, scale_arcsec=scale_arcsec,
+    return StoredSolution(ra=values['coord_ra'], dec=values['coord_dec'], radius=values['coord_radius'],
+                          scale_arcsec=scale_arcsec,
                           width=values.get('width', image and image.width),
                           height=values.get('height', image and image.height),
                           image_updated=updated)
 
 
+def place(image: Image, solution: Header) -> None:
+    """Give an Image that is not saved yet the centre, radius and dimensions of `solution`, as
+    storing it would. Raises ValueError when the solution can't be used."""
+    for name, value in _derived_values(solution, image.width, image.height).items():
+        setattr(image, name, value)
+
+
+def save_indexed(file: File, image: Optional[Image], embedded: Optional[Header]) -> None:
+    """Write the Image row an index built from the file's header, and the solution that header
+    carried when the file had none stored (stamped as imported). `image` has had the solution
+    placed on it, by `place`, so the two agree."""
+    with FileWCS._meta.database.atomic():
+        if embedded is not None:
+            embedded = embedded.copy()
+            stamp_origin(embedded, "IMPORT")
+            FileWCS.insert(file=file, wcs=_encode(embedded)).on_conflict_ignore().execute()
+        if image is not None:
+            Image.insert(image.__data__).on_conflict_replace().execute()
+
+
+def decode(blob: bytes) -> Header:
+    """A stored solution, from its FileWCS.wcs blob."""
+    return Header.fromstring(decompress(blob))
+
+
+def _encode(solution: Header) -> bytes:
+    return compress(solution.tostring().encode())
+
+
+def _derived_values(solution: Header, width: Optional[int], height: Optional[int]) -> dict:
+    ra, dec, healpix, radius = image_centre(solution, width, height)
+    values = dict(coord_ra=ra, coord_dec=dec, coord_pix256=healpix, coord_radius=radius)
+    naxis1, naxis2 = solution.get('NAXIS1'), solution.get('NAXIS2')
+    if naxis1 and naxis2:
+        values.update(width=int(naxis1), height=int(naxis2))
+    return values
+
+
 def load(file: File) -> Optional[Header]:
     """The file's stored solution, or None when it has none."""
     record = FileWCS.get_or_none(FileWCS.file == file)
-    return Header.fromstring(decompress(record.wcs)) if record else None
+    return decode(record.wcs) if record else None
 
 
 def copy(source: File, targets: list, overwrite: bool) -> CopyResult:

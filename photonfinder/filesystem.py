@@ -17,6 +17,7 @@ from fs.info import Info
 from peewee import JOIN
 from xisf import XISF
 
+from photonfinder import plate_solution
 from photonfinder.core import StatusReporter, compress, decompress
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import File, LibraryRoot, FitsHeader, Image, norm_db_path, FileWCS, ImageStats
@@ -197,18 +198,8 @@ def _handle_file_metadata(file, status_reporter, settings):
             header = header_from_xisf_dict(header_dict)
     if header is not None:
         settings.add_known_fits_keywords(header.keys())
-        image = normalize_fits_header(file, header, status_reporter)
-        if image is not None:
-            Image.insert(image.__data__).on_conflict_replace().execute()
-        try:
-            file_wcs = build_wcs_from_header(file, header)
-        except Exception as e:
-            # Header and Image are already stored; a malformed embedded solution only
-            # means the file is treated as unsolved.
-            log(WARN, f"Ignoring unusable WCS in header of {file.name}: {e}")
-            file_wcs = None
-        if file_wcs is not None:
-            FileWCS.insert(file_wcs.__data__).on_conflict_ignore().execute()
+        image, embedded = index_header(file, header, plate_solution.load(file), status_reporter)
+        plate_solution.save_indexed(file, image, embedded)
 
 
 def repair_header(header: Header) -> Header:
@@ -269,17 +260,14 @@ def parse_FITS_header(header_bytes: bytes) -> Header:
     return repair_header(Header.fromstring(header_bytes))
 
 
-def build_wcs_from_header(file: File, header: Header) -> 'FileWCS | None':
-    """Build a (not-yet-persisted) FileWCS from a plate-solve solution embedded in *header*.
+def embedded_solution(file: File, header: Header) -> Header | None:
+    """The plate solution a header carries (e.g. written by N.I.N.A. or PixInsight), or None.
 
-    Returns None when the header carries no usable WCS. For XISF files the solution is
-    flipped vertically (FITS row order) before being stored, matching how solutions are
-    recorded elsewhere. Used by both the initial import and the header-cache rebuild.
+    For XISF files the solution is flipped vertically (FITS row order), matching how solutions
+    are recorded elsewhere.
     """
     from astropy.wcs import WCS
-    from photonfinder.platesolver import (
-        has_been_plate_solved, extract_wcs_cards, flip_wcs_vertical,
-    )
+    from photonfinder.platesolver import has_been_plate_solved, extract_wcs_cards, flip_wcs_vertical
     if not has_been_plate_solved(header):
         return None
     solution = extract_wcs_cards(header)
@@ -291,9 +279,79 @@ def build_wcs_from_header(file: File, header: Header) -> 'FileWCS | None':
             if k in solution:
                 flipped[k] = solution[k]
         solution = flipped
-    from photonfinder.plate_solution import stamp_origin
-    stamp_origin(solution, "IMPORT")
-    return FileWCS(file=file, wcs=compress(solution.tostring().encode()))
+    return solution
+
+
+def index_header(file: File, header: Header, stored: Header | None, status_reporter=None):
+    """What a file's header gives the index: its Image row, and the plate solution embedded in
+    the header when none is `stored` for the file. Import, header repair and Rebuild index all
+    come through here, so a file is indexed the same way by each.
+
+    With a solution, stored or embedded, the Image takes its centre, radius and size. A stored
+    solution that can't be used raises; an embedded one is ignored, leaving the file unsolved.
+    Returns (image, embedded), either of which may be None; nothing is written.
+    """
+    image = normalize_fits_header(file, header, status_reporter)
+    embedded = None
+    if stored is None:
+        try:
+            embedded = embedded_solution(file, header)
+            if embedded is not None:  # checked even without an Image, so only a usable one is stored
+                plate_solution.place(image if image is not None else Image(), embedded)
+        except Exception as e:
+            log(WARN, f"Ignoring unusable WCS in header of {file.name}: {e}")
+            embedded = None
+    elif image is not None:
+        plate_solution.place(image, stored)
+    return image, embedded
+
+
+REINDEX_BATCH_SIZE = 1000
+
+
+def reindex_library(status_reporter, settings) -> None:
+    """Rebuild index: replace each file's Image row with one built from its cached header, as
+    import builds it, and store a solution embedded in a header when the file has none.
+
+    Rows are replaced a batch at a time, not cleared first, so stopping at any point leaves a
+    complete row for every file. Each batch is read in full before it is written: a write made
+    behind an open query fails at once with "database is locked" if anything else has written
+    to the library, and keeps failing. A header that can't be indexed keeps the row it had and
+    is reported; an error writing a batch stops the rebuild and is raised.
+    """
+    total_headers = FitsHeader.select().count()
+    status_reporter.update_status(f"Processing {total_headers} FITS headers...")
+    processed = 0
+    last_rowid = 0
+    while batch := list(FitsHeader
+                        .select(FitsHeader, File, FileWCS)
+                        .join(File)
+                        .join(FileWCS, JOIN.LEFT_OUTER)
+                        .where(FitsHeader.rowid > last_rowid)
+                        .order_by(FitsHeader.rowid)
+                        .limit(REINDEX_BATCH_SIZE)):
+        last_rowid = batch[-1].rowid
+        rows = []
+        for header_record in batch:
+            file = header_record.file
+            try:
+                header = decode_header_blob(header_record.header)
+                stored_record = getattr(file, 'filewcs', None)
+                stored = plate_solution.decode(stored_record.wcs) if stored_record else None
+                settings.add_known_fits_keywords(header.keys())
+                rows.append((file, *index_header(file, header, stored, status_reporter)))
+            except Exception as e:
+                # Its current row stays, as nothing better came out of this header.
+                log(ERROR, f"Error processing header of {file.name}: {e}", exc_info=True)
+                status_reporter.update_status(f"Error processing header of {file.name}: {e}")
+
+        with FitsHeader._meta.database.atomic():
+            for file, image, embedded in rows:
+                plate_solution.save_indexed(file, image, embedded)
+
+        processed += len(batch)
+        status_reporter.update_status(f"Processed {processed}/{total_headers} headers...", True)
+    status_reporter.update_status("Image metadata reindexing complete!")
 
 
 def decode_header_blob(blob: bytes) -> Header:
@@ -348,27 +406,10 @@ def _repair_truncated_header(file: File, status_reporter, settings):
         log(WARN, f"Could not read the full header of {file.name} again, keeping the cached part")
         return
     header = parse_FITS_header(header_bytes)
-    image = normalize_fits_header(file, header, status_reporter)
-    existing_wcs = FileWCS.get_or_none(FileWCS.file == file)
-    existing_image = Image.get_or_none(Image.file == file)
-    if image is not None and existing_wcs is not None and existing_image is not None:
-        image.coord_ra = existing_image.coord_ra
-        image.coord_dec = existing_image.coord_dec
-        image.coord_pix256 = existing_image.coord_pix256
-        image.coord_radius = existing_image.coord_radius
-    recovered_wcs = None
-    if existing_wcs is None:
-        try:
-            recovered_wcs = build_wcs_from_header(file, header)
-        except Exception as e:
-            log(WARN, f"Ignoring unusable WCS in header of {file.name}: {e}")
-
+    image, embedded = index_header(file, header, plate_solution.load(file), status_reporter)
     with FitsHeader._meta.database.atomic():
         FitsHeader.update(header=compress(header_bytes)).where(FitsHeader.file == file).execute()
-        if image is not None:
-            Image.insert(image.__data__).on_conflict_replace().execute()
-        if recovered_wcs is not None:
-            FileWCS.insert(recovered_wcs.__data__).on_conflict_ignore().execute()
+        plate_solution.save_indexed(file, image, embedded)
     settings.add_known_fits_keywords(header.keys())
 
 

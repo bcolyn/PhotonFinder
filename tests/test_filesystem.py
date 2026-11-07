@@ -475,7 +475,7 @@ class TestHeaderCacheResilience:
         from .sample_headers import header_apt
         files = self._files(database, tmp_path, count=1)
         mocker.patch("photonfinder.filesystem.read_fits_header", return_value=fix_embedded_header(header_apt))
-        mocker.patch("photonfinder.filesystem.build_wcs_from_header", side_effect=ValueError("bad WCS"))
+        mocker.patch("photonfinder.filesystem.embedded_solution", side_effect=ValueError("bad WCS"))
 
         update_fits_header_cache(ChangeList(new_files=files), app_context.status_reporter, app_context.settings)
 

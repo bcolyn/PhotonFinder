@@ -6,19 +6,16 @@ from typing import Callable, List, Optional
 
 from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
-from astropy.io.fits import Header
-from peewee import JOIN
 
-from photonfinder.core import ApplicationContext, decompress, library_busy_message
-from photonfinder.fits_handlers import normalize_fits_header
-from photonfinder.models import File, Image, LibraryRoot, FitsHeader, SearchCriteria, FileWCS, \
+from photonfinder.core import ApplicationContext, library_busy_message
+from photonfinder.models import File, Image, LibraryRoot, SearchCriteria, FileWCS, \
     Project, ImageStats
 from photonfinder import library_query
 from photonfinder.library_query import search_files
 from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
-from photonfinder.filesystem import decode_header_blob, build_wcs_from_header
+from photonfinder.filesystem import reindex_library
 from photonfinder import solve_service
-from photonfinder.platesolver import SolverBase, get_image_center_coords, SolverHint
+from photonfinder.platesolver import SolverBase, SolverHint
 
 logger = logging.getLogger(__name__)
 
@@ -247,9 +244,6 @@ class SearchResultsLoader(BackgroundLoaderBase):
         self.results_loaded.emit(results, page, self.total_results, has_more)
 
 
-REINDEX_BATCH_SIZE = 1000
-
-
 class ImageReindexWorker(BackgroundLoaderBase):
     """Worker class for reindexing image metadata."""
     WRITER_NAME = "Rebuild index"
@@ -269,53 +263,10 @@ class ImageReindexWorker(BackgroundLoaderBase):
         return None
 
     def _reindex_images_task(self):
-        """Replace each file's Image row with one built from its cached header.
-
-        Rows are replaced a batch at a time, not cleared first, so stopping at any point leaves a
-        complete row for every file. Each batch is read in full before it is written: a write made
-        behind an open query fails at once with "database is locked" if anything else has written
-        to the library, and keeps failing.
-        """
+        """Run Rebuild index (filesystem.reindex_library), then release the library write lock."""
         status = self.context.status_reporter
         try:
-            total_headers = FitsHeader.select().count()
-            status.update_status(f"Processing {total_headers} FITS headers...")
-
-            processed = 0
-            last_rowid = 0
-            while batch := list(FitsHeader
-                                .select(FitsHeader, File, FileWCS)
-                                .join(File)
-                                .join(FileWCS, JOIN.LEFT_OUTER)
-                                .where(FitsHeader.rowid > last_rowid)
-                                .order_by(FitsHeader.rowid)
-                                .limit(REINDEX_BATCH_SIZE)):
-                last_rowid = batch[-1].rowid
-                images, solutions = [], []
-                for header_record in batch:
-                    try:
-                        image, solution = self._reindexed_row(header_record)
-                    except Exception as e:
-                        # Its current row stays, as nothing better came out of this header.
-                        logging.error(f"Error processing header of {header_record.file.name}: {e}", exc_info=True)
-                        status.update_status(f"Error processing header of {header_record.file.name}: {e}")
-                        continue
-                    if image is not None:
-                        images.append(image)
-                    if solution is not None:
-                        solutions.append(solution)
-
-                with self.context.database.atomic():
-                    for solution in solutions:
-                        FileWCS.insert(solution.__data__).on_conflict_ignore().execute()
-                    for image in images:
-                        Image.insert(image.__data__).on_conflict_replace().execute()
-
-                processed += len(batch)
-                status.update_status(f"Processed {processed}/{total_headers} headers...", True)
-
-            status.update_status("Image metadata reindexing complete!")
-
+            reindex_library(status, self.context.settings)
         except Exception as e:
             logging.error(f"Error during reindexing: {e}", exc_info=True)
             status.update_status(f"Error during reindexing: {e}")
@@ -324,27 +275,6 @@ class ImageReindexWorker(BackgroundLoaderBase):
 
         # Signal that we're done
         self.finished.emit()
-
-    def _reindexed_row(self, header_record: FitsHeader) -> tuple[Optional[Image], Optional[FileWCS]]:
-        """The Image row for this header, and a solution found in the header if none was stored."""
-        file = header_record.file
-        header = decode_header_blob(header_record.header)
-
-        stored_solution = getattr(file, 'filewcs', None)
-        found_solution = None
-        if not stored_solution:
-            found_solution = build_wcs_from_header(file, header)
-
-        self.context.settings.add_known_fits_keywords(header.keys())
-        image = normalize_fits_header(file, header, self.context.status_reporter)
-        solution = stored_solution or found_solution
-        if image and solution:
-            ra, dec, healpix, radius = get_image_center_coords(Header.fromstring(decompress(solution.wcs)))
-            image.coord_ra = ra
-            image.coord_dec = dec
-            image.coord_pix256 = healpix
-            image.coord_radius = radius
-        return image, found_solution
 
 
 class ProgressBackgroundTask(BackgroundLoaderBase):
