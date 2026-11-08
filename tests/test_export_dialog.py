@@ -258,3 +258,163 @@ class TestExportWorkerWrites:
 
         assert (tmp_path / "out" / "light.fits").read_bytes() == b"earlier"
         assert worker.collisions == []
+
+
+def _write_multi_hdu_fits(path, empty_primary=False, extension_shape=(3, 8, 10), compress=False):
+    """A primary with a full header plus an ImageHDU with a sparse header and another filter
+    (the DWARFLAB dual-band shape), and a binary table that must survive too."""
+    import numpy as np
+    from astropy.io import fits
+    rng = np.random.default_rng(1)
+    primary_data = None if empty_primary else rng.integers(0, 65535, (3, 8, 10), dtype=np.uint16)
+    primary = fits.PrimaryHDU(data=primary_data)
+    primary.header.update({"FILTER": "HO", "EXPTIME": 6000, "OBJECT": "C 20", "DATE-OBS": "2026-11-02T20:00:00"})
+    soo = fits.ImageHDU(data=rng.integers(0, 65535, extension_shape, dtype=np.uint16), name="SOO")
+    soo.header.update({"FILTER": "SO", "EXPTIME": 11700, "STACKCNT": 39})
+    table = fits.BinTableHDU.from_columns([fits.Column(name="x", format="E", array=np.arange(3.0))], name="STARS")
+    out = str(path) + (".gz" if compress else "")
+    fits.HDUList([primary, soo, table]).writeto(out)
+    return out
+
+
+class TestExportKeepsAllHdus:
+    @pytest.fixture
+    def worker(self, app_context):
+        return ExportWorker(app_context)
+
+    @staticmethod
+    def _assert_layers_kept(source, output):
+        import numpy as np
+        from astropy.io import fits
+        with fits.open(source) as src, fits.open(output) as out:
+            assert [h.name for h in out] == ["PRIMARY", "SOO", "STARS"]
+            assert out["SOO"].header["FILTER"] == "SO"
+            assert out["SOO"].header["EXPTIME"] == 11700
+            for name in ("PRIMARY", "SOO"):
+                if src[name].data is None:
+                    assert out[name].data is None
+                else:
+                    assert out[name].data.dtype == src[name].data.dtype
+                    np.testing.assert_array_equal(out[name].data, src[name].data)
+            np.testing.assert_array_equal(out["STARS"].data["x"], src["STARS"].data["x"])
+
+    def test_custom_header_keeps_extensions(self, worker, light1, tmp_path):
+        source = _write_multi_hdu_fits(tmp_path / "draco.fits")
+        output = str(tmp_path / "out.fits")
+        worker.override_platesolve = False
+
+        worker.copy_file(source, output, light1, {"MYKEY": "hello"})
+
+        self._assert_layers_kept(source, output)
+        from astropy.io import fits
+        with fits.open(output) as out:
+            assert out[0].header["MYKEY"] == "hello"
+            assert out[0].header["FILTER"] == "HO"
+            assert "MYKEY" not in out["SOO"].header
+
+    def test_compressed_source_with_decompress_keeps_extensions(self, worker, light1, tmp_path):
+        source = _write_multi_hdu_fits(tmp_path / "draco.fits", compress=True)
+        output = str(tmp_path / "out.fits")
+        worker.override_platesolve = False
+        worker.decompress = True
+
+        worker.copy_file(source, output, light1, {"MYKEY": "hello"})
+
+        with open(output, "rb") as f:
+            assert f.read(6) == b"SIMPLE"  # really decompressed
+        self._assert_layers_kept(source, output)
+
+    def test_wcs_override_goes_to_layers_with_the_same_size(self, worker, light1_wcs, tmp_path):
+        source = _write_multi_hdu_fits(tmp_path / "draco.fits")
+        output = str(tmp_path / "out.fits")
+        worker.override_platesolve = True
+
+        worker.copy_file(source, output, light1_wcs)
+
+        self._assert_layers_kept(source, output)
+        from astropy.io import fits
+        with fits.open(output) as out:
+            assert out[0].header["CROTA2"] == pytest.approx(1.786635472113E+002)
+            assert out["SOO"].header["CROTA2"] == pytest.approx(1.786635472113E+002)
+            assert out["SOO"].header["NAXIS1"] == 10  # the solution's NAXIS cards are not copied
+            assert "CROTA2" not in out["STARS"].header
+
+    def test_wcs_override_skips_a_layer_of_another_size(self, worker, light1_wcs, tmp_path):
+        source = _write_multi_hdu_fits(tmp_path / "draco.fits", extension_shape=(3, 4, 5))
+        output = str(tmp_path / "out.fits")
+        worker.override_platesolve = True
+
+        worker.copy_file(source, output, light1_wcs)
+
+        from astropy.io import fits
+        with fits.open(output) as out:
+            assert "CROTA2" in out[0].header
+            assert "CROTA2" not in out["SOO"].header
+
+    def test_wcs_override_with_empty_primary_goes_to_the_first_image(self, worker, light1_wcs, tmp_path):
+        source = _write_multi_hdu_fits(tmp_path / "draco.fits", empty_primary=True)
+        output = str(tmp_path / "out.fits")
+        worker.override_platesolve = True
+
+        worker.copy_file(source, output, light1_wcs, {"MYKEY": "hello"})
+
+        self._assert_layers_kept(source, output)
+        from astropy.io import fits
+        with fits.open(output) as out:
+            assert out[0].header["NAXIS"] == 0
+            assert "CROTA2" not in out[0].header
+            assert out[0].header["MYKEY"] == "hello"
+            assert out["SOO"].header["CROTA2"] == pytest.approx(1.786635472113E+002)
+
+
+def _write_two_image_xisf(path):
+    """XISF with two images: 'image' (FILTER HO) and 'SOO' (FILTER SO). The xisf module writes
+    one image only, so the second <Image> element is spliced into its header by hand."""
+    import struct
+    import numpy as np
+    import xisf
+    first = np.arange(12, dtype=np.uint16).reshape(3, 4, 1)
+    second = (np.arange(12, dtype=np.uint16) + 100).reshape(3, 4, 1)
+    xisf.XISF.write(str(path), first,
+                    image_metadata={"FITSKeywords": {"FILTER": [{"value": "HO", "comment": ""}]}})
+    raw = bytearray(path.read_bytes())
+    header_len = struct.unpack("<I", raw[8:12])[0]
+    xml = raw[16:16 + header_len].decode("utf-8")
+    offset = len(raw)
+    second_image = (f'<Image id="SOO" geometry="4:3:1" colorSpace="Gray" pixelStorage="Planar" '
+                    f'sampleFormat="UInt16" location="attachment:{offset}:{second.nbytes}">'
+                    f'<FITSKeyword name="FILTER" value="SO" comment="" /></Image>')
+    xml = xml.replace("<Metadata>", second_image + "<Metadata>", 1)
+    encoded = xml.encode("utf-8")
+    assert 16 + len(encoded) <= 4096, "header must still fit before the first attachment"
+    raw[8:12] = struct.pack("<I", len(encoded))
+    raw[16:16 + len(encoded)] = encoded
+    raw += second.tobytes()
+    path.write_bytes(bytes(raw))
+    return first, second
+
+
+class TestExportXisfAllImages:
+    def test_every_xisf_image_becomes_an_hdu(self, app_context, light1_wcs, tmp_path):
+        import numpy as np
+        from astropy.io import fits
+        source = tmp_path / "two.xisf"
+        first, second = _write_two_image_xisf(source)
+        worker = ExportWorker(app_context)
+        worker.export_xisf_as_fits = True
+        worker.override_platesolve = True
+        output = str(tmp_path / "out.fits")
+
+        worker.copy_file(str(source), output, light1_wcs, {"MYKEY": "hello"})
+
+        with fits.open(output) as out:
+            assert len(out) == 2
+            assert out[0].header["FILTER"] == "HO"
+            assert out[0].header["MYKEY"] == "hello"
+            assert out[1].name == "SOO"
+            assert out[1].header["FILTER"] == "SO"
+            assert "MYKEY" not in out[1].header
+            np.testing.assert_array_equal(out[0].data, np.squeeze(first))
+            np.testing.assert_array_equal(out[1].data, np.squeeze(second))
+            assert out[0].header["CROTA2"] == pytest.approx(1.786635472113E+002)
+            assert out[1].header["CROTA2"] == pytest.approx(1.786635472113E+002)

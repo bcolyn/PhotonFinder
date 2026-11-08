@@ -147,6 +147,18 @@ def _candidate_label(candidate: CalibrationCandidate, calib_type: str) -> str:
     return "  ".join(parts)
 
 
+def _wcs_target_hdus(hdul: fits.HDUList) -> list:
+    """The HDUs a plate-solve override applies to: the first image HDU, which is the solved one,
+    and every other image HDU with the same NAXIS1/NAXIS2. Layers in one file come from one
+    registered stack, so they share its solution; a layer of another size doesn't."""
+    images = [hdu for hdu in hdul
+              if isinstance(hdu, (fits.PrimaryHDU, fits.ImageHDU)) and hdu.header.get('NAXIS', 0) >= 2]
+    if not images:
+        return []
+    size = (images[0].header.get('NAXIS1'), images[0].header.get('NAXIS2'))
+    return [hdu for hdu in images if (hdu.header.get('NAXIS1'), hdu.header.get('NAXIS2')) == size]
+
+
 def resolve_output_path(output_root: str, output_filename: str) -> str:
     """Join a templated relative filename onto the export root, refusing to escape it."""
     root = os.path.abspath(output_root)
@@ -298,17 +310,19 @@ class ExportWorker(BackgroundLoaderBase):
         custom_headers = custom_headers or {}
         if self.customize_fits_headers(custom_headers):
             with fits.open(source_fd) as hdul:
+                # Change headers in place and write the whole HDUList, so extensions (another
+                # image layer, tables) survive. The data is never touched, so it is written
+                # back as-is, without rescaling.
                 header = hdul[0].header
-                data = hdul[0].data
                 repair_header(header)
 
-                self._copy_wcs(file, header)
+                for hdu in _wcs_target_hdus(hdul):
+                    self._copy_wcs(file, hdu.header)
 
                 for key, value in custom_headers.items():
                     header[key] = value
 
-                hdu = fits.PrimaryHDU(data=data, header=header)
-                hdu.writeto(output_file_path, overwrite=True, output_verify='silentfix')
+                hdul.writeto(output_file_path, overwrite=True, output_verify='silentfix')
         else:
             with open(output_file_path, "wb") as destination_file:
                 shutil.copyfileobj(source_fd, destination_file)
@@ -333,23 +347,28 @@ class ExportWorker(BackgroundLoaderBase):
         xisf = XISF(source_path)
         metas = xisf.get_images_metadata()
 
+        hdul = fits.HDUList()
         for i, meta in enumerate(metas):
-            if "FITSKeywords" in meta:
-                header = header_from_xisf_dict(meta["FITSKeywords"])
-                image_data = xisf.read_image(i, 'channels_first')
-
-                self._copy_wcs(file, header)
-
+            if "FITSKeywords" not in meta:
+                continue
+            header = header_from_xisf_dict(meta["FITSKeywords"])
+            image_data = np.squeeze(xisf.read_image(i, 'channels_first'))
+            if not hdul:
                 for key, value in custom_headers.items():
                     header[key] = value
+                hdul.append(fits.PrimaryHDU(data=image_data, header=header))
+            else:
+                hdu = fits.ImageHDU(data=image_data, header=header)
+                if meta.get("id") and "EXTNAME" not in header:
+                    hdu.name = meta["id"]
+                hdul.append(hdu)
 
-                image_data = np.squeeze(image_data)
+        if not hdul:
+            raise ValueError(f"No suitable image with FITS keywords found in XISF file: {source_path}")
 
-                hdu = fits.PrimaryHDU(data=image_data, header=header)
-                hdu.writeto(output_file_path, overwrite=True, output_verify='silentfix')
-                return
-
-        raise ValueError(f"No suitable image with FITS keywords found in XISF file: {source_path}")
+        for hdu in _wcs_target_hdus(hdul):
+            self._copy_wcs(file, hdu.header)
+        hdul.writeto(output_file_path, overwrite=True, output_verify='silentfix')
 
     def cancel(self):
         """Cancel the export process."""
