@@ -80,7 +80,7 @@ The Report menu provides various reporting and analysis tools.
 
 ### Aggregate Reports
 - **Target Report** - Total integration time and number of observing nights per target, grouped by filter, telescope and camera
-- **Catalog Report** - Which catalog objects your plate-solved images cover. Besides the built-in catalogs you can use your own, see [Custom catalogs](#custom-catalogs)
+- **Catalog Report** - Which catalog objects your plate-solved images cover. A solved frame also covers the other frames of its group (the same target on the same night, with the same image type, folder, filter and exposure, as Group by Night shows them), so solving one frame per group is enough: the others are listed in grey italics, with a tooltip naming the solved frame. Besides the built-in catalogs you can use your own, see [Custom catalogs](#custom-catalogs)
 
 ### External Integration
 - **Telescopius Target List** - Compares one of your Telescopius observing lists with the current search and shows which targets have already been imaged. Requires a Telescopius API key (Settings > Telescopius)

@@ -506,7 +506,7 @@ def query_catalog_report(context: ApplicationContext, catalog: str,
             "file_count": len(matches),
         }
         if include_files:
-            row["files"] = [{"rowid": m.file_id, "full_path": m.full_path}
+            row["files"] = [{"rowid": m.file_id, "full_path": m.full_path, "solved": m.solved}
                             for m in matches[:max_files]]
             row["files_truncated"] = len(matches) > max_files
         results.append(row)
@@ -839,7 +839,7 @@ def build_mcp(context: ApplicationContext):
         "`report_targets` and `report_catalog_coverage` give the same aggregates "
         "as the application's Report menu -- total integration per target (matched by object "
         "name; no plate solving required), and which catalog objects the library covers "
-        "(only considering plate-solved images) -- and `get_header_values` reads a few named "
+        "(through plate solutions, a solved frame covering its group) -- and `get_header_values` reads a few named "
         "FITS/model/WCS fields across many files at once instead of one whole header at a "
         "time. `report_targets`, `report_catalog_coverage` and `get_header_values` all take "
         "the same optional `criteria` object as `search_files`, so scope them to the files "
@@ -972,8 +972,13 @@ def build_mcp(context: ApplicationContext):
         `catalog` is one of the names from `list_catalogs`, which includes any custom
         catalog the user imported (e.g. their own target list).
 
-        Only **plate-solved** images are considered -- an unsolved library yields an empty
-        report, so check `images_considered` before concluding you have not imaged something.
+        Coverage comes from **plate solutions**: a solved image counts, and so do the other
+        frames of its group (one target on one observing night, same image type, folder, filter
+        and exposure, as `search_files` with `one_per_group` shows them), through the group's
+        earliest solved frame -- so plate solving one frame per group is enough. A group with no
+        solved frame doesn't count: an unsolved library yields an empty report, so check
+        `images_considered` before concluding you have not imaged something. Each `files`
+        entry says whether that frame is `solved` itself.
         This can take tens of seconds on a large library.
 
         `only_matching` defaults to true and returns just the covered objects. Setting it

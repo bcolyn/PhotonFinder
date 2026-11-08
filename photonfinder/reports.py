@@ -26,7 +26,7 @@ from peewee import OP, SQL, Expression, fn
 from photonfinder import library_query, plate_solution
 from photonfinder.filesystem import decode_header_blob
 from photonfinder.models import (
-    CatalogEntry, File, Image, LibraryRoot, SearchCriteria, session_night_sql,
+    CatalogEntry, File, FileWCS, Image, LibraryRoot, SearchCriteria, group_key_sql, session_night_sql,
 )
 
 logger = logging.getLogger(__name__)
@@ -139,6 +139,8 @@ class MatchedFile(NamedTuple):
     file_dir: str
     file_name: str
     file_id: int
+    solved: bool = True       # False: counted through its group's solved frame
+    solution_file: str = ""   # that frame's name, for an unsolved one
 
 
 @dataclass(frozen=True)
@@ -155,7 +157,8 @@ class CatalogReportResult:
     matches: dict            # catalog entry rowid -> list[MatchedFile]
     only_matching: bool
     total_entries: int       # ignoring limit/offset
-    images_considered: int   # plate-solved images the criteria matched
+    images_considered: int   # images the criteria matched that a plate solution covers: solved
+                             # ones, and the other frames of their groups
 
 
 def _in_json(column, values) -> Expression:
@@ -182,9 +185,12 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
                    only_matching: bool = False,
                    progress: ProgressCallback = _noop_progress,
                    limit: Optional[int] = None, offset: int = 0) -> CatalogReportResult:
-    """Which entries of `catalog` fall inside the footprint of a plate-solved image.
-
-    Only plate-solved images are considered.
+    """Which entries of `catalog` fall inside the footprint of a plate-solved image, and so of
+    the other frames of its group (models.group_key_sql: one target on one night, same type,
+    folder, filter and exposure), solved or not: dithered subs share a footprint, and plate
+    solving one per group leaves the rest unsolved. A group uses its earliest solved frame's
+    solution. A group without a solved frame isn't counted; nor is an unsolved image without an
+    object name, which has no group.
 
     With `only_matching` the full catalog is never scanned: entries are fetched by rowid
     after the footprint test, which is the difference between reading a few hundred rows
@@ -212,8 +218,8 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
         if not total_entries:
             return CatalogReportResult([], {}, only_matching, 0, 0)
 
-    # Phase 1: fetch criteria-filtered images with WCS coords from the main DB.
-    # No catalog interaction yet — just the image side of the M×N problem.
+    # Phase 1: the criteria-filtered images, solved or not, with their group key. No catalog
+    # interaction yet -- just the image side of the M×N problem.
     t1 = time.monotonic()
     img_q = library_query.select_matching(
         criteria,
@@ -226,50 +232,55 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
         Image.object_name,
         Image.coord_ra,
         Image.coord_dec,
-        Image.coord_pix256,
         Image.coord_radius,
-        solved_only=True,
-    ).where(Image.coord_ra.is_null(False)  # also drops files without an Image row
-            # A solution is the file's: its first image stands for it, not every layer of it.
-            & (Image.hdu == _FIRST_IMAGE.select(fn.MIN(_FIRST_IMAGE.hdu)).where(_FIRST_IMAGE.file == File.rowid)))
-    image_rows = list(img_q.tuples())
-    images_considered = len(image_rows)
-    logger.debug("Phase 1: %d candidate images in %.2fs", images_considered, time.monotonic() - t1)
+        Image.date_obs,
+        Image.hdu,
+        FileWCS.file.is_null(False).alias('solved'),
+        *(column.alias(f'group_{i}') for i, column in enumerate(group_key_sql())),
+        require_image=True, with_solution=True,
+    ).where(
+        # A solution is the file's: its first image stands for it, not every layer of it.
+        (Image.hdu == _FIRST_IMAGE.select(fn.MIN(_FIRST_IMAGE.hdu)).where(_FIRST_IMAGE.file == File.rowid))
+        # An unsolved frame counts only through a solved one of its group; without an object
+        # name it has none.
+        & (FileWCS.file.is_null(False) | Image.object_name.is_null(False)))
+    image_rows = list(img_q.namedtuples())
+    logger.debug("Phase 1: %d candidate images in %.2fs", len(image_rows), time.monotonic() - t1)
+
+    # Phase 1b: group the images (models.group_key_sql), one solution per group: its earliest
+    # solved frame's. A solved frame without an object name is a group of its own.
+    t1b = time.monotonic()
+    group_columns = [f'group_{i}' for i in range(len(group_key_sql()))]
+    by_group: dict[tuple, list] = {}
+    for row in image_rows:
+        key = tuple(getattr(row, name) for name in group_columns) if row.object_name else ('file', row.file_id)
+        by_group.setdefault(key, []).append(row)
+
+    fov_groups = {}   # group key -> {rep_file_id, coord_ra, coord_dec, coord_radius, file_data[]}
+    images_considered = 0
+    for key, rows in by_group.items():
+        solved = [r for r in rows if r.solved and r.coord_ra is not None]
+        if not solved:
+            continue
+        # the earliest (frames without a date_obs last), then by file and layer: group_order_sql
+        rep = min(solved, key=lambda r: (r.date_obs is None, r.date_obs or datetime.min, r.file_id, r.hdu))
+        file_data = [MatchedFile(r.object_name or '', os.path.join(str(r.root_path), str(r.file_path), str(r.file_name)),
+                                 r.root_id, r.root_name, r.file_path, r.file_name, r.file_id,
+                                 bool(r.solved), "" if r.solved else rep.file_name)
+                     for r in rows]
+        images_considered += len(file_data)
+        fov_groups[key] = {'rep_file_id': rep.file_id, 'coord_ra': rep.coord_ra, 'coord_dec': rep.coord_dec,
+                           'coord_radius': rep.coord_radius or 0, 'file_data': file_data}
+
+    logger.debug("Phase 1b: %d groups with a solution, covering %d images, in %.2fs",
+                 len(fov_groups), images_considered, time.monotonic() - t1b)
 
     def _no_matches() -> CatalogReportResult:
         entries = [] if only_matching else _catalog_entries(catalog, limit, offset)
         return CatalogReportResult(entries, {}, only_matching, total_entries, images_considered)
 
-    if not image_rows:
+    if not fov_groups:
         return _no_matches()
-
-    # Phase 1b: group images by FoV signature — dithered subs share one WCS decode.
-    # Key: (center healpix pixel, radius bucket, root_id, directory).
-    t1b = time.monotonic()
-    fov_groups = {}   # fov_key -> {rep_file_id, coord_ra, coord_dec, coord_radius, file_data[]}
-
-    for row in image_rows:
-        (file_id, root_id, root_name, root_path,
-         file_path, file_name, object_name,
-         coord_ra, coord_dec, coord_pix256, coord_radius) = row
-
-        fov_key = (coord_pix256, round((coord_radius or 0) * 1000), root_id, file_path)
-        if fov_key not in fov_groups:
-            fov_groups[fov_key] = {
-                'rep_file_id': file_id,
-                'coord_ra': coord_ra,
-                'coord_dec': coord_dec,
-                'coord_radius': coord_radius or 0,
-                'file_data': [],
-            }
-        full_path = os.path.join(str(root_path), str(file_path), str(file_name))
-        fov_groups[fov_key]['file_data'].append(
-            MatchedFile(object_name or '', full_path, root_id, root_name,
-                        file_path, file_name, file_id)
-        )
-
-    logger.debug("Phase 1b: %d FoV groups from %d images in %.2fs",
-                 len(fov_groups), len(image_rows), time.monotonic() - t1b)
 
     # Phase 1c: compute healpix pixel union across all FoV group representatives
     # in Python (fast numpy), then query the catalog once with that pixel set.

@@ -223,10 +223,10 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
         self._loaded_only_matching = only_matching
         match_count = len(matches_map)
         if only_matching:
-            self.statusbar.showMessage(f"{match_count} objects matching plate-solved images.")
+            self.statusbar.showMessage(f"{match_count} objects matching plate-solved images and their groups.")
         else:
             self.statusbar.showMessage(
-                f"{match_count} of {len(catalog_entries)} objects matching plate-solved images."
+                f"{match_count} of {len(catalog_entries)} objects matching plate-solved images and their groups."
             )
         self.apply_filter()
 
@@ -270,6 +270,13 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
                     file_item.setText(0, m.file_name)
                     file_item.setData(0, _FILE_DATA_ROLE,
                                       (m.root_id, m.root_name, m.file_dir, m.file_name, m.object_name))
+                    if not m.solved:
+                        # Counted through its group's solved frame; it has no solution of its own.
+                        font = file_item.font(0)
+                        font.setItalic(True)
+                        file_item.setFont(0, font)
+                        file_item.setForeground(0, _GRAY)
+                        file_item.setToolTip(0, f"Not plate-solved itself: covered by the solution of {m.solution_file}")
 
         header = self.treeWidget.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
