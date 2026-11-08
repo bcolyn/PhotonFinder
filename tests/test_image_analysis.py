@@ -289,7 +289,7 @@ def test_analysing_a_search_survives_a_write_from_another_connection(tmp_path, q
                          image_type="LIGHT")
         analysed = []
 
-        def another_connection_commits(path, detect_sources=True):
+        def another_connection_commits(path, detect_sources=True, hdu=None):
             analysed.append(Path(path).name)
             if len(analysed) == 3:
                 other = sqlite3.connect(context.database_path, timeout=1)

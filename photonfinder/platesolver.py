@@ -20,12 +20,11 @@ import numpy as np
 from astroquery.astrometry_net.core import AstrometryNetClass
 from astroquery.exceptions import TimeoutError as AstroqueryTimeoutError
 from astroquery.utils import url_helpers
-from xisf import XISF
 
-from photonfinder import plate_solution
+from photonfinder import image_hdus, plate_solution
 from photonfinder.core import get_default_astap_path, get_default_saspro_path
 from photonfinder.image_processing import is_linear
-from photonfinder.filesystem import fopen, Importer, header_from_xisf_dict, repair_header
+from photonfinder.filesystem import Importer, repair_header
 
 
 class SolverType(Enum):
@@ -112,43 +111,33 @@ class SolverBase(metaclass=ABCMeta):
             if card.keyword:
                 header[card.keyword] = (card.value, card.comment)
 
-    def _create_temp_fits(self, input_image, file_wcs=None) -> Path:
+    def _create_temp_fits(self, input_image, file_wcs=None, hdu=None) -> Path:
+        """The image to solve as a single-HDU, single-plane FITS file in the temp dir. *hdu* is
+        the image in a file holding several, None the first: the one a file's solution is of
+        (spec D3). An extension's header is merged with the primary's, so the solver sees the
+        pointing, date and optics the primary has."""
         temp_image = Path(self.tmp_dir) / (input_image.name + ".fit")
-        if Importer.is_fits_by_name(str(input_image)):
-            with fopen(input_image) as source_file:
-                with fits.open(source_file) as source_hdu:
-                    main_image_data = source_hdu[0].data
-                    main_header = source_hdu[0].header
-                    repair_header(main_header)
-                    data2d = select_first_channel(main_image_data)
-                    header2d = Header(main_header.cards, copy=True)
-                    header2d['NAXIS'] = 2
-                    header2d.remove('NAXIS3', ignore_missing=True)
-                    if file_wcs is not None:
-                        self._merge_wcs_into_header(header2d, file_wcs)
-                    hdu = fits.PrimaryHDU(data=data2d, header=header2d)
-                    hdu.writeto(temp_image, overwrite=False, output_verify='silentfix')
-            return temp_image
-        elif Importer.is_xisf_by_name(str(input_image)):
-            xisf = XISF(input_image)
-            metas = xisf.get_images_metadata()
-            for i, meta in enumerate(metas):
-                if "FITSKeywords" in meta:
-                    main_header = header_from_xisf_dict(meta["FITSKeywords"])
-                    main_header.remove("COMMENT", ignore_missing=True, remove_all=True)
-                    main_header.remove("HISTORY", ignore_missing=True, remove_all=True)
-                    main_header['NAXIS'] = 2
-                    main_header.remove('NAXIS3', ignore_missing=True)
-                    if file_wcs is not None:
-                        self._merge_wcs_into_header(main_header, file_wcs)
-                    main_image_data = select_first_channel(xisf.read_image(i, 'channels_first'))
-                    hdu = fits.PrimaryHDU(data=main_image_data, header=main_header)
-                    hdu.writeto(temp_image, overwrite=False, output_verify='silentfix')
-                    return temp_image
-
-            raise SolverError("No suitable image with FITS keywords found in XISF file: " + str(input_image))
-        else:
+        is_xisf = Importer.is_xisf_by_name(str(input_image))
+        if not (is_xisf or Importer.is_fits_by_name(str(input_image))):
             raise SolverError("Unknown file type: " + str(input_image) + ". Only FITS and XISF files are supported.")
+        try:
+            data, header = image_hdus.read_hdu(input_image, hdu)
+        except ValueError as e:
+            raise SolverError(f"No image to solve in {input_image}: {e}") from e
+        dropped = _EXTENSION_ONLY | ({"COMMENT", "HISTORY"} if is_xisf else set())
+        header2d = Header([card for card in header.cards if card.keyword not in dropped], copy=True)
+        header2d['NAXIS'] = 2
+        header2d.remove('NAXIS3', ignore_missing=True)
+        if file_wcs is not None:
+            self._merge_wcs_into_header(header2d, file_wcs)
+        fits.PrimaryHDU(data=select_first_channel(data), header=header2d).writeto(
+            temp_image, overwrite=False, output_verify='silentfix')
+        return temp_image
+
+
+# Cards that only make sense in an extension's header, left out when its image is written as
+# a primary HDU.
+_EXTENSION_ONLY = {'XTENSION', 'PCOUNT', 'GCOUNT', 'EXTNAME', 'EXTVER', 'EXTLEVEL', 'INHERIT'}
 
 
 ASTAP_TIMEOUT_SECONDS = 600  # far above a normal solve, which takes seconds even when blind
@@ -1097,77 +1086,47 @@ def create_xylist(temp_fits: Path, output_dir: Path) -> Path:
     return xylist_path
 
 
-def _create_temp_jpeg(input_image, output_dir: Path) -> Path:
+def _create_temp_jpeg(input_image, output_dir: Path, hdu=None) -> Path:
     """
-    Creates a JPEG file from a XISF or FITS file.
+    Creates a JPEG file from one image of a XISF or FITS file.
 
     Args:
         input_image: Path to the XISF or FITS file
         output_dir: Directory where the JPEG file will be saved
+        hdu: the image in a file holding several; None for the first
 
     Returns:
         Path to the created JPEG file
     """
+    if not (Importer.is_fits_by_name(str(input_image)) or Importer.is_xisf_by_name(str(input_image))):
+        raise SolverError("Unknown file type: " + str(input_image) + ". Only FITS and XISF files are supported.")
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
     jpeg_path = output_dir / (Path(input_image).stem + ".jpg")
 
-    if Importer.is_fits_by_name(str(input_image)):
-        with fopen(input_image) as source_file:
-            with fits.open(source_file) as hdul:
-                image_data = hdul[0].data
-                # Convert to 8-bit for JPEG
-                if image_data.dtype != np.uint8:
-                    # Normalize to 0-255 range
-                    image_data = image_data.astype(np.float32)
-                    if image_data.min() != image_data.max():  # Avoid division by zero
-                        image_data = 255 * (image_data - image_data.min()) / (image_data.max() - image_data.min())
-                    image_data = image_data.astype(np.uint8)
+    try:
+        image_data, _ = image_hdus.read_hdu(input_image, hdu)
+    except ValueError as e:
+        raise SolverError(f"No image in {input_image}: {e}") from e
+    if image_data.ndim == 3 and image_data.shape[0] == 1:
+        image_data = image_data[0]  # a single-channel XISF image
+    # Convert to 8-bit for JPEG
+    if image_data.dtype != np.uint8:
+        # Normalize to 0-255 range
+        image_data = image_data.astype(np.float32)
+        if image_data.min() != image_data.max():  # Avoid division by zero
+            image_data = 255 * (image_data - image_data.min()) / (image_data.max() - image_data.min())
+        image_data = image_data.astype(np.uint8)
 
-                # Handle different dimensions
-                if len(image_data.shape) == 2:  # Grayscale
-                    img = Image.fromarray(image_data, mode='L')
-                elif len(image_data.shape) == 3 and image_data.shape[0] == 3:  # RGB with channels first
-                    img = Image.fromarray(np.transpose(image_data, (1, 2, 0)), mode='RGB')
-                elif len(image_data.shape) == 3 and image_data.shape[2] == 3:  # RGB with channels last
-                    img = Image.fromarray(image_data, mode='RGB')
-                else:
-                    raise SolverError(f"Unsupported image data shape: {image_data.shape}")
-
-                img.save(jpeg_path, format='JPEG', quality=95)
-
-    elif Importer.is_xisf_by_name(str(input_image)):
-        xisf = XISF(input_image)
-        metas = xisf.get_images_metadata()
-        for i, meta in enumerate(metas):
-            if "FITSKeywords" in meta:
-                main_image_data = xisf.read_image(i, 'channels_first')
-
-                # Convert to 8-bit for JPEG
-                if main_image_data.dtype != np.uint8:
-                    # Normalize to 0-255 range
-                    main_image_data = main_image_data.astype(np.float32)
-                    if main_image_data.min() != main_image_data.max():  # Avoid division by zero
-                        main_image_data = 255 * (main_image_data - main_image_data.min()) / (
-                                main_image_data.max() - main_image_data.min())
-                    main_image_data = main_image_data.astype(np.uint8)
-
-                # Handle different dimensions
-                if len(main_image_data.shape) == 2:  # Grayscale
-                    img = Image.fromarray(main_image_data, mode='L')
-                elif len(main_image_data.shape) == 3 and main_image_data.shape[0] == 3:  # RGB with channels first
-                    img = Image.fromarray(np.transpose(main_image_data, (1, 2, 0)), mode='RGB')
-                elif len(main_image_data.shape) == 3 and main_image_data.shape[2] == 3:  # RGB with channels last
-                    img = Image.fromarray(main_image_data, mode='RGB')
-                else:
-                    raise SolverError(f"Unsupported image data shape: {main_image_data.shape}")
-
-                img.save(jpeg_path, format='JPEG', quality=95)
-                return jpeg_path
-
-        raise SolverError("No suitable image with FITS keywords found in XISF file: " + str(input_image))
+    # Handle different dimensions
+    if len(image_data.shape) == 2:  # Grayscale
+        img = Image.fromarray(image_data, mode='L')
+    elif len(image_data.shape) == 3 and image_data.shape[0] == 3:  # RGB with channels first
+        img = Image.fromarray(np.transpose(image_data, (1, 2, 0)), mode='RGB')
+    elif len(image_data.shape) == 3 and image_data.shape[2] == 3:  # RGB with channels last
+        img = Image.fromarray(image_data, mode='RGB')
     else:
-        raise SolverError("Unknown file type: " + str(input_image) + ". Only FITS and XISF files are supported.")
+        raise SolverError(f"Unsupported image data shape: {image_data.shape}")
 
+    img.save(jpeg_path, format='JPEG', quality=95)
     return jpeg_path

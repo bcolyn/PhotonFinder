@@ -113,20 +113,22 @@ def field_of(file: File, width: Optional[int] = None, height: Optional[int] = No
     if solution is None:
         return None
     if not (width and height):
-        image = Image.get_or_none(Image.file == file)
+        image = Image.first_of(file)
         width, height = (image.width, image.height) if image else (None, None)
     return SolvedField(solution, width, height)
 
 
 def fields_of(file_ids) -> dict:
     """{file id: SolvedField} for each of the files that has a solution, sized as `field_of`
-    sizes it; None for one whose solution can't be used. Read in a few queries, for reports
-    that look at many files."""
-    from peewee import JOIN, chunked
+    sizes it (by the file's first image); None for one whose solution can't be used. Read in a
+    few queries, for reports that look at many files."""
+    from peewee import JOIN, chunked, fn
     result = {}
+    first = Image.alias()
+    first_hdu = first.select(fn.MIN(first.hdu)).where(first.file == FileWCS.file)
     for chunk in chunked(list(file_ids), 500):
         rows = list(FileWCS.select(FileWCS.file, FileWCS.wcs, Image.width, Image.height)
-                    .join(Image, JOIN.LEFT_OUTER, on=(Image.file == FileWCS.file))
+                    .join(Image, JOIN.LEFT_OUTER, on=(Image.file == FileWCS.file) & (Image.hdu == first_hdu))
                     .where(FileWCS.file.in_(chunk)).tuples())
         for file_id, blob, width, height in rows:
             try:
@@ -146,11 +148,24 @@ def image_centre(solution: Header, width: Optional[int] = None, height: Optional
     return float(centre.ra.deg), float(centre.dec.deg), int(hp.skycoord_to_healpix(centre)), solved.radius()
 
 
+def _solved_images(file: File, first: Optional[Image]):
+    """Which of the file's Image rows a solution of its first image applies to (spec D3): the
+    first image, and every other one of the same size. Layers of one stack share its geometry;
+    a layer of another size is left unsolved."""
+    if first is None:
+        return Image.file == file
+    condition = (Image.file == file) & (Image.hdu == first.hdu)
+    if first.width and first.height:
+        condition |= (Image.file == file) & (Image.width == first.width) & (Image.height == first.height)
+    return condition
+
+
 def store(file: File, solution: Header, origin: str) -> StoredSolution:
     """Store `solution` as the file's plate solution, replacing any it had, stamped with
-    `origin`. The Image gets the solved centre and radius, and the solution's dimensions when
-    it has them. Nothing is written when the solution can't be used."""
-    image = Image.get_or_none(Image.file == file)
+    `origin`. It is a solution of the file's first image: that Image, and every other image of
+    the file of the same size, gets the solved centre and radius, and the solution's dimensions
+    when it has them. Nothing is written when the solution can't be used."""
+    image = Image.first_of(file)
     solution = solution.copy()
     stamp_origin(solution, origin)
     # Everything that can fail on the solution comes before the first write, so that a failure
@@ -159,8 +174,10 @@ def store(file: File, solution: Header, origin: str) -> StoredSolution:
     scale_arcsec = round(SolvedField(solution).pixel_scale_arcsec(), 3)
     with FileWCS._meta.database.atomic():
         FileWCS.insert(file=file, wcs=_encode(solution)).on_conflict_replace().execute()
-        updated = Image.update(**values).where(Image.file == file).execute() > 0
-    _update_loaded(file, values)
+        updated = Image.update(**values).where(_solved_images(file, image)).execute() > 0
+    size = (image.width, image.height) if image else None
+    _update_loaded(file, values, applies=lambda loaded: image is not None and (
+        loaded.hdu == image.hdu or (all(size) and (loaded.width, loaded.height) == size)))
     return StoredSolution(ra=values['coord_ra'], dec=values['coord_dec'], radius=values['coord_radius'],
                           scale_arcsec=scale_arcsec,
                           width=values.get('width', image and image.width),
@@ -220,7 +237,7 @@ def copy(source: File, targets: list, overwrite: bool) -> CopyResult:
     solution = load(source)
     if solution is None:
         return result
-    source_image = Image.get_or_none(Image.file == source)
+    source_image = Image.first_of(source)
     source_size = (solution.get('NAXIS1') or (source_image and source_image.width),
                    solution.get('NAXIS2') or (source_image and source_image.height))
     if not solution.get('NAXIS1') and all(source_size):
@@ -236,7 +253,7 @@ def copy(source: File, targets: list, overwrite: bool) -> CopyResult:
             if target.rowid in solved and not overwrite:
                 result.already_solved.append(target)
                 continue
-            image = Image.get_or_none(Image.file == target)
+            image = Image.first_of(target)
             if image and image.width and image.height and all(source_size) \
                     and (image.width, image.height) != source_size:
                 result.other_dimensions.append(target)
@@ -259,11 +276,12 @@ def clear(file: File) -> tuple[Optional[float], Optional[float]]:
     return ra, dec
 
 
-def _update_loaded(file: File, values: dict, solved: bool = True) -> None:
-    """Keep a File loaded with its Image (as the search grid holds them) in step with the rows."""
+def _update_loaded(file: File, values: dict, solved: bool = True, applies=lambda image: True) -> None:
+    """Keep a File loaded with its Image (as the search grid holds them) in step with the rows:
+    the loaded Image takes `values` when `applies` to it, as its row did."""
     file.has_wcs = solved
     image = file.__dict__.get('image')
-    if isinstance(image, Image):
+    if isinstance(image, Image) and applies(image):
         for name, value in values.items():
             setattr(image, name, value)
         radius, width, height = image.coord_radius, image.width, image.height
@@ -272,7 +290,7 @@ def _update_loaded(file: File, values: dict, solved: bool = True) -> None:
 
 def _pointing(file: File) -> tuple[Optional[float], Optional[float], Optional[int]]:
     """The centre the file's header gives: where the mount pointed, not where it solved."""
-    record = FitsHeader.get_or_none(FitsHeader.file == file)
+    record = FitsHeader.get_or_none((FitsHeader.file == file) & (FitsHeader.hdu == 0))
     if record is None:
         return None, None, None
     from photonfinder.filesystem import decode_header_blob  # filesystem stores solutions through this module

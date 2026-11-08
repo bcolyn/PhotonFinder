@@ -487,6 +487,12 @@ class Image(Model):
         database = None
         indexes = ((('file', 'hdu'), True),)
 
+    @staticmethod
+    def first_of(file) -> Optional['Image']:
+        """The file's first image: the one a plate solve solves (spec D3), and the one shown or
+        analysed when no image is named."""
+        return Image.select().where(Image.file == file).order_by(Image.hdu).first()
+
     def get_sky_coord(self) -> SkyCoord | None:
         return SkyCoord(self.coord_ra, self.coord_dec, unit=u.deg,
                         frame='icrs') if self.coord_ra is not None and self.coord_dec is not None else None

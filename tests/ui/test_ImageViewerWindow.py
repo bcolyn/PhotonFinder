@@ -33,7 +33,7 @@ def held_load(monkeypatch):
     """Keeps every image load running until the event is set, so that loads overlap."""
     release = threading.Event()
 
-    def load(filename):
+    def load(filename, hdu=None):
         assert release.wait(10)
         raise OSError("not a real file")
 
@@ -175,10 +175,10 @@ def test_a_cache_hit_drops_the_older_load_still_in_flight(qtbot, context, fits_f
     image_processing.load_image_data(b.full_filename())  # b is cached, a is not
     release = threading.Event()
 
-    def slow_for_a(filename):
+    def slow_for_a(filename, hdu=None):
         if str(filename).endswith("a.fits"):
             assert release.wait(10)
-        return real_load(filename)
+        return real_load(filename, hdu)
     monkeypatch.setattr(image_processing, "load_image_data", slow_for_a)
 
     viewer = _plain_viewer(qtbot, context)
@@ -237,7 +237,7 @@ def test_closing_the_search_tab_detaches_navigation(qtbot, context, fits_files):
 def test_preload_cannot_be_started_twice(qtbot, context, fits_files, monkeypatch):
     release = threading.Event()
 
-    def held(filename):
+    def held(filename, hdu=None):
         assert release.wait(10)
         raise OSError("held")
     monkeypatch.setattr(image_processing, "load_image_data", held)
@@ -256,3 +256,77 @@ def test_preload_cannot_be_started_twice(qtbot, context, fits_files, monkeypatch
     release.set()
     qtbot.waitUntil(lambda: viewer._preload_worker is None)
     first.wait()
+
+
+# ---------------------------------------------------------------------------
+# Files holding several images (a DWARFLAB dual-band stack)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def draco_rows(context, tmp_path):
+    """A two-layer file imported as a scan imports it, and its search rows (one per image)."""
+    from photonfinder import library_query
+    from photonfinder.filesystem import ChangeList, update_fits_header_cache
+    from photonfinder.models import SearchCriteria
+    from tests.multi_image_files import write_multi_hdu_fits
+    path = write_multi_hdu_fits(tmp_path / "draco.fits")
+    root = LibraryRoot.create(name="tmp", path=str(tmp_path).replace("\\", "/") + "/")
+    file = File.create(root=root, path="", name="draco.fits", size=1, mtime_millis=1)
+    context.settings = DynamicSettings()
+    update_fits_header_cache(ChangeList(new_files=[file]), context.status_reporter, context.settings)
+    rows = sorted(library_query.matching_files(SearchCriteria()), key=lambda f: f.image.hdu)
+    from astropy.io import fits
+    with fits.open(path) as hdul:
+        pixels = [hdul[0].data.copy(), hdul["SOO"].data.copy()]
+    image_processing.image_cache.clear()
+    yield rows, pixels
+    image_processing.image_cache.clear()
+
+
+def test_a_row_shows_its_own_layer(qtbot, context, draco_rows):
+    rows, pixels = draco_rows
+    viewer = _plain_viewer(qtbot, context)
+
+    viewer.load_file(rows[1])
+    qtbot.waitUntil(lambda: _settled(viewer))
+
+    assert np.array_equal(viewer._raw_uint16, pixels[1])
+    assert viewer._layer_action.isVisible()
+    assert [viewer._layer_combo.itemText(i) for i in range(viewer._layer_combo.count())] == [
+        "Primary (HO)", "SOO (SO)"]
+    assert viewer._layer_combo.currentText() == "SOO (SO)"
+
+
+def test_the_layer_combo_switches_in_place(qtbot, context, draco_rows):
+    rows, pixels = draco_rows
+    viewer = _plain_viewer(qtbot, context)
+    viewer.load_file(rows[1])
+    qtbot.waitUntil(lambda: _settled(viewer))
+
+    viewer._layer_combo.setCurrentIndex(0)
+    qtbot.waitUntil(lambda: _settled(viewer))
+
+    assert np.array_equal(viewer._raw_uint16, pixels[0])
+    assert viewer._current_file is rows[1], "the search row stays where it was"
+    assert viewer._current_hdu == 0
+
+
+def test_a_single_image_file_has_no_layer_combo(qtbot, context, fits_files):
+    viewer = _plain_viewer(qtbot, context)
+
+    viewer.load_file(fits_files[0])
+    qtbot.waitUntil(lambda: _settled(viewer))
+
+    assert not viewer._layer_action.isVisible()
+
+
+def test_a_layer_of_another_size_counts_as_unsolved(qtbot, context, draco_rows):
+    rows, _ = draco_rows
+    viewer = _plain_viewer(qtbot, context)
+    viewer.load_file(rows[1])
+    qtbot.waitUntil(lambda: _settled(viewer))
+
+    assert viewer._layer_is_solved(10, 8)
+    assert not viewer._layer_is_solved(5, 4)
+    viewer._current_hdu = 0
+    assert viewer._layer_is_solved(5, 4), "the first image is the solved one"

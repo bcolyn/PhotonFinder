@@ -492,18 +492,22 @@ class ImageAnalysisTask(FileProcessingTask):
         super()._process_file(file, index)
         self.message.emit(f"Analysing {index + 1}/{self.total}: {file.name}")
         try:
-            image_type = file.image.image_type if hasattr(file, 'image') and file.image else None
+            # Each row is an image: the analysis is of that image, in a file that holds several.
+            image = file.image if hasattr(file, 'image') and file.image else Image.first_of(file)
+            hdu = image.hdu if image is not None else 0
+            image_type = image.image_type if image is not None else None
             detect_sources = image_type not in CALIBRATION_TYPES
-            result = analyze_file(file.full_filename(), detect_sources=detect_sources)
+            result = analyze_file(file.full_filename(), detect_sources=detect_sources, hdu=hdu)
             if result.error:
                 self.message.emit(f"  Warning: {result.error}")
                 # Stored stats survive a failed read. A frame with none gets an empty row, which
                 # the quality diagnosis counts as "could not be read".
-                ImageStats.insert(file=file).on_conflict_ignore().execute()
+                ImageStats.insert(file=file, hdu=hdu).on_conflict_ignore().execute()
                 return
             (ImageStats
              .insert(
                  file=file,
+                 hdu=hdu,
                  background_median=result.background_median,
                  background_rms=result.background_rms,
                  star_count=result.star_count,

@@ -302,11 +302,23 @@ def scan_xisf(path) -> Optional[HduScan]:
 def load_hdu(path: str | Path, hdu: Optional[int] = None) -> tuple[np.ndarray, dict]:
     """Pixels and header of one image; *hdu* None is the first image. Not cached: callers go
     through `image_processing.load_image_data`. A FITS extension's header is merged with the
-    primary's."""
+    primary's; an XISF header has each keyword's first value, as text."""
     from photonfinder.filesystem import Importer
     if Importer.is_xisf_by_name(str(path)):
-        return _load_xisf(str(path), hdu)
-    return _load_fits(str(path), hdu)
+        data, keywords = _read_xisf(str(path), hdu)
+        return data, {key: entries[0].get('value', '') for key, entries in keywords.items() if entries}
+    data, header = _read_fits(str(path), hdu)
+    return data, dict(header)
+
+
+def read_hdu(path: str | Path, hdu: Optional[int] = None) -> tuple[np.ndarray, Header]:
+    """Pixels and header of one image as `load_hdu` gives them, the header as an astropy Header,
+    for writing the image out again (plate solver input). Not cached."""
+    from photonfinder.filesystem import Importer, header_from_xisf_dict
+    if Importer.is_xisf_by_name(str(path)):
+        data, keywords = _read_xisf(str(path), hdu)
+        return data, header_from_xisf_dict(keywords)
+    return _read_fits(str(path), hdu)
 
 
 def _is_image_hdu(hdu) -> bool:
@@ -322,16 +334,16 @@ def _pick_fits_hdu(hdul, hdu: Optional[int]):
     return next((h for h in hdul if _is_image_hdu(h)), hdul[0])
 
 
-def _fits_header_dict(hdul, chosen) -> dict:
+def _fits_header(hdul, chosen) -> Header:
     from photonfinder.filesystem import repair_header
     repair_header(chosen.header)
     if chosen is hdul[0]:
-        return dict(chosen.header)
+        return chosen.header
     repair_header(hdul[0].header)
-    return dict(merged_header(hdul[0].header, chosen.header))
+    return merged_header(hdul[0].header, chosen.header)
 
 
-def _load_fits(filename: str, hdu: Optional[int]) -> tuple[np.ndarray, dict]:
+def _read_fits(filename: str, hdu: Optional[int]) -> tuple[np.ndarray, Header]:
     import time
     from astropy.io import fits
 
@@ -345,12 +357,12 @@ def _load_fits(filename: str, hdu: Optional[int]) -> tuple[np.ndarray, dict]:
             with fits.open(f, memmap=False) as hdul:
                 chosen = _pick_fits_hdu(hdul, hdu)
                 data = chosen.data  # memmap=False: already in RAM, no copy needed
-                header = _fits_header_dict(hdul, chosen)
+                header = _fits_header(hdul, chosen)
     else:
         with fits.open(filename) as hdul:  # memmap=True by default
             chosen = _pick_fits_hdu(hdul, hdu)
             data = None if chosen.data is None else chosen.data.copy()
-            header = _fits_header_dict(hdul, chosen)
+            header = _fits_header(hdul, chosen)
     logger.debug("FITS load (%s, hdu %s): %.0fms", suffix, hdu, (time.perf_counter() - t0) * 1000)
 
     if data is None:
@@ -358,7 +370,8 @@ def _load_fits(filename: str, hdu: Optional[int]) -> tuple[np.ndarray, dict]:
     return data, header
 
 
-def _load_xisf(filename: str, hdu: Optional[int]) -> tuple[np.ndarray, dict]:
+def _read_xisf(filename: str, hdu: Optional[int]) -> tuple[np.ndarray, dict]:
+    """Pixels (channels first) and FITS keywords of one XISF image."""
     from xisf import XISF
     xf = XISF(filename)
     metas = xf.get_images_metadata()
@@ -367,7 +380,4 @@ def _load_xisf(filename: str, hdu: Optional[int]) -> tuple[np.ndarray, dict]:
     if hdu is None:
         # The same first image read_xisf_header takes the header from
         hdu = next(iter(_xisf_image_indexes(metas)), 0)
-    data = xf.read_image(hdu, 'channels_first')
-    header = {key: entries[0].get('value', '')
-              for key, entries in metas[hdu].get('FITSKeywords', {}).items() if entries}
-    return data, header
+    return xf.read_image(hdu, 'channels_first'), metas[hdu].get('FITSKeywords', {})

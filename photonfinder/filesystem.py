@@ -408,6 +408,19 @@ def reindex_library(status_reporter, settings) -> None:
     status_reporter.update_status("Image metadata reindexing complete!")
 
 
+def cached_header(file: File, hdu: int = 0) -> Header | None:
+    """The cached header of one of the file's images, as it was indexed: a FITS extension's
+    header merged with the primary's. None when the file has no cached header for it."""
+    rows = {row.hdu: row.header for row in FitsHeader.select(FitsHeader.hdu, FitsHeader.header)
+            .where((FitsHeader.file == file) & FitsHeader.hdu.in_({0, hdu}))}
+    if hdu not in rows:
+        return None
+    header = decode_header_blob(rows[hdu])
+    if hdu == 0 or 0 not in rows or decompress(rows[hdu]).startswith(b'{'):
+        return header
+    return image_hdus.merged_header(decode_header_blob(rows[0]), header)
+
+
 def decode_header_blob(blob: bytes) -> Header:
     """Decompress a stored header blob and parse it into an astropy ``Header``.
 

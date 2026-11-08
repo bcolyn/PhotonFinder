@@ -134,10 +134,11 @@ def analyze_image(
         return ImageAnalysisResult(error=str(exc))
 
 
-def analyze_file(filename: str | Path, detect_sources: bool = True) -> ImageAnalysisResult:
-    """Load file via load_image_data (LRU-cached) and run analyze_image."""
+def analyze_file(filename: str | Path, detect_sources: bool = True, hdu: int | None = None) -> ImageAnalysisResult:
+    """Load one image of the file via load_image_data (LRU-cached) and run analyze_image.
+    *hdu* is the image in a file holding several; None is the first."""
     try:
-        data, header = load_image_data(filename)
+        data, header = load_image_data(filename, hdu)
         pattern = detect_bayer_pattern(header) if data.ndim == 2 else None
         return analyze_image(data, detect_sources=detect_sources, bayer_pattern=pattern)
     except Exception as exc:

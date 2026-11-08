@@ -18,16 +18,23 @@ from photonfinder.models import File
 
 logger = logging.getLogger(__name__)
 
+def _row_hdu(file) -> int | None:
+    """The image of a search row: its loaded Image's hdu, None (the first image) without one."""
+    from photonfinder.models import Image
+    image = file.__dict__.get('image')
+    return image.hdu if isinstance(image, Image) else None
+
+
 _BLINK_INTERVALS = {'Off': 0, '0.25s': 250, '0.5s': 500, '1s': 1000, '2s': 2000, '5s': 5000}
 
 
 class PreloadWorker(QThread):
-    """Loads all given filenames into the image cache in parallel."""
+    """Loads all given images, as (filename, hdu), into the image cache in parallel."""
     progress = Signal(int, int)  # (done, total)
 
-    def __init__(self, filenames: list[str]):
+    def __init__(self, images: list[tuple[str, int | None]]):
         super().__init__()
-        self.filenames = filenames
+        self.images = images
         self._cancel = False
 
     def cancel(self):
@@ -37,12 +44,12 @@ class PreloadWorker(QThread):
         import os
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from photonfinder.image_processing import load_image_data
-        total = len(self.filenames)
+        total = len(self.images)
         done = 0
         n_workers = min(4, os.cpu_count() or 1)
         logger.debug("Using %d parallel workers for preloading.", n_workers)
         executor = ThreadPoolExecutor(max_workers=n_workers)
-        futures = {executor.submit(load_image_data, fn): fn for fn in self.filenames}
+        futures = {executor.submit(load_image_data, fn, hdu): fn for fn, hdu in self.images}
         for future in as_completed(futures):
             fn = futures[future]
             try:
@@ -65,15 +72,16 @@ class ImageLoadWorker(QThread):
     image_loaded = Signal(object, dict, bool)  # (ndarray, header, is_fits)
     error = Signal(str)
 
-    def __init__(self, filename: str, is_fits: bool):
+    def __init__(self, filename: str, is_fits: bool, hdu: int | None = None):
         super().__init__()
         self.filename = filename
         self.is_fits = is_fits
+        self.hdu = hdu
 
     def run(self):
         try:
             from photonfinder.image_processing import load_image_data
-            data, header = load_image_data(self.filename)
+            data, header = load_image_data(self.filename, self.hdu)
             self.image_loaded.emit(data, header, self.is_fits)
         except Exception as exc:
             logger.error("Error loading image %s: %s", self.filename, exc, exc_info=True)
@@ -343,6 +351,10 @@ class ImageViewerWindow(QMainWindow):
             context.signal_bus.library_write_lock_changed.connect(self._refresh_library_busy)
         self._current_file = None
         self._filename: str | None = None
+        # The image shown, in a file that holds several (None: the first), and the file's images
+        # as (hdu, extname, filter, width, height) by hdu, when it has more than one.
+        self._current_hdu: int | None = None
+        self._layers: list[tuple] = []
         self._raw_uint16: np.ndarray | None = None
         self._header: dict = {}
         self._image_type: str = 'mono'
@@ -553,6 +565,12 @@ class ImageViewerWindow(QMainWindow):
         self._metadata_btn.clicked.connect(self._on_show_metadata)
         nav_tb.addWidget(self._metadata_btn)
 
+        self._layer_combo = QComboBox()
+        self._layer_combo.setToolTip("Image layer of this file")
+        self._layer_combo.currentIndexChanged.connect(self._on_layer_changed)
+        self._layer_action = nav_tb.addWidget(self._layer_combo)
+        self._layer_action.setVisible(False)
+
         # --- View toolbar (shares the top row when there is room) ---
         view_tb = QToolBar("View", self)
         view_tb.setObjectName("view_toolbar")
@@ -685,18 +703,69 @@ class ImageViewerWindow(QMainWindow):
         self.statusBar().showMessage("The search tab was closed: navigation is off", 5000)
 
     def load_file(self, file: File, preserve_view: bool = False):
-        """Load and display the image associated with a File model instance."""
-        from photonfinder.filesystem import Importer
+        """Load and display the image of a File model instance: the image of its search row
+        (its loaded Image) in a file that holds several, else the file's first image."""
         filename = file.full_filename()
         if not filename:
             return
         self._current_file = file
+        self._layers = self._layers_of(file)
+        self._current_hdu = self._hdu_of(file)
+        self._show_layers()
         # has_wcs is only present on search-query rows; plain File instances (e.g. from
         # the project editor) need it looked up, or the Annotate button stays hidden.
         if not hasattr(file, 'has_wcs') and self._context is not None:
             from photonfinder.models import FileWCS
             file.has_wcs = FileWCS.select().where(FileWCS.file == file).exists()
         self._update_solve_buttons()
+        self._load_current(filename, preserve_view)
+
+    def _layers_of(self, file: File) -> list[tuple]:
+        """The file's images as (hdu, extname, filter, width, height), when it has several."""
+        if self._context is None:
+            return []
+        from photonfinder.models import CORE_MODELS, Image
+        with self._context.database.bind_ctx(CORE_MODELS):
+            layers = list(Image.select(Image.hdu, Image.extname, Image.filter, Image.width, Image.height)
+                          .where(Image.file == file).order_by(Image.hdu).tuples())
+        return layers if len(layers) > 1 else []
+
+    def _hdu_of(self, file: File) -> int | None:
+        hdu = _row_hdu(file)
+        if hdu is not None:
+            return hdu
+        return self._layers[0][0] if self._layers else None
+
+    def _show_layers(self):
+        """The layer combo lists the file's images, on the one shown; hidden for one image."""
+        self._layer_combo.blockSignals(True)
+        self._layer_combo.clear()
+        for hdu, extname, filter_name, _, _ in self._layers:
+            label = extname or ("Primary" if hdu == 0 else f"HDU {hdu}")
+            self._layer_combo.addItem(f"{label} ({filter_name})" if filter_name else label, hdu)
+        index = self._layer_combo.findData(self._current_hdu)
+        self._layer_combo.setCurrentIndex(max(index, 0))
+        self._layer_combo.blockSignals(False)
+        self._layer_action.setVisible(bool(self._layers))
+
+    def _on_layer_changed(self, index: int):
+        """Show another image of the same file, in place: the search row stays where it is."""
+        hdu = self._layer_combo.itemData(index)
+        if self._filename is None or index < 0 or hdu == self._current_hdu:
+            return
+        self._current_hdu = hdu
+        self._load_current(self._filename, preserve_view=True)
+
+    def _layer_is_solved(self, width: int, height: int) -> bool:
+        """Whether the file's solution applies to the image shown: it is a solution of the
+        file's first image, and holds for its other images of the same size (spec D3)."""
+        if not self._layers or self._current_hdu in (None, self._layers[0][0]):
+            return True
+        _, _, _, first_width, first_height = self._layers[0]
+        return (width, height) == (first_width, first_height)
+
+    def _load_current(self, filename: str, preserve_view: bool):
+        from photonfinder.filesystem import Importer
         self._filename = filename
         self._is_fits = Importer.is_fits_by_name(filename)
         self._preserve_view = preserve_view
@@ -714,13 +783,13 @@ class ImageViewerWindow(QMainWindow):
 
         # Check cache first — on a hit we can skip the worker entirely
         from photonfinder.image_processing import image_cache
-        cached = image_cache.get(filename)
+        cached = image_cache.get(filename, self._current_hdu)
         if cached is not None:
-            logger.debug("Cache hit — loading inline: %s", filename)
+            logger.debug("Cache hit — loading inline: %s hdu %s", filename, self._current_hdu)
             self._on_raw_loaded(cached[0], cached[1], self._is_fits)
             return
 
-        self._load_worker = ImageLoadWorker(filename, self._is_fits)
+        self._load_worker = ImageLoadWorker(filename, self._is_fits, self._current_hdu)
         self._load_worker.image_loaded.connect(self._on_worker_loaded)
         self._load_worker.error.connect(self._on_worker_load_error)
         self._load_worker.start()
@@ -881,7 +950,7 @@ class ImageViewerWindow(QMainWindow):
         from photonfinder.image_processing import prefetch_image
         next_file = self._nav_panel.get_file_at_row(next_model_row)
         if next_file:
-            prefetch_image(next_file.full_filename())
+            prefetch_image(next_file.full_filename(), _row_hdu(next_file))
 
     def _on_nav_data_loaded(self):
         """Called when the panel finishes loading all remaining rows."""
@@ -989,16 +1058,16 @@ class ImageViewerWindow(QMainWindow):
             self._nav_panel.load_all_remaining_data()
         model = self._nav_panel.dataView.model()
         rows = self._nav_rows if self._nav_rows is not None else range(model.rowCount())
-        filenames = [
-            fn for row in rows
+        images = [
+            (fn, _row_hdu(f)) for row in rows
             if (f := self._nav_panel.get_file_at_row(row)) and (fn := f.full_filename())
         ]
-        if not filenames:
+        if not images:
             return
         import psutil
         from photonfinder.image_processing import image_cache
         image_cache._max_bytes = int(psutil.virtual_memory().available * 0.90)
-        self._preload_worker = PreloadWorker(filenames)
+        self._preload_worker = PreloadWorker(images)
         self._preload_worker.progress.connect(self._on_preload_progress)
         self._preload_worker.finished.connect(self._on_preload_finished)
         self._preload_worker.start()
@@ -1122,6 +1191,10 @@ class ImageViewerWindow(QMainWindow):
             return
         if not solved.has_size:
             logger.warning("Cannot determine image dimensions for annotation")
+            return
+        if raw is not None and not self._layer_is_solved(raw.shape[-1], raw.shape[-2]):
+            self.statusBar().showMessage(
+                "This layer is not the size of the solved image, so the plate solution doesn't apply to it", 5000)
             return
         wcs = solved.wcs
 
@@ -1350,13 +1423,15 @@ class ImageViewerWindow(QMainWindow):
             return
         from photonfinder import plate_solution
         from photonfinder.models import CORE_MODELS, FitsHeader
-        from photonfinder.filesystem import decode_header_blob
+        from photonfinder.filesystem import cached_header
         from .HeaderDialog import HeaderDialog
         file = self._current_file
         with self._context.database.bind_ctx(CORE_MODELS):
             try:
-                fits_header = FitsHeader.get(FitsHeader.file == file)
-                header = decode_header_blob(fits_header.header)
+                # The header of the image shown; an extension's merged with the primary's
+                header = cached_header(file, self._current_hdu or 0)
+                if header is None:
+                    raise FitsHeader.DoesNotExist()
                 wcs_header = plate_solution.load(file)
                 dialog = HeaderDialog(header, wcs_header, parent=self)
                 dialog.setAttribute(Qt.WA_DeleteOnClose)
