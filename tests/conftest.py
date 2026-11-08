@@ -100,6 +100,12 @@ class McpSettings:
     def get_plate_solve_hint_mode(self):
         return "fallback"
 
+    def get_obs_timezone(self):
+        return self._store.get("obs_timezone", "UTC")
+
+    def set_obs_timezone(self, value):
+        self._store["obs_timezone"] = value
+
 
 def fixed_solution_header():
     """A real, parseable WCS solution centred on M31 over a 200x200 frame."""

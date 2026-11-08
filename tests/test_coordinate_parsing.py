@@ -4,7 +4,7 @@ from astropy.coordinates import SkyCoord
 from astropy.io.fits import Header
 from astropy import units as u
 
-from photonfinder.calibration import _dms_to_deg
+from photonfinder.local_time import _dms_to_deg
 from photonfinder.core import compress, hp
 from photonfinder.fits_handlers import GenericHandler
 from photonfinder.models import FitsHeader, Image

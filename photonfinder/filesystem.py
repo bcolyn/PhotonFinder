@@ -16,7 +16,7 @@ from fs.base import FS
 from fs.info import Info
 from peewee import JOIN
 
-from photonfinder import image_hdus, plate_solution
+from photonfinder import image_hdus, local_time, plate_solution
 from photonfinder.core import StatusReporter, compress, decompress
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import File, LibraryRoot, FitsHeader, Image, norm_db_path, FileWCS, ImageStats
@@ -193,7 +193,8 @@ def _store_file_index(file: File, scan: image_hdus.HduScan, status_reporter, set
     for hdu, raw in _header_rows(scan):
         FitsHeader(file=file, hdu=hdu, header=compress(raw)).save()
     headers = _headers_to_index(scan)
-    images, embedded = index_images(file, headers, plate_solution.load(file), status_reporter)
+    images, embedded = index_images(file, headers, plate_solution.load(file), status_reporter,
+                                    local_time.obs_zone(settings))
     plate_solution.save_indexed(file, images, embedded)
     for _, _, header in headers:
         settings.add_known_fits_keywords(header.keys())
@@ -286,7 +287,7 @@ def embedded_solution(file: File, header: Header) -> Header | None:
 
 
 def index_images(file: File, headers: list[tuple[int, str | None, Header]], stored: Header | None,
-                 status_reporter=None) -> tuple[list[Image], Header | None]:
+                 status_reporter=None, zone=None) -> tuple[list[Image], Header | None]:
     """What a file's headers give the index: an Image row per image, and the plate solution
     embedded in a header when none is `stored` for the file. Import, header repair and Rebuild
     index all come through here, so a file is indexed the same way by each.
@@ -298,6 +299,11 @@ def index_images(file: File, headers: list[tuple[int, str | None, Header]], stor
     the image it came from or, when stored, of the first image): layers of one stack share its
     geometry, a layer of another size is left unsolved. A stored solution that can't be used
     raises; an unusable embedded one is ignored. Nothing is written.
+
+    Each image gets its local time from where and when the first header says, with its own
+    date_obs (local_time.file_local_times), falling back to `zone`, the obs_timezone setting.
+    The background fill (local_time.update_library) reads the primary header, whose cards
+    every merged header carries, so both give the same.
     """
     indexed = []
     for hdu, extname, header in headers:
@@ -306,6 +312,11 @@ def index_images(file: File, headers: list[tuple[int, str | None, Header]], stor
             image.hdu, image.extname = hdu, extname
         indexed.append((image, header))
     images = [image for image, _ in indexed if image is not None]
+    if images:
+        info = local_time.session_info_from_header(headers[0][2])
+        times = local_time.file_local_times([image.date_obs for image in images], info, zone)
+        for image, (local, source) in zip(images, times):
+            image.local_time, image.local_time_source = local, source
 
     embedded, solved = None, indexed[0][0] if indexed else None
     if stored is None:
@@ -362,6 +373,7 @@ def reindex_library(status_reporter, settings) -> None:
     and is raised.
     """
     total_headers = FitsHeader.select().count()
+    zone = local_time.obs_zone(settings)
     status_reporter.update_status(f"Processing {total_headers} FITS headers...")
     processed = 0
     last_file = 0
@@ -393,7 +405,7 @@ def reindex_library(status_reporter, settings) -> None:
                            for hdu, extname, header in _headers_from_cache(header_records)]
                 for _, _, header in headers:
                     settings.add_known_fits_keywords(header.keys())
-                rows.append((file, *index_images(file, headers, stored, status_reporter)))
+                rows.append((file, *index_images(file, headers, stored, status_reporter, zone)))
             except Exception as e:
                 # Its current rows stay, as nothing better came out of its headers.
                 log(ERROR, f"Error processing header of {file.name}: {e}", exc_info=True)

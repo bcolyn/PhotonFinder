@@ -1,8 +1,12 @@
 import os
 import platform
-from PySide6.QtWidgets import QDialog, QFileDialog
+import zoneinfo
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QCompleter, QDialog, QFileDialog, QMessageBox
 
 from photonfinder.core import ApplicationContext, get_default_saspro_path
+from photonfinder.local_time import is_valid_timezone
 from photonfinder.ui.generated.SettingsDialog_ui import Ui_SettingsDialog
 
 
@@ -27,6 +31,10 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.internal_viewer_check.setChecked(self.context.settings.get_use_internal_viewer())
 
         self.obs_timezone_edit.setText(self.context.settings.get_obs_timezone())
+        completer = QCompleter(sorted(zoneinfo.available_timezones()), self.obs_timezone_edit)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self.obs_timezone_edit.setCompleter(completer)
 
         self.telescopius_api_key_edit.setText(self.context.settings.get_telescopius_api_key())
 
@@ -74,6 +82,13 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
             self.saspro_path_edit.setText(file_path)
 
     def accept(self):
+        zone = self.obs_timezone_edit.text().strip()
+        if not is_valid_timezone(zone):
+            # Never empty: stored local times depend on it (local_time.obs_zone).
+            QMessageBox.warning(self, "Timezone", f"\"{zone}\" is not a known timezone. "
+                                                  "Pick one from the list, e.g. Europe/Brussels.")
+            self.obs_timezone_edit.setFocus()
+            return
         self.context.settings.set_astap_path(self.astap_path_edit.text())
         self.context.settings.set_astrometry_net_api_key(self.astrometry_api_key_edit.text())
         self.context.settings.set_astrometry_net_force_image_upload(self.astrometry_image_upload_check.isChecked())
@@ -87,7 +102,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
 
         self.context.settings.set_use_internal_viewer(self.internal_viewer_check.isChecked())
 
-        self.context.settings.set_obs_timezone(self.obs_timezone_edit.text().strip())
+        self.context.settings.set_obs_timezone(zone)
 
         self.context.settings.set_telescopius_api_key(self.telescopius_api_key_edit.text().strip())
 

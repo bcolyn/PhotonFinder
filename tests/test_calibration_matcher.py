@@ -6,10 +6,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from photonfinder.calibration import (
-    CalibrationMatcher, SessionKey, CalibrationCandidate, session_date_for,
-    _dms_to_deg, _session_info_from_header,
-)
+from photonfinder.calibration import CalibrationMatcher, SessionKey, CalibrationCandidate
+from photonfinder.local_time import _dms_to_deg, session_date_for, session_info_from_header
 from photonfinder.models import File, Image, LibraryRoot, SearchCriteria
 from .conftest import DynamicSettings
 
@@ -67,42 +65,42 @@ class TestSessionInfoFromHeader:
 
     def test_sitelat_sitelong_parsed(self):
         hdr = self._make_header(SITELAT="51 3 0.000", SITELONG="3 43 0.000")
-        _, lat, lon = _session_info_from_header(hdr)
+        _, lat, lon = session_info_from_header(hdr)
         assert lat == pytest.approx(51.05)
         assert lon == pytest.approx(3 + 43/60)
 
     def test_numeric_sitelat_sitelong_parsed(self):
         # N.I.N.A. writes these as numeric cards, not strings
         hdr = self._make_header(SITELAT=51.05, SITELONG=3.72)
-        _, lat, lon = _session_info_from_header(hdr)
+        _, lat, lon = session_info_from_header(hdr)
         assert lat == pytest.approx(51.05)
         assert lon == pytest.approx(3.72)
 
     def test_obsgeo_fallback_when_no_sitelat(self):
         hdr = self._make_header(OBSGEO_B="51.05", OBSGEO_L="3.716667")
-        _, lat, lon = _session_info_from_header(hdr)
+        _, lat, lon = session_info_from_header(hdr)
         assert lat == pytest.approx(51.05)
         assert lon == pytest.approx(3.716667)
 
     def test_sitelat_takes_priority_over_obsgeo(self):
         hdr = self._make_header(SITELAT="51 3 0.000", SITELONG="3 43 0.000",
                                 OBSGEO_B="10.0", OBSGEO_L="20.0")
-        _, lat, lon = _session_info_from_header(hdr)
+        _, lat, lon = session_info_from_header(hdr)
         assert lat == pytest.approx(51.05)
 
     def test_sitelong_360_convention_normalized(self):
         hdr = self._make_header(SITELAT="51.05", SITELONG="283.716667")
-        _, _, lon = _session_info_from_header(hdr)
+        _, _, lon = session_info_from_header(hdr)
         assert lon == pytest.approx(283.716667 - 360)
 
     def test_obsgeo_360_convention_normalized(self):
         hdr = self._make_header(OBSGEO_B="51.05", OBSGEO_L="283.716667")
-        _, _, lon = _session_info_from_header(hdr)
+        _, _, lon = session_info_from_header(hdr)
         assert lon == pytest.approx(283.716667 - 360)
 
     def test_missing_coords_return_none(self):
         hdr = self._make_header()
-        _, lat, lon = _session_info_from_header(hdr)
+        _, lat, lon = session_info_from_header(hdr)
         assert lat is None
         assert lon is None
 

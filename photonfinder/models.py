@@ -2,7 +2,7 @@ import json
 import os
 import typing
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import cmp_to_key
 from pathlib import Path
 from typing import Optional
@@ -470,6 +470,11 @@ class Image(Model):
     telescope = CharField(null=True, index=True)
     object_name = CharField(null=True, index=True)
     date_obs = DateTimeField(null=True, index=True)
+    # When it was taken in local wall-clock time, and where that came from: 'loc' (DATE-LOC),
+    # 'site' (date_obs in the observatory's zone) or 'fallback' (in obs_timezone). See local_time.
+    # The session night derives from it (session_night_sql), with an expression index.
+    local_time = DateTimeField(null=True)
+    local_time_source = CharField(null=True)
     coord_ra = FloatField(null=True, index=True)  # Right Ascension as floating point value
     coord_dec = FloatField(null=True, index=True)  # Declination as floating point value
     coord_pix256 = IntegerField(null=True, index=True)  # HEALPix value (nside=256)
@@ -506,6 +511,22 @@ if _cs:
     Image._meta.sorted_field_names.remove('coord_scale')
     Image._meta.columns.pop(_cs.column_name, None)
 del _cs
+
+
+# The session night: the local time minus 12 hours, as a date (local_time.session_night is the
+# Python twin). SQLite uses the index on it only for this exact expression, with the offset
+# written in, not bound as a parameter, so every query takes it from session_night_sql.
+SESSION_NIGHT_INDEX_SQL = "CREATE INDEX IF NOT EXISTS image_session_night ON image(date(local_time, '-12 hours'))"
+
+
+def _night_value(value):
+    return date.fromisoformat(value) if value else None
+
+
+def session_night_sql():
+    """The session night of an Image row in SQL: 'YYYY-MM-DD' text in the database, a date when
+    selected, NULL without a local time. Compare it with ``night.isoformat()``."""
+    return fn.date(Image.local_time, SQL("'-12 hours'")).python_value(_night_value)
 
 
 class Project(Model):
@@ -739,8 +760,18 @@ class CustomCatalogEntry(Model):
         )
 
 
+class LibraryProperty(Model):
+    """A setting that belongs to the library, not the user: e.g. the zone its fallback local
+    times were computed in, so a change is noticed whichever copy of the app opens it."""
+    name = CharField(primary_key=True)
+    value = TextField(null=True)
+
+    class Meta:
+        table_name = 'library_property'
+
+
 CORE_MODELS = [LibraryRoot, File, Image, FitsHeader, FileWCS, Project, ProjectFile, ImageStats,
-               CustomCatalogEntry]
+               CustomCatalogEntry, LibraryProperty]
 
 
 class CatalogEntry(Model):

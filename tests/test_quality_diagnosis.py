@@ -9,7 +9,7 @@ from peewee import SqliteDatabase
 
 from photonfinder.core import ApplicationContext, compress
 from photonfinder.filesystem import decode_header_blob
-from photonfinder.calibration import _session_info_from_blob, _session_info_from_header
+from photonfinder.local_time import _session_info_from_blob, session_info_from_header
 from photonfinder.image_analysis import ImageAnalysisResult
 from photonfinder.models import (
     DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED, File, FitsHeader, Image, ImageStats, LibraryRoot, SearchCriteria,
@@ -300,12 +300,12 @@ def _session_blobs():
 
 @pytest.mark.parametrize("blob", [blob for _, blob in _session_blobs()], ids=[name for name, _ in _session_blobs()])
 def test_quick_session_info_matches_the_full_parser(blob):
-    assert _session_info_from_blob(blob) == _session_info_from_header(decode_header_blob(blob))
+    assert _session_info_from_blob(blob) == session_info_from_header(decode_header_blob(blob))
 
 
 def test_unreadable_card_falls_back_to_the_full_parser():
     blob = _fits_blob("SITELAT = 50.85.1", "DATE-LOC= '2024-01-01T22:30:00'")
-    assert _session_info_from_blob(blob) == _session_info_from_header(decode_header_blob(blob))
+    assert _session_info_from_blob(blob) == session_info_from_header(decode_header_blob(blob))
 
 
 def test_save_stores_verdicts_and_overwrites_with_null(context, library):

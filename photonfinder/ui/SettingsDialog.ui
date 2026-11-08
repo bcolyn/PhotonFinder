@@ -104,10 +104,10 @@
           <item>
            <widget class="QLineEdit" name="obs_timezone_edit">
             <property name="toolTip">
-             <string>IANA timezone name used to map UTC capture times to local observing nights (e.g. Europe/Brussels). Leave blank to use the system timezone.</string>
+             <string>IANA timezone name (e.g. Europe/Brussels) for the local time and observing night of frames whose header has neither DATE-LOC nor site coordinates. Set to the system timezone on first start; changing it recomputes those frames.</string>
             </property>
             <property name="placeholderText">
-             <string>e.g. Europe/Brussels — leave blank for system default</string>
+             <string>e.g. Europe/Brussels</string>
             </property>
            </widget>
           </item>

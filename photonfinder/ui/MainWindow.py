@@ -16,6 +16,7 @@ from photonfinder.filesystem import Importer, ScanCancelled, update_fits_header_
     repair_truncated_header_cache
 from photonfinder.models import NO_PROJECT, SearchCriteria, Project, File, ProjectFile, RootAndPath, LibraryRoot
 from .AboutDialog import AboutDialog
+from .BackgroundLoader import LocalTimeWorker
 from .ImageViewerWindow import ImageViewerWindow
 from .LibraryRootDialog import LibraryRootDialog
 from .LibraryTreeModel import AllLibrariesNode, LibraryRootNode
@@ -92,9 +93,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         btn = QToolButton(self)
         btn.setDefaultAction(self.action_View_Log)
         self.statusBar().addPermanentWidget(btn)
+        self.local_times = LocalTimeWorker(context)
+        self._local_times_wanted = False  # started while the library was busy: retried when it's free
         self.connect_signals()
         self.restore_session()
         self.setAcceptDrops(True)
+        self.update_local_times()
 
         self.mcp_controller = None
         if enable_mcp:
@@ -177,6 +181,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             except Exception as e:
                 logging.error(f"Could not save the session: {e}", exc_info=True)
             self._stop_scan()
+            if not self.local_times.cancel_and_wait():
+                logging.error("Computing local times did not stop in time")
             if self.mcp_controller is not None:
                 self.mcp_controller.stop()
         finally:
@@ -307,8 +313,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         Refused with LibraryBusyError while something could write to the current library,
         since a job still running would carry on writing its rows to the new one.
         """
+        self.local_times.cancel_and_wait()  # background upkeep: picked up again on the new library
         blockers = self._database_switch_blockers()
         if blockers:
+            self.update_local_times()
             raise LibraryBusyError(self._database_busy_message(blockers))
         previous_path = self.context.database_path
         with self.context.writers.switching():
@@ -324,6 +332,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.setWindowTitle(f"PhotonFinder - {self.context.database_path}")
                 self.new_search_tab()
                 self.reload_library_roots_in_all_panels()
+                self.update_local_times()
 
     def _database_switch_blockers(self) -> list[str]:
         """What stops the library being switched: writers running in this process, and open
@@ -352,6 +361,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def _on_library_write_lock_changed(self):
         """Taken or released in this process. Windows that start a writer listen for this too."""
         self.update_writer_actions()
+        if self._local_times_wanted and not self.context.library_write_lock.busy_with():
+            self.update_local_times()
+
+    def update_local_times(self):
+        """Bring the library's local times up to date in the background, if anything needs it.
+        When the library is busy, it's tried again once the write lock is released here."""
+        self._local_times_wanted = False
+        try:
+            self._local_times_wanted = self.local_times.start() is not None
+        except Exception as e:  # pylint: disable=broad-exception-caught  # upkeep: never in the way
+            logging.error(f"Could not start computing local times: {e}", exc_info=True)
 
     def update_writer_actions(self) -> str | None:
         """Disable the actions that start a library writer while one holds the write lock,
@@ -433,8 +453,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """
         Open the settings dialog.
         """
+        zone = self.context.settings.get_obs_timezone()
         dialog = SettingsDialog(self.context, parent=self)
-        dialog.exec()
+        if dialog.exec() and self.context.settings.get_obs_timezone() != zone:
+            self.local_times.cancel_and_wait()  # restarted in the new zone
+            self.update_local_times()
 
     def scan_libraries(self):
         """

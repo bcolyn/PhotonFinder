@@ -1,194 +1,17 @@
 import datetime
-import json
 import logging
-import re
 import statistics
 import dataclasses
 from dataclasses import dataclass
-from datetime import timedelta
-from functools import lru_cache
 from typing import Optional
-from zoneinfo import ZoneInfo
-
-from astropy.io.fits import Card
-from peewee import chunked
-from tzlocal import get_localzone
 
 from photonfinder import library_query
-from photonfinder.core import ApplicationContext, decompress
-from photonfinder.fits_handlers import _datetime, _float
-from photonfinder.models import File, Image, FitsHeader, SearchCriteria
+from photonfinder.core import ApplicationContext
+from photonfinder.local_time import load_session_info, obs_zone, session_date_for
+from photonfinder.models import File, Image, SearchCriteria
 
 
 _log = logging.getLogger(__name__)  # photonfinder.calibration: candidate searches and grouping
-
-_BATCH_SIZE = 500
-_CARD_LENGTH = 80
-_SESSION_KEYWORDS = ('DATE-LOC', 'SITELAT', 'SITELONG', 'OBSGEO-B', 'OBSGEO-L')
-_SESSION_KEYWORDS_BYTES = frozenset(keyword.encode('ascii') for keyword in _SESSION_KEYWORDS)
-
-
-def _dms_to_deg(s: Optional[str]) -> Optional[float]:
-    """Parse a coordinate string to decimal degrees.
-
-    Handles decimal degrees, space/colon-separated DMS, d/m/s markers,
-    and N/S/E/W sign prefixes. Returns None on any parse failure.
-    """
-    if isinstance(s, (int, float)):  # N.I.N.A. writes SITELAT/SITELONG as numbers
-        return float(s)
-    if not s:
-        return None
-    try:
-        s = s.strip()
-        sign = 1
-        if s and s[0] in ('S', 's', 'W', 'w'):
-            sign, s = -1, s[1:].strip()
-        elif s and s[0] in ('N', 'n', 'E', 'e'):
-            sign, s = 1, s[1:].strip()
-        # Normalize separators (colons, d/m/s markers, degree symbols) to spaces
-        s = re.sub(r"[d°:\'\"hms]+", ' ', s).strip()
-        parts = s.split()
-        # The sign comes from the text: -0 as a number can't say it is negative.
-        d_sign = -1 if parts and parts[0].startswith('-') else 1
-        if len(parts) == 3:
-            d, m, sec = float(parts[0]), float(parts[1]), float(parts[2])
-            return sign * d_sign * (abs(d) + m / 60.0 + sec / 3600.0)
-        if len(parts) == 2:
-            d, m = float(parts[0]), float(parts[1])
-            return sign * d_sign * (abs(d) + m / 60.0)
-        if len(parts) == 1:
-            return sign * float(parts[0])
-        return None
-    except (ValueError, AttributeError):
-        return None
-
-
-_timezone_finder = None
-
-
-def _get_timezone_finder():
-    global _timezone_finder  # pylint: disable=global-statement  # lazily built: loading it is slow
-    if _timezone_finder is None:
-        from timezonefinder import TimezoneFinder
-        _timezone_finder = TimezoneFinder()
-    return _timezone_finder
-
-
-@lru_cache(maxsize=256)
-def _tz_from_coords(lat: float, lon: float) -> Optional[ZoneInfo]:
-    """Look up timezone for coordinates. Cached so repeated calls for same observatory are free."""
-    try:
-        tz_name = _get_timezone_finder().timezone_at(lat=lat, lng=lon)
-        return ZoneInfo(tz_name) if tz_name else None
-    except Exception:
-        logging.warning(f"Could not determine timezone for lat={lat}, lon={lon}")
-        return None
-
-
-def session_date_for(
-        date_obs: Optional[datetime.datetime],
-        *,
-        date_loc: Optional[datetime.datetime] = None,
-        sitelat: Optional[float] = None,
-        sitelong: Optional[float] = None,
-        fallback_tz=None,
-) -> Optional[datetime.date]:
-    """Return the observing-session date for a UTC timestamp.
-
-    Derives local datetime via the best available source, then subtracts 12 hours
-    so that all frames from one night share a single calendar-date key regardless
-    of whether they were captured before or after midnight.
-
-    Priority for deriving local time:
-    1. date_loc (DATE-LOC from FITS header) — already local, use as-is.
-    2. sitelat + sitelong — derive timezone via timezonefinder.
-    3. fallback_tz — convert date_obs from UTC.
-    4. Last resort: treat date_obs as local (no timezone conversion).
-    """
-    if date_obs is None:
-        return None
-    if date_loc is not None:
-        local_dt = date_loc
-    else:
-        utc_dt = date_obs.replace(tzinfo=datetime.timezone.utc)  # Note that date_obs should always be UTC
-        local_dt = utc_dt
-        if sitelat is not None and sitelong is not None:
-            tz = _tz_from_coords(sitelat, sitelong)
-            if tz is not None:
-                local_dt = utc_dt.astimezone(tz)
-        elif fallback_tz is not None:
-            local_dt = utc_dt.astimezone(fallback_tz)
-    return (local_dt - timedelta(hours=12)).date()
-
-
-def _session_info_from_header(hdr) -> tuple[Optional[datetime.datetime], Optional[float], Optional[float]]:
-    """Extract (date_loc, sitelat, sitelong) from an astropy FITS header."""
-    date_loc = _datetime(hdr.get('DATE-LOC'))
-    sitelat = _dms_to_deg(hdr.get('SITELAT'))
-    sitelong = _dms_to_deg(hdr.get('SITELONG'))
-    # Fall back to OBSGEO-B/L (newer FITS standard, always decimal degrees)
-    if sitelat is None:
-        sitelat = _float(hdr.get('OBSGEO-B'))
-    if sitelong is None:
-        sitelong = _float(hdr.get('OBSGEO-L'))
-    # SITELONG/OBSGEO-L may use 0..360 east convention; normalize to -180..180
-    if sitelong is not None and sitelong > 180:
-        sitelong -= 360
-    return date_loc, sitelat, sitelong
-
-
-def _session_cards(raw: bytes) -> Optional[dict]:
-    """Just the session keywords of a stored header, or None if it needs the full parser.
-
-    Parsing a whole header takes milliseconds, which adds up to minutes across a library,
-    and a session night only needs these few cards.
-    """
-    if raw.startswith(b'{'):
-        entries = json.loads(raw)
-        return {key: entries[key][0].get('value') for key in _SESSION_KEYWORDS if entries.get(key)}
-    if b'\t' in raw or len(raw) % _CARD_LENGTH:
-        return None
-    cards = {}
-    for start in range(0, len(raw), _CARD_LENGTH):
-        card = raw[start:start + _CARD_LENGTH]
-        keyword = card[:8].rstrip().upper()
-        if keyword == b'END':
-            break
-        if keyword == b'HIERARCH' and any(name in card.upper() for name in _SESSION_KEYWORDS_BYTES):
-            return None
-        name = keyword.decode('ascii')
-        if keyword in _SESSION_KEYWORDS_BYTES and name not in cards:  # the first card wins, as in a Header
-            cards[name] = Card.fromstring(card.decode('ascii')).value
-            if isinstance(cards[name], str) and cards[name].endswith('&'):  # continues on the next card
-                return None
-    return cards
-
-
-def _session_info_from_blob(blob: bytes) -> tuple:
-    """(date_loc, sitelat, sitelong) from a stored header."""
-    from photonfinder.filesystem import decode_header_blob
-    try:
-        cards = _session_cards(decompress(blob))
-    except Exception:
-        cards = None  # a card the quick route can't read: the full parser repairs those
-    return _session_info_from_header(decode_header_blob(blob) if cards is None else cards)
-
-
-def load_session_info(file_ids: list[int]) -> dict[int, tuple]:
-    """(date_loc, sitelat, sitelong) per file, from its cached primary header (its first, by
-    hdu): an extension's header holds only what differs from the primary, never where and when."""
-    result = {}
-    for batch in chunked(file_ids, _BATCH_SIZE):
-        query = (FitsHeader.select(FitsHeader.file, FitsHeader.header).where(FitsHeader.file.in_(batch))
-                 .order_by(FitsHeader.file, FitsHeader.hdu))
-        for file_id, blob in query.tuples():
-            if file_id in result:
-                continue
-            try:
-                result[file_id] = _session_info_from_blob(blob)
-            except Exception as exc:
-                logging.debug("No session info for file %s: %s", file_id, exc)
-    return result
 
 
 def _describe_criteria(criteria: SearchCriteria) -> str:
@@ -299,22 +122,10 @@ class CalibrationMatcher:
         self.context = context
 
     def _fallback_tz(self) -> Optional[datetime.tzinfo]:
-        """Return the configured or system timezone, or None to trigger -12h heuristic."""
+        """The obs_timezone setting, for frames without DATE-LOC or a site; None to read them as UTC."""
         if not hasattr(self, 'context'):
             return None
-        tz_name = self.context.settings.get_obs_timezone()
-        if tz_name:
-            try:
-                return ZoneInfo(tz_name)
-            except Exception:
-                logging.warning(f"Invalid timezone name in settings: {tz_name!r}")
-        # The system zone with its DST rules: a fixed offset taken now would give a winter
-        # frame the summer offset.
-        try:
-            return get_localzone()
-        except Exception:
-            logging.warning("Could not determine the system timezone", exc_info=True)
-            return None
+        return obs_zone(self.context.settings)
 
     def _load_session_info(self, files: list[File]) -> dict[
         int, tuple[Optional[datetime.datetime], Optional[float], Optional[float]]]:

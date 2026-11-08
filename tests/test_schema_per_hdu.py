@@ -93,7 +93,7 @@ class TestMigration:
 
         schema = _schema(v1_library)
 
-        assert schema["version"] == 2
+        assert schema["version"] == ApplicationContext.CURRENT_DB_VERSION
         assert schema["image"] == [(11, 1, 0, None, "HO", pytest.approx(0.72)), (12, 2, 0, None, "HO", pytest.approx(0.72))]
         assert schema["fitsheader"] == [(21, 1, 0, b"h"), (22, 2, 0, b"h")]
         assert schema["imagestats"] == [(1, 0, 2.5, "OK")]
@@ -136,7 +136,7 @@ class TestMigration:
         assert "hdu" not in [r[1] for r in db.execute("PRAGMA table_info(image)")]
         db.close()
 
-    def test_new_library_is_created_at_version_2(self, tmp_path):
+    def test_new_library_is_created_at_the_current_version(self, tmp_path):
         path = tmp_path / "new.db"
         with _open(path):
             root = LibraryRoot.create(name="r", path="C:/r")
@@ -144,7 +144,7 @@ class TestMigration:
             Image.create(file=file, filter="HO")
 
         schema = _schema(path)
-        assert schema["version"] == 2
+        assert schema["version"] == ApplicationContext.CURRENT_DB_VERSION
         assert schema["image"][0][2] == 0
 
 

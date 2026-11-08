@@ -400,7 +400,8 @@ class LibraryDatabase(SqliteDatabase):  # pylint: disable=abstract-method  # SQL
 class ApplicationContext:
 
     # 2: an image is (file, hdu) - Image, FitsHeader and ImageStats have an hdu column
-    CURRENT_DB_VERSION = 2
+    # 3: Image has local_time and local_time_source, filled in the background (local_time)
+    CURRENT_DB_VERSION = 3
 
     @staticmethod
     def create_in_app_data(app_data_path: str, settings) -> 'ApplicationContext':
@@ -465,6 +466,8 @@ class ApplicationContext:
             self._migrate_image_dimensions()
             self._migrate_library_root_description()
             self._migrate_image_stats_diagnosis()
+            from .models import SESSION_NIGHT_INDEX_SQL
+            self.database.execute_sql(SESSION_NIGHT_INDEX_SQL)
             self.database.attach(self._catalog_path(), 'catalog')
             self.database.bind(CATALOG_MODELS, bind_refs=False, bind_backrefs=False)
 
@@ -571,6 +574,20 @@ class ApplicationContext:
         logging.info(f"Running migration from version {from_version} to {to_version}")
         if from_version < 2:
             self._migrate_to_per_image_rows()
+        if from_version < 3:
+            self._migrate_local_time()
+
+    def _migrate_local_time(self) -> None:
+        """Version 3: Image gets local_time and local_time_source. Only the columns are added,
+        which is instant; a background task fills them (local_time.update_library), and the
+        index on the night is created with the tables. A missing table (a new library) or
+        columns already there are left alone."""
+        columns = [row[1] for row in self.database.execute_sql('PRAGMA table_info("image")')]
+        if not columns:
+            return
+        for name, kind in (('local_time', 'DATETIME'), ('local_time_source', 'VARCHAR(255)')):
+            if name not in columns:
+                self.database.execute_sql(f'ALTER TABLE image ADD COLUMN {name} {kind}')
 
     def _migrate_to_per_image_rows(self) -> None:
         """Version 2: a file holds one or more images, so Image, FitsHeader and ImageStats get
@@ -690,6 +707,10 @@ class Settings:
             self.set_astap_path(get_default_astap_path())
         if not self.contains("astrometry_net_api_key"):
             self.set_astrometry_net_api_key("")
+        # Always set: stored local times depend on it, so it changes only when the user does.
+        if not self.get_obs_timezone():  # pylint: disable=no-member  # generated accessor
+            from .local_time import default_obs_timezone
+            self.set_obs_timezone(default_obs_timezone())  # pylint: disable=no-member
 
     def contains(self, key):
         """Check if a setting exists."""

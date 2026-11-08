@@ -1,5 +1,6 @@
 import copy
 import logging
+import threading
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -13,7 +14,7 @@ from photonfinder import library_query
 from photonfinder.library_query import count_distinct_files, search_files
 from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
 from photonfinder.filesystem import reindex_library
-from photonfinder import solve_service
+from photonfinder import local_time, solve_service
 from photonfinder.platesolver import SolverBase, SolverHint
 
 logger = logging.getLogger(__name__)
@@ -282,6 +283,68 @@ class ImageReindexWorker(BackgroundLoaderBase):
 
         # Signal that we're done
         self.finished.emit()
+
+
+class LocalTimeWorker(BackgroundLoaderBase):
+    """Keeps the library's local times up to date in the background (local_time.update_library):
+    fills images that have none yet, as after the upgrade to schema version 3, and recomputes the
+    fallback ones when obs_timezone changes. A library writer like any other, holding the write
+    lock while it runs; cancelling leaves the rest for the next run."""
+    WRITER_NAME = "Local times"
+    finished = Signal()
+
+    def __init__(self, context: ApplicationContext):
+        super().__init__(context)
+        self._cancelled = False
+        self._idle = threading.Event()
+        self._idle.set()
+
+    def is_running(self) -> bool:
+        return not self._idle.is_set()
+
+    def start(self) -> Optional[str]:
+        """Start when there is work. Returns why it couldn't start (the library is busy), or None
+        when it started or had nothing to do."""
+        if self.is_running() or self.context.database is None:
+            return None
+        zone = local_time.obs_zone(self.context.settings)
+        if not local_time.needs_update(zone):
+            return None
+        self._idle.clear()  # before the lock: taking it notifies listeners, who may ask again
+        lock = self.context.library_write_lock
+        if not lock.acquire(blocking=False, holder=self.WRITER_NAME):
+            self._idle.set()
+            return library_busy_message(lock.busy_with() or "Another job")
+        self._cancelled = False
+        try:
+            self.context.writers.begin(self.WRITER_NAME)
+        except Exception:
+            lock.release()
+            self._idle.set()
+            raise
+        self.run_in_thread(self._run, zone)
+        return None
+
+    def cancel_and_wait(self, timeout: float = 10.0) -> bool:
+        """Stop between batches and wait for it. False if it didn't stop in time."""
+        self._cancelled = True
+        return self._idle.wait(timeout)
+
+    def _run(self, zone):
+        status = self.context.status_reporter
+        try:
+            def progress(done, total):
+                status.update_status(f"Computing local times: {done} of {total} images...", True)
+            if local_time.update_library(zone, lambda: self._cancelled, progress):
+                status.update_status("Local times are up to date.")
+        except Exception as e:  # pylint: disable=broad-exception-caught  # reported; the rest is left for next time
+            logging.error(f"Error computing local times: {e}", exc_info=True)
+            status.update_status(f"Error computing local times: {e}")
+        finally:
+            self.context.library_write_lock.release()
+            self.context.writers.end(self.WRITER_NAME)
+            self._idle.set()  # last: a library switch waits for this, then finds no writer
+            self.finished.emit()
 
 
 class ProgressBackgroundTask(BackgroundLoaderBase):
