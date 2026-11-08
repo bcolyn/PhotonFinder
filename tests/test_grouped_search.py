@@ -9,7 +9,8 @@ from photonfinder import mcp_server, reports
 from photonfinder.library_query import (
     count_distinct_files, count_files, group_value, matching_files, search_files,
 )
-from photonfinder.models import File, Image, LibraryRoot, SearchCriteria, group_of
+from photonfinder.library_query import COLUMN_INDEX, RESULT_COLUMNS
+from photonfinder.models import File, FileWCS, Image, LibraryRoot, SearchCriteria, group_of
 
 EVENING = datetime(2026, 3, 5, 21, 0)  # local time, night of 5 March
 
@@ -107,5 +108,25 @@ def test_mcp_returns_frames_and_integration(context, library):
     assert result["total"] == 7
     assert result["results"][0]["frames"] == 40
     assert result["results"][0]["integration_seconds"] == pytest.approx(40 * 300, abs=0.1)
+    assert result["results"][0]["solved_frames"] == 0
     plain = mcp_server.query_search(context, {})
     assert "frames" not in plain["results"][0]
+
+
+def test_a_group_with_a_solved_frame_shows_as_solved(library):
+    """One-per-group solving skips a group once any frame is solved (a retry may have solved
+    its third), so the grid says so, though the representative itself isn't solved."""
+    night = SearchCriteria(groups=[{"image_type": "LIGHT", "root": library.rowid, "path": "lights/",
+                                    "object_name": "M31", "filter": "Ha", "exposure": 300.0,
+                                    "session_night": "2026-03-05"}])
+    third = matching_files(night, require_image=True)[2]
+    FileWCS.create(file=third, wcs=b"x")
+    solved = RESULT_COLUMNS[COLUMN_INDEX["solved"]]
+
+    row = next(r for r in _groups() if group_of(r) == group_of(third))
+
+    assert not row.has_wcs  # the representative's own solution, for its context menu
+    assert solved.value(row) == "True"
+    assert solved.tooltip(row) == "1 of 40 frames solved"
+    others = [r for r in _groups() if group_of(r) != group_of(third)]
+    assert {solved.value(r) for r in others} == {"False"}

@@ -744,7 +744,9 @@ class SearchCriteriaInput(BaseModel):
         default=None, description="One result per group instead of one per image: a group is the frames of one "
                                   "target on one observing night with the same image type, folder, filter and "
                                   "exposure. Each result is the group's earliest frame and carries `frames` (how "
-                                  "many images it stands for) and `integration_seconds`. Only `search_files` "
+                                  "many images it stands for), `integration_seconds` and `solved_frames` (how "
+                                  "many of them are plate-solved; one-per-group solving skips a group with any). "
+                                  "Only `search_files` "
                                   "groups; the reports always count every image.")
     header_text: Optional[str] = Field(default=None, description=mcp_description("header_text"))
     plate_solved: Optional[bool] = Field(default=None, description=mcp_description("plate_solved"))

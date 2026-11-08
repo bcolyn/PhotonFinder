@@ -123,7 +123,8 @@ def _format_duration(seconds: float) -> str:
 
 
 def group_value(row, name: str):
-    """What a grouped row stands for ('group_frames', 'group_integration'); None otherwise.
+    """What a grouped row stands for ('group_frames', 'group_integration', 'group_solved');
+    None otherwise.
     Peewee keeps the grouping CTE's columns on the join's `grouping`, a dict."""
     grouping = getattr(row, 'grouping', None)
     return grouping.get(name) if isinstance(grouping, dict) else getattr(grouping, name, None)
@@ -133,6 +134,23 @@ def group_value(row, name: str):
 # say what it stands for; otherwise they are NULL. _result_query puts the real columns in.
 _GROUP_FRAMES = Value(None).alias('group_frames')
 _GROUP_INTEGRATION = Value(None).alias('group_integration')
+_HAS_WCS = FileWCS.wcs.is_null(False).alias('has_wcs')
+
+
+def _solved(row):
+    """A grouped row is solved when any of its frames is (one-per-group plate solving skips
+    such a group); otherwise the file itself."""
+    solved_frames = group_value(row, 'group_solved')
+    if solved_frames is not None:
+        return "True" if solved_frames else "False"
+    return "True" if getattr(row, 'has_wcs', False) else "False"
+
+
+def _solved_tooltip(row):
+    solved_frames = group_value(row, 'group_solved')
+    if solved_frames is None:
+        return None
+    return f"{solved_frames} of {group_value(row, 'group_frames')} frames solved"
 
 
 def _number_text(digits):
@@ -169,8 +187,7 @@ RESULT_COLUMNS = (
     ResultColumn("mtime", "Modified", File.mtime_millis, lambda row: row.mtime_millis, text=_format_timestamp),
     ResultColumn("coord_ra", "RA", Image.coord_ra, _image_value('coord_ra'), text=_format_ra),
     ResultColumn("coord_dec", "DEC", Image.coord_dec, _image_value('coord_dec'), text=_format_dec),
-    ResultColumn("solved", "Solved", FileWCS.wcs.is_null(False).alias('has_wcs'),
-                 lambda row: "True" if getattr(row, 'has_wcs', False) else "False"),
+    ResultColumn("solved", "Solved", _HAS_WCS, _solved, tooltip=_solved_tooltip),
     ResultColumn("projects", "Projects", _PROJECT_NAMES.c.project_names.alias('project_names'),
                  lambda row: ", ".join(_project_names(row))),
     ResultColumn("background", "Bg Median", ImageStats.background_median.alias('stats_background_median'),
@@ -384,6 +401,7 @@ def serialize_search_row(row: File) -> dict:
     if group_value(row, "group_frames") is not None:  # grouped mode: what the row stands for
         result["frames"] = group_value(row, "group_frames")
         result["integration_seconds"] = group_value(row, "group_integration")
+        result["solved_frames"] = group_value(row, "group_solved")
 
     image = getattr(row, "image", None)
     result["hdu"] = image.hdu if image is not None and image.rowid is not None else None
@@ -423,8 +441,11 @@ def _result_query(criteria: SearchCriteria):
     if groups is not None:
         fields[COLUMN_INDEX["frames"]] = groups.c.frames.alias('group_frames')
         fields[COLUMN_INDEX["integration"]] = groups.c.integration.alias('group_integration')
+        # Shown and sorted by the group's solved frames; the row keeps its own has_wcs.
+        fields[COLUMN_INDEX["solved"]] = groups.c.solved.alias('group_solved')
+    extra = [] if groups is None else [_HAS_WCS]
     query = (File
-             .select(*(fields + [File, Image, LibraryRoot]))
+             .select(*(fields + extra + [File, Image, LibraryRoot]))
              .join_from(File, LibraryRoot)
              .join_from(File, Image, JOIN.LEFT_OUTER)
              .join_from(File, FileWCS, JOIN.LEFT_OUTER)
@@ -440,8 +461,8 @@ def _result_query(criteria: SearchCriteria):
 
 
 def _representatives(criteria: SearchCriteria):
-    """Each group's representative (the first by group_order_sql), with the group's frame count
-    and summed exposure. A window over the matching images, so a group counts only the frames
+    """Each group's representative (the first by group_order_sql), with the group's frame count,
+    summed exposure and plate-solved frames. A window over the matching images, so a group counts only the frames
     the criteria let through. One sort: ROW_NUMBER ranks the frames, and COUNT and SUM take the
     whole group through an explicit frame (with ORDER BY, their default frame would make them
     running totals)."""
@@ -452,11 +473,12 @@ def _representatives(criteria: SearchCriteria):
                               fn.ROW_NUMBER().over(ranked).alias('rank'),
                               fn.COUNT(SQL('*')).over(whole).alias('frames'),
                               fn.SUM(Image.exposure).over(whole).alias('integration'),
-                              require_image=True)
+                              fn.COUNT(FileWCS.rowid).over(whole).alias('solved'),
+                              require_image=True, with_solution=True)
               .window(ranked, whole)
               .alias('framed'))
     # Materialized: computed once, as SQLite could otherwise run it again per joined row.
-    return (Select([framed], [framed.c.image_id, framed.c.frames, framed.c.integration])
+    return (Select([framed], [framed.c.image_id, framed.c.frames, framed.c.integration, framed.c.solved])
             .where(framed.c.rank == 1)
             .cte('groups', materialized=True))
 
