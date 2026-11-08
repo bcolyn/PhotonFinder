@@ -73,6 +73,9 @@ class McpSettings:
     def get_known_fits_keywords(self):
         return []
 
+    def add_known_fits_keywords(self, keywords):
+        pass
+
     def sync(self):
         pass
 

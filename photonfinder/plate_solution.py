@@ -175,16 +175,16 @@ def place(image: Image, solution: Header) -> None:
         setattr(image, name, value)
 
 
-def save_indexed(file: File, image: Optional[Image], embedded: Optional[Header]) -> None:
-    """Write the Image row an index built from the file's header, and the solution that header
-    carried when the file had none stored (stamped as imported). `image` has had the solution
-    placed on it, by `place`, so the two agree."""
+def save_indexed(file: File, images: list, embedded: Optional[Header]) -> None:
+    """Write the Image rows an index built from the file's headers, each replacing the row of
+    its (file, hdu), and the solution a header carried when the file had none stored (stamped as
+    imported). The images have had the solution placed on them, by `place`, so they agree."""
     with FileWCS._meta.database.atomic():
         if embedded is not None:
             embedded = embedded.copy()
             stamp_origin(embedded, "IMPORT")
             FileWCS.insert(file=file, wcs=_encode(embedded)).on_conflict_ignore().execute()
-        if image is not None:
+        for image in images:
             Image.insert(image.__data__).on_conflict_replace().execute()
 
 

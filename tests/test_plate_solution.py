@@ -279,7 +279,8 @@ def _import(root, monkeypatch, name, header_text):
     from photonfinder import filesystem
     from photonfinder.core import StatusReporter
     header_bytes = Header.fromstring(header_text.strip(), "\n").tostring().encode("ascii")
-    monkeypatch.setattr(filesystem, "read_fits_header", lambda *_: header_bytes)
+    from tests.utils import single_header_scan
+    monkeypatch.setattr(filesystem, "read_fits_headers", lambda *_: single_header_scan(header_bytes))
     file = File.create(root=root, path="", name=name, size=1, mtime_millis=1)
     filesystem.update_fits_header_cache(filesystem.ChangeList(new_files=[file]), StatusReporter(), MagicMock())
     return file

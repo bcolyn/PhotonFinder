@@ -108,6 +108,16 @@ class TestMergedHeader:
         assert list(merged["HISTORY"]) == ["stacked", "SO layer"]
         assert list(merged.keys()).count("FILTER") == 1
 
+    def test_the_inputs_are_left_unchanged(self):
+        primary = Header([Card("SIMPLE", True), Card("FILTER", "HO"), Card("DATE-OBS", "2026-11-02")])
+        ext = Header([Card("XTENSION", "IMAGE"), Card("FILTER", "SO")])
+
+        merged_header(primary, ext)["DATE-OBS"] = "changed"
+
+        assert primary["FILTER"] == "HO"
+        assert primary["DATE-OBS"] == "2026-11-02"
+        assert ext["FILTER"] == "SO"
+
     def test_primary_is_returned_unchanged(self):
         primary = Header([Card("SIMPLE", True), Card("FILTER", "HO")])
 

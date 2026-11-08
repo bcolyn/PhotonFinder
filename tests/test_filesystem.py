@@ -16,7 +16,7 @@ from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read
 from photonfinder.models import LibraryRoot, File, Image, FitsHeader, FileWCS, ImageStats
 from photonfinder.filesystem import update_fits_header_cache, check_missing_header_cache, parse_FITS_header
 from photonfinder.fits_handlers import normalize_fits_header, NINAHandler, _normalize_image_type
-from tests.utils import fix_embedded_header
+from tests.utils import fix_embedded_header, single_header_scan
 
 NUM_FILES = 6  # 8 images, 2 bad, 1 csv ignored
 
@@ -232,8 +232,8 @@ class TestImporter:
 
     def test_update_fits_header_cache(self, filesystem, database, app_context, mocker):
         from .sample_headers import header_apt
-        mocker.patch('photonfinder.filesystem.read_fits_header',
-                     return_value=fix_embedded_header(header_apt))
+        mocker.patch('photonfinder.filesystem.read_fits_headers',
+                     return_value=single_header_scan(fix_embedded_header(header_apt)))
         change_lists = self.setup(app_context)
         for change_list in change_lists:
             change_list.apply_all()
@@ -450,8 +450,8 @@ class TestHeaderCacheResilience:
         files = self._files(database, tmp_path)
         good = fix_embedded_header(header_apt)
         bad_name = files[0].full_filename()
-        mocker.patch("photonfinder.filesystem.read_fits_header",
-                     side_effect=lambda path, *_: b"BAD" if path == bad_name else good)
+        mocker.patch("photonfinder.filesystem.read_fits_headers",
+                     side_effect=lambda path, *_: single_header_scan(b"BAD" if path == bad_name else good))
         real_parse = parse_FITS_header
 
         def parse(header_bytes):
@@ -467,7 +467,8 @@ class TestHeaderCacheResilience:
     def test_unusable_wcs_keeps_image(self, database, app_context, tmp_path, mocker):
         from .sample_headers import header_apt
         files = self._files(database, tmp_path, count=1)
-        mocker.patch("photonfinder.filesystem.read_fits_header", return_value=fix_embedded_header(header_apt))
+        mocker.patch("photonfinder.filesystem.read_fits_headers",
+                     return_value=single_header_scan(fix_embedded_header(header_apt)))
         mocker.patch("photonfinder.filesystem.embedded_solution", side_effect=ValueError("bad WCS"))
 
         update_fits_header_cache(ChangeList(new_files=files), app_context.status_reporter, app_context.settings)

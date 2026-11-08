@@ -15,6 +15,7 @@ An image is addressed by its index: the HDU number in a FITS file, or the positi
 `XISF.get_images_metadata()` in an XISF file. `None` means the first image.
 XISF goes through the upstream `xisf` package only.
 """
+import copy
 import json
 import logging
 import math
@@ -83,18 +84,20 @@ def merged_header(primary: Header, ext: Header) -> Header:
     """
     if ext is primary:
         return primary
+    # Copies: a Header holds the Card objects it is given, and overlaying a value on a shared
+    # card would change the primary header too.
     result = Header()
     for card in ext.cards:
         if is_structural(card.keyword):
-            result.append(card)
+            result.append(copy.copy(card))
     for card in primary.cards:
         if not is_structural(card.keyword):
-            result.append(card)
+            result.append(copy.copy(card))
     for card in ext.cards:
         if is_structural(card.keyword):
             continue
         if card.keyword in Card._commentary_keywords:  # pylint: disable=protected-access
-            result.append(card)
+            result.append(copy.copy(card))
         elif card.keyword in result:
             result[card.keyword] = (card.value, card.comment)
         else:
@@ -137,7 +140,7 @@ def _card_value(card: bytes) -> Optional[str]:
 
 def _parse_layout(header: bytes) -> dict:
     """The few cards needed to find the data unit and decide whether it is an image."""
-    wanted = {'SIMPLE', 'XTENSION', 'BITPIX', 'NAXIS', 'PCOUNT', 'GCOUNT', 'GROUPS', 'EXTNAME'}
+    wanted = {'SIMPLE', 'XTENSION', 'BITPIX', 'NAXIS', 'PCOUNT', 'GCOUNT', 'GROUPS', 'EXTNAME', 'EXTEND'}
     cards = {}
     for start in range(0, len(header), _CARD):
         card = header[start:start + _CARD]
@@ -186,6 +189,14 @@ def _is_image(cards: dict) -> bool:
     return sum(1 for n in _axes(cards) if n > 1) >= 2
 
 
+def is_image_header(header: Header) -> bool:
+    """Whether a parsed FITS header describes an image HDU, by the same rule as the scan."""
+    cards = {key: ('T' if value is True else 'F' if value is False else str(value))
+             for key, value in header.items()
+             if key in ('XTENSION', 'GROUPS', 'NAXIS') or _NAXIS_N.match(key)}
+    return _is_image(cards)
+
+
 def _read_header_blocks(f, first_card: bytes) -> Optional[bytes]:
     """Header blocks up to and including the one with END; None at EOF or if the first card
     doesn't start with *first_card*."""
@@ -201,9 +212,12 @@ def _read_header_blocks(f, first_card: bytes) -> Optional[bytes]:
             return bytes(header)
 
 
-def scan_fits(path, first_only: bool = False) -> Optional[HduScan]:
+def scan_fits(path, first_only: bool = False, require_extend: bool = False) -> Optional[HduScan]:
     """The image HDUs of a FITS file. With *first_only*, the scan stops at the first image HDU,
-    so a file whose primary holds the image is read no further than its primary header."""
+    so a file whose primary holds the image is read no further than its primary header. With
+    *require_extend*, it doesn't look past the primary unless that has EXTEND = T: by convention
+    only such a file has extensions, and for a compressed file looking further means
+    decompressing all of it."""
     from photonfinder.filesystem import fopen
     images = []
     try:
@@ -220,6 +234,8 @@ def scan_fits(path, first_only: bool = False) -> Optional[HduScan]:
                     images.append(HduInfo(index, extname or None, tuple(reversed(_axes(cards))), header))
                     if first_only:
                         break
+                if index == 0 and require_extend and cards.get('EXTEND') != 'T':
+                    break
                 # Seeking a gz/bz2/xz stream forward decompresses through the data. Past the end
                 # of a plain file, the next read returns nothing, which ends the scan.
                 f.seek(_data_size(cards), 1)

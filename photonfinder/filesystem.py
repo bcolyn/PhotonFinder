@@ -80,6 +80,23 @@ def read_fits_header(file: str | Path, status_reporter: StatusReporter = None) -
         return scan.primary_header
 
 
+def read_fits_headers(file: str | Path, status_reporter: StatusReporter = None) -> image_hdus.HduScan | None:
+    """The headers the index needs from a FITS file: the primary's, and each image extension's.
+    A compressed file is read past its primary only when that has EXTEND = T, as finding its
+    extensions means decompressing all of it. None if it isn't a readable FITS file."""
+    if status_reporter:
+        status_reporter.update_status(f"Reading FITS header for {file}...", bulk=True)
+    return image_hdus.scan_fits(file, require_extend=is_compressed(file))
+
+
+def read_xisf_headers(file: str | Path, status_reporter: StatusReporter = None) -> image_hdus.HduScan | None:
+    """The FITS keywords of every image in an XISF file (see image_hdus). None if it has none."""
+    if status_reporter:
+        status_reporter.update_status(f"Reading XISF header for {file}...", bulk=True)
+    scan = image_hdus.scan_xisf(file)
+    return scan if scan and scan.images else None
+
+
 def read_xisf_header(file: str | Path, status_reporter: StatusReporter = None) -> (tuple[bytes, dict[str, list]] |
                                                                                    tuple[None, None]):
     """The FITS keywords of the file's first image that has them, as JSON bytes and as the dict
@@ -141,23 +158,51 @@ def _handle_file_metadata_safely(file, status_reporter, settings):
             status_reporter.update_status(f"Error processing header of {file.name}: {e}")
 
 
-def _handle_file_metadata(file, status_reporter, settings):
-    header = None
+def _read_file_headers(file: File, status_reporter) -> image_hdus.HduScan | None:
     if Importer.is_fits_by_name(file.name):
-        header_bytes = read_fits_header(file.full_filename(), status_reporter)
-        if header_bytes:
-            FitsHeader(file=file, header=compress(header_bytes)).save()
-            # Normalize the header and create an Image object if possible
-            header = parse_FITS_header(header_bytes)
-    elif Importer.is_xisf_by_name(file.name):
-        header_bytes, header_dict = read_xisf_header(file.full_filename(), status_reporter)
-        if header_bytes:
-            FitsHeader(file=file, header=compress(header_bytes)).save()
-            header = header_from_xisf_dict(header_dict)
-    if header is not None:
+        return read_fits_headers(file.full_filename(), status_reporter)
+    if Importer.is_xisf_by_name(file.name):
+        return read_xisf_headers(file.full_filename(), status_reporter)
+    return None
+
+
+def _header_rows(scan: image_hdus.HduScan) -> list[tuple[int, bytes]]:
+    """The FitsHeader rows for a file, as (hdu, raw header). A FITS file always has its primary
+    header as hdu 0, image or not, so an extension's header can be merged with it later; then
+    one row per image extension, its own header unmerged. An XISF file has one row per image."""
+    if scan.primary_header is None:
+        return [(image.index, image.header) for image in scan.images]
+    return [(0, scan.primary_header)] + [(image.index, image.header) for image in scan.images if image.index]
+
+
+def _headers_to_index(scan: image_hdus.HduScan) -> list[tuple[int, str | None, Header]]:
+    """(hdu, extname, header to normalise) per image of a freshly read file. A FITS extension's
+    header is merged with the primary's. A file without any image HDU is indexed from its
+    primary header, as before files could hold several images."""
+    if scan.primary_header is None:
+        return [(image.index, image.extname, header_from_xisf_dict(image.keywords)) for image in scan.images]
+    primary = parse_FITS_header(scan.primary_header)
+    return [(image.index, image.extname,
+             primary if image.index == 0 else image_hdus.merged_header(primary, parse_FITS_header(image.header)))
+            for image in scan.images] or [(0, None, primary)]
+
+
+def _store_file_index(file: File, scan: image_hdus.HduScan, status_reporter, settings) -> None:
+    """Write a file's header rows, then its Image rows from them. The header rows are written
+    first, so a header that can't be indexed is still cached and not read again every scan."""
+    for hdu, raw in _header_rows(scan):
+        FitsHeader(file=file, hdu=hdu, header=compress(raw)).save()
+    headers = _headers_to_index(scan)
+    images, embedded = index_images(file, headers, plate_solution.load(file), status_reporter)
+    plate_solution.save_indexed(file, images, embedded)
+    for _, _, header in headers:
         settings.add_known_fits_keywords(header.keys())
-        image, embedded = index_header(file, header, plate_solution.load(file), status_reporter)
-        plate_solution.save_indexed(file, image, embedded)
+
+
+def _handle_file_metadata(file, status_reporter, settings):
+    scan = _read_file_headers(file, status_reporter)
+    if scan is not None:
+        _store_file_index(file, scan, status_reporter, settings)
 
 
 def repair_header(header: Header) -> Header:
@@ -240,77 +285,125 @@ def embedded_solution(file: File, header: Header) -> Header | None:
     return solution
 
 
-def index_header(file: File, header: Header, stored: Header | None, status_reporter=None):
-    """What a file's header gives the index: its Image row, and the plate solution embedded in
-    the header when none is `stored` for the file. Import, header repair and Rebuild index all
-    come through here, so a file is indexed the same way by each.
+def index_images(file: File, headers: list[tuple[int, str | None, Header]], stored: Header | None,
+                 status_reporter=None) -> tuple[list[Image], Header | None]:
+    """What a file's headers give the index: an Image row per image, and the plate solution
+    embedded in a header when none is `stored` for the file. Import, header repair and Rebuild
+    index all come through here, so a file is indexed the same way by each.
 
-    With a solution, stored or embedded, the Image takes its centre, radius and size. A stored
-    solution that can't be used raises; an embedded one is ignored, leaving the file unsolved.
-    Returns (image, embedded), either of which may be None; nothing is written.
+    `headers` is (hdu, extname, header) per image, an extension's header merged with the
+    primary's. The embedded solution is the first usable one, in file order. A solution, stored
+    or embedded, gives an image its centre, radius and size. In a file with several images it
+    goes only to those the size of the solved image (the solution's NAXIS1/2, else the size of
+    the image it came from or, when stored, of the first image): layers of one stack share its
+    geometry, a layer of another size is left unsolved. A stored solution that can't be used
+    raises; an unusable embedded one is ignored. Nothing is written.
     """
-    image = normalize_fits_header(file, header, status_reporter)
-    embedded = None
+    indexed = []
+    for hdu, extname, header in headers:
+        image = normalize_fits_header(file, header, status_reporter)
+        if image is not None:
+            image.hdu, image.extname = hdu, extname
+        indexed.append((image, header))
+    images = [image for image, _ in indexed if image is not None]
+
+    embedded, solved = None, indexed[0][0] if indexed else None
     if stored is None:
-        try:
-            embedded = embedded_solution(file, header)
-            if embedded is not None:  # checked even without an Image, so only a usable one is stored
-                plate_solution.place(image if image is not None else Image(), embedded)
-        except Exception as e:
-            log(WARN, f"Ignoring unusable WCS in header of {file.name}: {e}")
-            embedded = None
-    elif image is not None:
-        plate_solution.place(image, stored)
-    return image, embedded
+        for image, header in indexed:
+            try:
+                found = embedded_solution(file, header)
+                if found is not None:  # checked even without an Image, so only a usable one is stored
+                    plate_solution.place(image if image is not None else Image(), found)
+                    embedded, solved = found, image
+                    break
+            except Exception as e:
+                log(WARN, f"Ignoring unusable WCS in header of {file.name}: {e}")
+    solution = stored if stored is not None else embedded
+    if solution is None:
+        return images, None
+
+    size = (solution.get('NAXIS1'), solution.get('NAXIS2'))
+    if not all(size):
+        size = (solved.width, solved.height) if solved is not None else (None, None)
+    for image in images:
+        if len(indexed) == 1 or (all(size) and (image.width, image.height) == size):
+            plate_solution.place(image, solution)
+    return images, embedded
 
 
 REINDEX_BATCH_SIZE = 1000
 
 
-def reindex_library(status_reporter, settings) -> None:
-    """Rebuild index: replace each file's Image row with one built from its cached header, as
-    import builds it, and store a solution embedded in a header when the file has none.
+def _headers_from_cache(rows: list) -> list[tuple[int, str | None, Header]]:
+    """(hdu, extname, header to normalise) per image, from a file's cached FitsHeader rows
+    (hdu order), as `_headers_to_index` gives them for a freshly read file."""
+    decoded = [(row.hdu, decode_header_blob(row.header), decompress(row.header).startswith(b'{')) for row in rows]
+    if any(is_xisf for _, _, is_xisf in decoded):
+        return [(hdu, None, header) for hdu, header, _ in decoded]
+    primary = next((header for hdu, header, _ in decoded if hdu == 0), None)
+    images = [(hdu, header.get('EXTNAME') if hdu else None,
+               header if hdu == 0 or primary is None else image_hdus.merged_header(primary, header))
+              for hdu, header, _ in decoded if image_hdus.is_image_header(header)]
+    if images or primary is None:
+        return images
+    return [(0, None, primary)]
 
-    Rows are replaced a batch at a time, not cleared first, so stopping at any point leaves a
-    complete row for every file. Each batch is read in full before it is written: a write made
-    behind an open query fails at once with "database is locked" if anything else has written
-    to the library, and keeps failing. A header that can't be indexed keeps the row it had and
-    is reported; an error writing a batch stops the rebuild and is raised.
+
+def reindex_library(status_reporter, settings) -> None:
+    """Rebuild index: replace each file's Image rows with ones built from its cached headers, as
+    import builds them, and store a solution embedded in a header when the file has none.
+
+    Rows are replaced a batch of files at a time, not cleared first, so stopping at any point
+    leaves complete rows for every file. A batch holds all of a file's header rows, so an
+    extension's header can be merged with the primary's. Each batch is read in full before it is
+    written: a write made behind an open query fails at once with "database is locked" if
+    anything else has written to the library, and keeps failing. A file whose headers can't be
+    indexed keeps the rows it had and is reported; an error writing a batch stops the rebuild
+    and is raised.
     """
     total_headers = FitsHeader.select().count()
     status_reporter.update_status(f"Processing {total_headers} FITS headers...")
     processed = 0
-    last_rowid = 0
-    while batch := list(FitsHeader
-                        .select(FitsHeader, File, FileWCS)
-                        .join(File)
-                        .join(FileWCS, JOIN.LEFT_OUTER)
-                        .where(FitsHeader.rowid > last_rowid)
-                        .order_by(FitsHeader.rowid)
-                        .limit(REINDEX_BATCH_SIZE)):
-        last_rowid = batch[-1].rowid
+    last_file = 0
+    while file_ids := [row[0] for row in FitsHeader
+                       .select(FitsHeader.file).distinct()
+                       .where(FitsHeader.file > last_file)
+                       .order_by(FitsHeader.file)
+                       .limit(REINDEX_BATCH_SIZE).tuples()]:
+        last_file = file_ids[-1]
+        by_file = {}
+        for header_record in (FitsHeader
+                              .select(FitsHeader, File, FileWCS)
+                              .join(File)
+                              .join(FileWCS, JOIN.LEFT_OUTER)
+                              .where(FitsHeader.file.in_(file_ids))
+                              .order_by(FitsHeader.file, FitsHeader.hdu)):
+            by_file.setdefault(header_record.file.rowid, []).append(header_record)
+        # The XISF image ids aren't in the cached keywords, so the Image rows keep theirs.
+        extnames = {(file_id, hdu): extname for file_id, hdu, extname
+                    in Image.select(Image.file, Image.hdu, Image.extname)
+                    .where(Image.file.in_(file_ids) & Image.extname.is_null(False)).tuples()}
         rows = []
-        for header_record in batch:
-            file = header_record.file
+        for header_records in by_file.values():
+            file = header_records[0].file
             try:
-                header = decode_header_blob(header_record.header)
                 stored_record = getattr(file, 'filewcs', None)
                 stored = plate_solution.decode(stored_record.wcs) if stored_record else None
-                settings.add_known_fits_keywords(header.keys())
-                image, embedded = index_header(file, header, stored, status_reporter)
-                if image is not None:
-                    image.hdu = header_record.hdu  # each header row indexes its own image
-                rows.append((file, image, embedded))
+                headers = [(hdu, extname or extnames.get((file.rowid, hdu)), header)
+                           for hdu, extname, header in _headers_from_cache(header_records)]
+                for _, _, header in headers:
+                    settings.add_known_fits_keywords(header.keys())
+                rows.append((file, *index_images(file, headers, stored, status_reporter)))
             except Exception as e:
-                # Its current row stays, as nothing better came out of this header.
+                # Its current rows stay, as nothing better came out of its headers.
                 log(ERROR, f"Error processing header of {file.name}: {e}", exc_info=True)
                 status_reporter.update_status(f"Error processing header of {file.name}: {e}")
 
         with FitsHeader._meta.database.atomic():
-            for file, image, embedded in rows:
-                plate_solution.save_indexed(file, image, embedded)
+            for file, images, embedded in rows:
+                plate_solution.save_indexed(file, images, embedded)
 
-        processed += len(batch)
+        processed += sum(len(records) for records in by_file.values())
         status_reporter.update_status(f"Processed {processed}/{total_headers} headers...", True)
     status_reporter.update_status("Image metadata reindexing complete!")
 
@@ -362,16 +455,13 @@ def _is_truncated_header(raw: bytes) -> bool:
 def _repair_truncated_header(file: File, status_reporter, settings):
     """Read the header from disk again. The file itself is unchanged, so what was derived from
     it stays: the plate solution with the position it gave the image, and the stats."""
-    header_bytes = read_fits_header(file.full_filename(), status_reporter)
-    if not header_bytes:
+    scan = read_fits_headers(file.full_filename(), status_reporter)
+    if scan is None:
         log(WARN, f"Could not read the full header of {file.name} again, keeping the cached part")
         return
-    header = parse_FITS_header(header_bytes)
-    image, embedded = index_header(file, header, plate_solution.load(file), status_reporter)
     with FitsHeader._meta.database.atomic():
-        FitsHeader.update(header=compress(header_bytes)).where(FitsHeader.file == file).execute()
-        plate_solution.save_indexed(file, image, embedded)
-    settings.add_known_fits_keywords(header.keys())
+        FitsHeader.delete().where(FitsHeader.file == file).execute()
+        _store_file_index(file, scan, status_reporter, settings)
 
 
 def repair_truncated_header_cache(status_reporter, settings, cancelled=lambda: False):
@@ -381,9 +471,9 @@ def repair_truncated_header_cache(status_reporter, settings, cancelled=lambda: F
         status_reporter.update_status("Checking for incomplete FITS headers in the cache...")
 
     # Finished before anything is written: a write can't follow an open read on this connection.
-    file_ids = [file_id for file_id, blob
-                in FitsHeader.select(FitsHeader.file, FitsHeader.header).tuples().iterator()
-                if _is_truncated_header(decompress(blob))]
+    file_ids = list(dict.fromkeys(file_id for file_id, blob
+                                  in FitsHeader.select(FitsHeader.file, FitsHeader.header).tuples().iterator()
+                                  if _is_truncated_header(decompress(blob))))
 
     for file_id in file_ids:
         if cancelled():

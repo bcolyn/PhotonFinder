@@ -8,16 +8,19 @@ PRIMARY_SHAPE = (3, 8, 10)
 
 
 def write_multi_hdu_fits(path, empty_primary=False, extension_shape=PRIMARY_SHAPE, compress=None,
-                         table=True) -> str:
+                         table=True, extend=True, primary_cards=None) -> str:
     """The DWARFLAB dual-band shape: a primary with a full header (FILTER HO) and an IMAGE
     extension "SOO" with a sparse header (FILTER SO), followed by a binary table "STARS".
 
     *compress* is None, or '.gz', '.bz2' or '.xz' to append to the name and compress with.
-    Returns the path written."""
+    *extend* False writes EXTEND = F in the primary (astropy always writes T), as some writers
+    do. *primary_cards* are added to the primary header. Returns the path written."""
     rng = np.random.default_rng(1)
     primary_data = None if empty_primary else rng.integers(0, 65535, PRIMARY_SHAPE, dtype=np.uint16)
     primary = fits.PrimaryHDU(data=primary_data)
-    primary.header.update({"FILTER": "HO", "EXPTIME": 6000, "OBJECT": "C 20", "DATE-OBS": "2026-11-02T20:00:00"})
+    primary.header.update({"FILTER": "HO", "EXPTIME": 6000, "OBJECT": "C 20", "DATE-OBS": "2026-11-02T20:00:00",
+                           "IMAGETYP": "LIGHT", "INSTRUME": "Draco"})
+    primary.header.update(primary_cards or {})
     soo = fits.ImageHDU(data=rng.integers(0, 65535, extension_shape, dtype=np.uint16), name="SOO")
     soo.header.update({"FILTER": "SO", "EXPTIME": 11700, "STACKCNT": 39})
     hdus = [primary, soo]
@@ -26,6 +29,12 @@ def write_multi_hdu_fits(path, empty_primary=False, extension_shape=PRIMARY_SHAP
                                                   name="STARS"))
     plain = str(path)
     fits.HDUList(hdus).writeto(plain)
+    if not extend:
+        raw = open(plain, "rb").read()
+        card = b"EXTEND  =                    T"
+        assert raw.count(card) == 1
+        with open(plain, "wb") as f:
+            f.write(raw.replace(card, b"EXTEND  =                    F"))
     if compress is None:
         return plain
     import bz2

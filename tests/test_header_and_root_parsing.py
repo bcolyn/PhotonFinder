@@ -145,7 +145,7 @@ class TestRepairingTruncatedHeaders:
         FitsHeader.create(file=complete, header=compress(_two_block_header()))
         xisf = File.create(root=root, path="", name="b.xisf", size=1, mtime_millis=1)
         FitsHeader.create(file=xisf, header=compress(b'{"OBJECT": [{"value": "M31", "comment": ""}]}'))
-        read = mocker.patch("photonfinder.filesystem.read_fits_header")
+        read = mocker.patch("photonfinder.filesystem.read_fits_headers")
 
         self._repair(context)
 
