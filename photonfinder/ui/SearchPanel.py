@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 import subprocess
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame
 from photonfinder import filter_catalogue, plate_solution
 from photonfinder.core import ApplicationContext, Change, library_busy_message
 from photonfinder.filesystem import is_compressible, cached_header
+from photonfinder.local_time import obs_zone, session_night
 from photonfinder.library_query import (
     COLUMN_INDEX, RESULT_COLUMNS, cell, count_text, diagnosis_counts, distinct_files, distinct_values,
     image_key, search_row_stat,
@@ -30,11 +32,18 @@ from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .MetadataReportDialog import MetadataReportDialog
 from .PlateSolveDialog import PlateSolveDialog
 from .ProgressDialog import ProgressDialog
-from .common import _utc_to_local, _local_to_utc, ensure_header_widths, \
-    ColumnVisibilityController
+from .common import ensure_header_widths, ColumnVisibilityController
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
 EMPTY_LABEL = "<empty>"
+
+
+def _last_night(context) -> datetime.date:
+    """The night that is under way or, during the day, the one that ended this morning: from
+    18:00 local time (obs_timezone) on, tonight; before, last night."""
+    now = datetime.datetime.now(obs_zone(context.settings))
+    return now.date() if now.hour >= 18 else now.date() - datetime.timedelta(days=1)
+
 RESET_LABEL = "<any>"
 
 ROWID_ROLE = Qt.UserRole
@@ -101,6 +110,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.proxy_model.setSortRole(SORT_ROLE)
         self.proxy_model.setSourceModel(self.data_model)
         self.dataView.setModel(self.proxy_model)
+        # Night comes last in RESULT_COLUMNS (saved sort positions), and is shown after the date.
+        header = self.dataView.horizontalHeader()
+        header.moveSection(header.visualIndex(COLUMN_INDEX["session_night"]),
+                           header.visualIndex(COLUMN_INDEX["date_obs"]) + 1)
         self.dataView.setDragEnabled(True)
         self.dataView.setDragDropMode(QAbstractItemView.DragOnly)
         self.dataView.verticalScrollBar().valueChanged.connect(self.on_scroll)
@@ -145,6 +158,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.toolbar.addAction(mainWindow.actionExposure)
         self.toolbar.addAction(mainWindow.actionCoordinates)
         self.toolbar.addAction(mainWindow.actionDate)
+        self.toolbar.addAction(mainWindow.actionNight)
         self.toolbar.addAction(mainWindow.actionTelescope)
         self.toolbar.addAction(mainWindow.actionBinning)
         self.toolbar.addAction(mainWindow.actionGain)
@@ -439,6 +453,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 item = QStandardItem(text)
                 if sort_value is not None:
                     item.setData(sort_value, SORT_ROLE)
+                if column.tooltip is not None:
+                    item.setToolTip(column.tooltip(file))
                 items.append(item)
             items[0].setData(file, ROWID_ROLE)
             self.data_model.appendRow(items)
@@ -1081,22 +1097,34 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self._apply_filter(filter_catalogue.COORDINATES)
 
     def _edit_dates(self):
+        """A range in local time (the default, as the grid shows) or in UTC. Nothing is
+        converted: each basis has its own criteria fields, and applying one clears the other."""
         dialog = DateRangeDialog(self.context)
-        # The dialog works in local time, like the grid; the criteria are UTC, like date_obs.
+        criteria = self.search_criteria
         selected_image = self.get_selected_image()
-        if selected_image and selected_image.date_obs is not None:
-            localtime = _utc_to_local(selected_image.date_obs)
-            dialog.set_start_date(localtime)
-            dialog.set_end_date(localtime)
-        elif self.search_criteria.start_datetime is not None:
-            dialog.set_start_date(_utc_to_local(self.search_criteria.start_datetime))
-            if self.search_criteria.end_datetime is not None:
-                dialog.set_end_date(_utc_to_local(self.search_criteria.end_datetime))
+        if selected_image is not None:
+            dialog.set_range(True, selected_image.local_time, None)
+            dialog.set_range(False, selected_image.date_obs, None)
+        dialog.set_range(True, criteria.local_start, criteria.local_end)
+        dialog.set_range(False, criteria.start_datetime, criteria.end_datetime)
+        dialog.set_local(criteria.start_datetime is None and criteria.end_datetime is None)
         if dialog.exec():
-            start_datetime, end_datetime = dialog.get_datetime_range()
-            self.search_criteria.start_datetime = _local_to_utc(start_datetime)
-            self.search_criteria.end_datetime = _local_to_utc(end_datetime)
+            start, end = dialog.get_datetime_range()
+            local = dialog.is_local()
+            criteria.local_start, criteria.local_end = (start, end) if local else (None, None)
+            criteria.start_datetime, criteria.end_datetime = (None, None) if local else (start, end)
             self._apply_filter(filter_catalogue.DATES)
+
+    def _edit_night(self):
+        """One observing night: the selected image's, else the filter's, else last night."""
+        from .NightDialog import NightDialog
+        dialog = NightDialog(self)
+        selected_image = self.get_selected_image()
+        night = session_night(selected_image.local_time) if selected_image is not None else None
+        dialog.set_night(night or self.search_criteria.session_night or _last_night(self.context))
+        if dialog.exec():
+            self.search_criteria.session_night = dialog.get_night()
+            self._apply_filter(filter_catalogue.NIGHT)
 
     def _edit_image_size(self):
         from .RangeFilterDialogs import ImageSizeDialog

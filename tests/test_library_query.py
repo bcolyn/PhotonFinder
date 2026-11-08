@@ -1,5 +1,5 @@
 """The library query module, through its interface only: criteria in, files out."""
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 from astropy.coordinates import SkyCoord
@@ -280,7 +280,7 @@ def test_result_columns_keep_their_positions_and_labels():
     assert [c.label for c in RESULT_COLUMNS] == [
         "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
         "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved",
-        "Projects", "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation", "Diagnosis", "Layer",
+        "Projects", "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation", "Diagnosis", "Layer", "Night",
     ]
 
 
@@ -307,7 +307,9 @@ _SERIALIZED = {
     "mtime": lambda r: r["mtime_millis"],
     "type": lambda r: (r["image"] or {}).get("image_type"),
     "temperature": lambda r: (r["image"] or {}).get("set_temp"),
-    "date_obs": lambda r: (r["image"] or {}).get("date_obs"),
+    # shown in local time, or in UTC until the image has one
+    "date_obs": lambda r: (r["image"] or {}).get("local_time") or (r["image"] or {}).get("date_obs"),
+    "session_night": lambda r: (r["image"] or {}).get("session_night"),
     "solved": lambda r: r["has_wcs"],
     "projects": lambda r: r["projects"],
     "background": lambda r: r["stats"]["background_median"],
@@ -323,7 +325,6 @@ for _key in ("background_rms", "star_count", "diagnosis"):
 
 
 def test_the_grid_columns_and_the_mcp_rows_show_the_same_values(library):
-    from photonfinder.formatting import _utc_to_local
     from photonfinder.library_query import RESULT_COLUMNS, serialize_search_row
     assert set(_SERIALIZED) == {c.key for c in RESULT_COLUMNS}
     for row in search_files(SearchCriteria()).rows:
@@ -337,5 +338,7 @@ def test_the_grid_columns_and_the_mcp_rows_show_the_same_values(library):
             elif column.key == "diagnosis":
                 sent = sent or ""
             elif column.key == "date_obs" and sent is not None:
-                sent = _utc_to_local(datetime.fromisoformat(sent))
+                sent = datetime.fromisoformat(sent)
+            elif column.key == "session_night" and sent is not None:
+                sent = date.fromisoformat(sent)
             assert shown == sent, (row.name, column.key)

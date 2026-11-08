@@ -19,11 +19,12 @@ from typing import Callable, NamedTuple
 from peewee import JOIN, chunked, fn
 
 from photonfinder import filter_catalogue
-from photonfinder.formatting import _format_date, _format_dec, _format_file_size, _format_ra, _format_timestamp, _utc_to_local
+from photonfinder.formatting import _format_date, _format_dec, _format_file_size, _format_ra, _format_timestamp
+from photonfinder.local_time import session_night
 from photonfinder.models import (
     DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_SEPARATOR, DIAGNOSIS_VALUES, PROJECT_NAME_SEP, File, FileWCS, FitsHeader, Image, ImageStats,
     same_image,
-    LibraryRoot, Project, ProjectFile, SearchCriteria,
+    LibraryRoot, Project, ProjectFile, SearchCriteria, session_night_sql,
 )
 
 # The order of files when the criteria ask for no sort.
@@ -82,9 +83,34 @@ def _project_names(row) -> list:
     return names.split(PROJECT_NAME_SEP) if names else []
 
 
-def _date_obs_local(row):
+class _UtcTime(datetime):
+    """A date_obs shown as it is, in UTC: the image has no local time yet (the background fill
+    hasn't reached it, once, after the upgrade to library version 3)."""
+
+
+def _observation_time(row):
+    """The image's local time, as stored; its UTC date_obs, marked, until it has one."""
+    image = row.__dict__.get('image')
+    if image is None:
+        return None
+    if image.local_time is not None:
+        return image.local_time
+    date_obs = image.date_obs
+    return _UtcTime(*date_obs.timetuple()[:6], date_obs.microsecond) if date_obs is not None else None
+
+
+def _format_observation(value) -> str:
+    return f"{_format_date(value)} UTC" if isinstance(value, _UtcTime) else _format_date(value)
+
+
+def _observation_tooltip(row) -> str | None:
     date_obs = _image_value('date_obs')(row)
-    return _utc_to_local(date_obs) if date_obs is not None else None
+    return f"UTC: {_format_date(date_obs)}" if date_obs is not None else None
+
+
+def _night(row):
+    image = row.__dict__.get('image')
+    return session_night(image.local_time) if image is not None else None
 
 
 def _number_text(digits):
@@ -98,6 +124,7 @@ class ResultColumn(NamedTuple):
     value: Callable                # a result row -> the cell's value (None: empty cell)
     text: Callable = str           # a non-None value -> the cell's text
     sort_value: Callable = None    # a value -> what the grid sorts loaded rows by (default: the value)
+    tooltip: Callable = None       # a result row -> the cell's tooltip (None: none)
 
 
 RESULT_COLUMNS = (
@@ -112,7 +139,9 @@ RESULT_COLUMNS = (
     ResultColumn("camera", "Camera", Image.camera, _image_value('camera')),
     ResultColumn("telescope", "Telescope", Image.telescope, _image_value('telescope')),
     ResultColumn("object_name", "Object", Image.object_name, _image_value('object_name')),
-    ResultColumn("date_obs", "Observation Date", Image.date_obs, _date_obs_local, text=_format_date),
+    # The image's local time, as shown and sorted (by the query and in the grid alike).
+    ResultColumn("date_obs", "Observation Date", Image.local_time, _observation_time, text=_format_observation,
+                 tooltip=_observation_tooltip),
     ResultColumn("path", "Path", File.path, lambda row: row.path, sort_value=str.lower),
     ResultColumn("size", "Size", File.size, lambda row: row.size, text=_format_file_size),
     ResultColumn("mtime", "Modified", File.mtime_millis, lambda row: row.mtime_millis, text=_format_timestamp),
@@ -134,8 +163,10 @@ RESULT_COLUMNS = (
                  lambda row: search_row_stat(row, 'stats_elongation_median'), text=_number_text(3)),
     ResultColumn("diagnosis", "Diagnosis", ImageStats.diagnosis.alias('stats_diagnosis'),
                  lambda row: search_row_stat(row, 'stats_diagnosis') or ""),
-    # Last, so that saved sort positions (SearchCriteria.sorting_index) keep their column.
+    # Last, so that saved sort positions (SearchCriteria.sorting_index) keep their column. The
+    # grid shows Night after Observation Date (SearchPanel moves it there).
     ResultColumn("layer", "Layer", Image.extname, _image_value('extname')),
+    ResultColumn("session_night", "Night", session_night_sql().alias('session_night'), _night),
 )
 COLUMN_INDEX = {column.key: i for i, column in enumerate(RESULT_COLUMNS)}
 
@@ -329,6 +360,9 @@ def serialize_search_row(row: File) -> dict:
         image_data = {name: getattr(image, name) for name in _SERIALIZED_IMAGE_FIELDS}
         date_obs = image.date_obs
         image_data["date_obs"] = date_obs.isoformat() if isinstance(date_obs, datetime) else date_obs
+        image_data["local_time"] = image.local_time.isoformat() if image.local_time else None
+        night = session_night(image.local_time)
+        image_data["session_night"] = night.isoformat() if night else None
         result["image"] = image_data
     else:
         result["image"] = None

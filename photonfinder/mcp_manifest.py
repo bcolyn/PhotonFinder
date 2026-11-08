@@ -57,6 +57,15 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            '`list_distinct_values`,\n'
                            'and valid `paths` roots via `list_library_roots`.\n'
                            '\n'
+                           "Each result's `image` has `date_obs` (UTC), `local_time` (local "
+                           'wall-clock time:\n'
+                           "DATE-LOC, else DATE-OBS in the observatory's zone, else in the "
+                           'observer timezone) and\n'
+                           '`session_night`, the date the observing night began (local time minus '
+                           '12 hours). For\n'
+                           '"last night" or "on the night of ..." filter on `session_night`, not a '
+                           'UTC range.\n'
+                           '\n'
                            "Each result's `stats` holds the stored image analysis, all null if "
                            'never analysed.\n'
                            '`stats.diagnosis` is the verdict against peer frames: null if not '
@@ -385,6 +394,155 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                              'UTC.',
                                                                                               'title': 'End '
                                                                                                        'Datetime'},
+                                                                             'local_start': {'anyOf': [{'format': 'date-time',
+                                                                                                        'type': 'string'},
+                                                                                                       {'type': 'null'}],
+                                                                                             'default': None,
+                                                                                             'description': 'Only '
+                                                                                                            'images '
+                                                                                                            'observed '
+                                                                                                            'at '
+                                                                                                            'or '
+                                                                                                            'after '
+                                                                                                            'this '
+                                                                                                            'local '
+                                                                                                            'time '
+                                                                                                            '(ISO '
+                                                                                                            '8601). '
+                                                                                                            'Compared '
+                                                                                                            'with '
+                                                                                                            'the '
+                                                                                                            "image's "
+                                                                                                            'local '
+                                                                                                            'time '
+                                                                                                            '(DATE-LOC, '
+                                                                                                            'else '
+                                                                                                            'DATE-OBS '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            "observatory's "
+                                                                                                            'time '
+                                                                                                            'zone, '
+                                                                                                            'else '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            'observer '
+                                                                                                            'timezone '
+                                                                                                            'setting), '
+                                                                                                            'as '
+                                                                                                            'wall-clock '
+                                                                                                            'time '
+                                                                                                            'without '
+                                                                                                            'an '
+                                                                                                            'offset. '
+                                                                                                            'Use '
+                                                                                                            'either '
+                                                                                                            'these '
+                                                                                                            'or '
+                                                                                                            '`start_datetime`/`end_datetime`, '
+                                                                                                            'not '
+                                                                                                            'both.',
+                                                                                             'title': 'Local '
+                                                                                                      'Start'},
+                                                                             'local_end': {'anyOf': [{'format': 'date-time',
+                                                                                                      'type': 'string'},
+                                                                                                     {'type': 'null'}],
+                                                                                           'default': None,
+                                                                                           'description': 'Only '
+                                                                                                          'images '
+                                                                                                          'observed '
+                                                                                                          'at '
+                                                                                                          'or '
+                                                                                                          'before '
+                                                                                                          'this '
+                                                                                                          'local '
+                                                                                                          'time '
+                                                                                                          '(ISO '
+                                                                                                          '8601). '
+                                                                                                          'Compared '
+                                                                                                          'with '
+                                                                                                          'the '
+                                                                                                          "image's "
+                                                                                                          'local '
+                                                                                                          'time '
+                                                                                                          '(DATE-LOC, '
+                                                                                                          'else '
+                                                                                                          'DATE-OBS '
+                                                                                                          'in '
+                                                                                                          'the '
+                                                                                                          "observatory's "
+                                                                                                          'time '
+                                                                                                          'zone, '
+                                                                                                          'else '
+                                                                                                          'in '
+                                                                                                          'the '
+                                                                                                          'observer '
+                                                                                                          'timezone '
+                                                                                                          'setting), '
+                                                                                                          'as '
+                                                                                                          'wall-clock '
+                                                                                                          'time '
+                                                                                                          'without '
+                                                                                                          'an '
+                                                                                                          'offset. '
+                                                                                                          'Use '
+                                                                                                          'either '
+                                                                                                          'these '
+                                                                                                          'or '
+                                                                                                          '`start_datetime`/`end_datetime`, '
+                                                                                                          'not '
+                                                                                                          'both.',
+                                                                                           'title': 'Local '
+                                                                                                    'End'},
+                                                                             'session_night': {'anyOf': [{'format': 'date',
+                                                                                                          'type': 'string'},
+                                                                                                         {'type': 'null'}],
+                                                                                               'default': None,
+                                                                                               'description': 'Only '
+                                                                                                              'images '
+                                                                                                              'of '
+                                                                                                              'this '
+                                                                                                              'observing '
+                                                                                                              'night '
+                                                                                                              '(YYYY-MM-DD): '
+                                                                                                              'the '
+                                                                                                              'local '
+                                                                                                              'date '
+                                                                                                              'on '
+                                                                                                              'which '
+                                                                                                              'the '
+                                                                                                              'night '
+                                                                                                              'began. '
+                                                                                                              'A '
+                                                                                                              'frame '
+                                                                                                              'belongs '
+                                                                                                              'to '
+                                                                                                              'the '
+                                                                                                              'night '
+                                                                                                              'of '
+                                                                                                              'its '
+                                                                                                              'local '
+                                                                                                              'time '
+                                                                                                              'minus '
+                                                                                                              '12 '
+                                                                                                              'hours, '
+                                                                                                              'so '
+                                                                                                              'frames '
+                                                                                                              'before '
+                                                                                                              'and '
+                                                                                                              'after '
+                                                                                                              'midnight '
+                                                                                                              'share '
+                                                                                                              'it. '
+                                                                                                              'Use '
+                                                                                                              'this '
+                                                                                                              'for '
+                                                                                                              'questions '
+                                                                                                              'like '
+                                                                                                              '"last '
+                                                                                                              'night".',
+                                                                                               'title': 'Session '
+                                                                                                        'Night'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
@@ -698,7 +856,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'fwhm',
                                                                                                                    'elongation',
                                                                                                                    'diagnosis',
-                                                                                                                   'layer'],
+                                                                                                                   'layer',
+                                                                                                                   'session_night'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,
@@ -817,8 +976,9 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            '\n'
                            "The same aggregate as the application's Target Report. Each row "
                            'carries the summed exposure in seconds, the file count, the\n'
-                           'most recent observation, and the library directories the files sit in. '
-                           'Files with no\n'
+                           'number of observing nights (`nights`), the most recent observation, '
+                           'and the library\n'
+                           'directories the files sit in. Files with no\n'
                            'object name are excluded. Grouping is purely by the `object_name` '
                            'recorded in each\n'
                            "file's header (plus filter/telescope/camera) -- plate solving is not "
@@ -1157,6 +1317,155 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                              'UTC.',
                                                                                               'title': 'End '
                                                                                                        'Datetime'},
+                                                                             'local_start': {'anyOf': [{'format': 'date-time',
+                                                                                                        'type': 'string'},
+                                                                                                       {'type': 'null'}],
+                                                                                             'default': None,
+                                                                                             'description': 'Only '
+                                                                                                            'images '
+                                                                                                            'observed '
+                                                                                                            'at '
+                                                                                                            'or '
+                                                                                                            'after '
+                                                                                                            'this '
+                                                                                                            'local '
+                                                                                                            'time '
+                                                                                                            '(ISO '
+                                                                                                            '8601). '
+                                                                                                            'Compared '
+                                                                                                            'with '
+                                                                                                            'the '
+                                                                                                            "image's "
+                                                                                                            'local '
+                                                                                                            'time '
+                                                                                                            '(DATE-LOC, '
+                                                                                                            'else '
+                                                                                                            'DATE-OBS '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            "observatory's "
+                                                                                                            'time '
+                                                                                                            'zone, '
+                                                                                                            'else '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            'observer '
+                                                                                                            'timezone '
+                                                                                                            'setting), '
+                                                                                                            'as '
+                                                                                                            'wall-clock '
+                                                                                                            'time '
+                                                                                                            'without '
+                                                                                                            'an '
+                                                                                                            'offset. '
+                                                                                                            'Use '
+                                                                                                            'either '
+                                                                                                            'these '
+                                                                                                            'or '
+                                                                                                            '`start_datetime`/`end_datetime`, '
+                                                                                                            'not '
+                                                                                                            'both.',
+                                                                                             'title': 'Local '
+                                                                                                      'Start'},
+                                                                             'local_end': {'anyOf': [{'format': 'date-time',
+                                                                                                      'type': 'string'},
+                                                                                                     {'type': 'null'}],
+                                                                                           'default': None,
+                                                                                           'description': 'Only '
+                                                                                                          'images '
+                                                                                                          'observed '
+                                                                                                          'at '
+                                                                                                          'or '
+                                                                                                          'before '
+                                                                                                          'this '
+                                                                                                          'local '
+                                                                                                          'time '
+                                                                                                          '(ISO '
+                                                                                                          '8601). '
+                                                                                                          'Compared '
+                                                                                                          'with '
+                                                                                                          'the '
+                                                                                                          "image's "
+                                                                                                          'local '
+                                                                                                          'time '
+                                                                                                          '(DATE-LOC, '
+                                                                                                          'else '
+                                                                                                          'DATE-OBS '
+                                                                                                          'in '
+                                                                                                          'the '
+                                                                                                          "observatory's "
+                                                                                                          'time '
+                                                                                                          'zone, '
+                                                                                                          'else '
+                                                                                                          'in '
+                                                                                                          'the '
+                                                                                                          'observer '
+                                                                                                          'timezone '
+                                                                                                          'setting), '
+                                                                                                          'as '
+                                                                                                          'wall-clock '
+                                                                                                          'time '
+                                                                                                          'without '
+                                                                                                          'an '
+                                                                                                          'offset. '
+                                                                                                          'Use '
+                                                                                                          'either '
+                                                                                                          'these '
+                                                                                                          'or '
+                                                                                                          '`start_datetime`/`end_datetime`, '
+                                                                                                          'not '
+                                                                                                          'both.',
+                                                                                           'title': 'Local '
+                                                                                                    'End'},
+                                                                             'session_night': {'anyOf': [{'format': 'date',
+                                                                                                          'type': 'string'},
+                                                                                                         {'type': 'null'}],
+                                                                                               'default': None,
+                                                                                               'description': 'Only '
+                                                                                                              'images '
+                                                                                                              'of '
+                                                                                                              'this '
+                                                                                                              'observing '
+                                                                                                              'night '
+                                                                                                              '(YYYY-MM-DD): '
+                                                                                                              'the '
+                                                                                                              'local '
+                                                                                                              'date '
+                                                                                                              'on '
+                                                                                                              'which '
+                                                                                                              'the '
+                                                                                                              'night '
+                                                                                                              'began. '
+                                                                                                              'A '
+                                                                                                              'frame '
+                                                                                                              'belongs '
+                                                                                                              'to '
+                                                                                                              'the '
+                                                                                                              'night '
+                                                                                                              'of '
+                                                                                                              'its '
+                                                                                                              'local '
+                                                                                                              'time '
+                                                                                                              'minus '
+                                                                                                              '12 '
+                                                                                                              'hours, '
+                                                                                                              'so '
+                                                                                                              'frames '
+                                                                                                              'before '
+                                                                                                              'and '
+                                                                                                              'after '
+                                                                                                              'midnight '
+                                                                                                              'share '
+                                                                                                              'it. '
+                                                                                                              'Use '
+                                                                                                              'this '
+                                                                                                              'for '
+                                                                                                              'questions '
+                                                                                                              'like '
+                                                                                                              '"last '
+                                                                                                              'night".',
+                                                                                               'title': 'Session '
+                                                                                                        'Night'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
@@ -1470,7 +1779,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'fwhm',
                                                                                                                    'elongation',
                                                                                                                    'diagnosis',
-                                                                                                                   'layer'],
+                                                                                                                   'layer',
+                                                                                                                   'session_night'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,
@@ -1967,6 +2277,155 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                              'UTC.',
                                                                                               'title': 'End '
                                                                                                        'Datetime'},
+                                                                             'local_start': {'anyOf': [{'format': 'date-time',
+                                                                                                        'type': 'string'},
+                                                                                                       {'type': 'null'}],
+                                                                                             'default': None,
+                                                                                             'description': 'Only '
+                                                                                                            'images '
+                                                                                                            'observed '
+                                                                                                            'at '
+                                                                                                            'or '
+                                                                                                            'after '
+                                                                                                            'this '
+                                                                                                            'local '
+                                                                                                            'time '
+                                                                                                            '(ISO '
+                                                                                                            '8601). '
+                                                                                                            'Compared '
+                                                                                                            'with '
+                                                                                                            'the '
+                                                                                                            "image's "
+                                                                                                            'local '
+                                                                                                            'time '
+                                                                                                            '(DATE-LOC, '
+                                                                                                            'else '
+                                                                                                            'DATE-OBS '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            "observatory's "
+                                                                                                            'time '
+                                                                                                            'zone, '
+                                                                                                            'else '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            'observer '
+                                                                                                            'timezone '
+                                                                                                            'setting), '
+                                                                                                            'as '
+                                                                                                            'wall-clock '
+                                                                                                            'time '
+                                                                                                            'without '
+                                                                                                            'an '
+                                                                                                            'offset. '
+                                                                                                            'Use '
+                                                                                                            'either '
+                                                                                                            'these '
+                                                                                                            'or '
+                                                                                                            '`start_datetime`/`end_datetime`, '
+                                                                                                            'not '
+                                                                                                            'both.',
+                                                                                             'title': 'Local '
+                                                                                                      'Start'},
+                                                                             'local_end': {'anyOf': [{'format': 'date-time',
+                                                                                                      'type': 'string'},
+                                                                                                     {'type': 'null'}],
+                                                                                           'default': None,
+                                                                                           'description': 'Only '
+                                                                                                          'images '
+                                                                                                          'observed '
+                                                                                                          'at '
+                                                                                                          'or '
+                                                                                                          'before '
+                                                                                                          'this '
+                                                                                                          'local '
+                                                                                                          'time '
+                                                                                                          '(ISO '
+                                                                                                          '8601). '
+                                                                                                          'Compared '
+                                                                                                          'with '
+                                                                                                          'the '
+                                                                                                          "image's "
+                                                                                                          'local '
+                                                                                                          'time '
+                                                                                                          '(DATE-LOC, '
+                                                                                                          'else '
+                                                                                                          'DATE-OBS '
+                                                                                                          'in '
+                                                                                                          'the '
+                                                                                                          "observatory's "
+                                                                                                          'time '
+                                                                                                          'zone, '
+                                                                                                          'else '
+                                                                                                          'in '
+                                                                                                          'the '
+                                                                                                          'observer '
+                                                                                                          'timezone '
+                                                                                                          'setting), '
+                                                                                                          'as '
+                                                                                                          'wall-clock '
+                                                                                                          'time '
+                                                                                                          'without '
+                                                                                                          'an '
+                                                                                                          'offset. '
+                                                                                                          'Use '
+                                                                                                          'either '
+                                                                                                          'these '
+                                                                                                          'or '
+                                                                                                          '`start_datetime`/`end_datetime`, '
+                                                                                                          'not '
+                                                                                                          'both.',
+                                                                                           'title': 'Local '
+                                                                                                    'End'},
+                                                                             'session_night': {'anyOf': [{'format': 'date',
+                                                                                                          'type': 'string'},
+                                                                                                         {'type': 'null'}],
+                                                                                               'default': None,
+                                                                                               'description': 'Only '
+                                                                                                              'images '
+                                                                                                              'of '
+                                                                                                              'this '
+                                                                                                              'observing '
+                                                                                                              'night '
+                                                                                                              '(YYYY-MM-DD): '
+                                                                                                              'the '
+                                                                                                              'local '
+                                                                                                              'date '
+                                                                                                              'on '
+                                                                                                              'which '
+                                                                                                              'the '
+                                                                                                              'night '
+                                                                                                              'began. '
+                                                                                                              'A '
+                                                                                                              'frame '
+                                                                                                              'belongs '
+                                                                                                              'to '
+                                                                                                              'the '
+                                                                                                              'night '
+                                                                                                              'of '
+                                                                                                              'its '
+                                                                                                              'local '
+                                                                                                              'time '
+                                                                                                              'minus '
+                                                                                                              '12 '
+                                                                                                              'hours, '
+                                                                                                              'so '
+                                                                                                              'frames '
+                                                                                                              'before '
+                                                                                                              'and '
+                                                                                                              'after '
+                                                                                                              'midnight '
+                                                                                                              'share '
+                                                                                                              'it. '
+                                                                                                              'Use '
+                                                                                                              'this '
+                                                                                                              'for '
+                                                                                                              'questions '
+                                                                                                              'like '
+                                                                                                              '"last '
+                                                                                                              'night".',
+                                                                                               'title': 'Session '
+                                                                                                        'Night'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
@@ -2280,7 +2739,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'fwhm',
                                                                                                                    'elongation',
                                                                                                                    'diagnosis',
-                                                                                                                   'layer'],
+                                                                                                                   'layer',
+                                                                                                                   'session_night'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,
@@ -2432,8 +2892,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            '\n'
                            '`criteria` takes the same filters as `search_files` and should almost '
                            'always be given -- e.g. `criteria={"object_name": "M 31", '
-                           '"start_datetime": "2025-03-01T18:00:00", "end_datetime": '
-                           '"2025-03-02T06:00:00"}`.\n'
+                           '"session_night": "2025-03-01"}` for the subs of the night that began '
+                           'on 1 March, local time.\n'
                            '\n'
                            'Each entry of `fields` names its source by prefix:\n'
                            '- `"File.size"`, `"Image.exposure"` -- a PhotonFinder model field\n'
@@ -2773,6 +3233,155 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                              'UTC.',
                                                                                               'title': 'End '
                                                                                                        'Datetime'},
+                                                                             'local_start': {'anyOf': [{'format': 'date-time',
+                                                                                                        'type': 'string'},
+                                                                                                       {'type': 'null'}],
+                                                                                             'default': None,
+                                                                                             'description': 'Only '
+                                                                                                            'images '
+                                                                                                            'observed '
+                                                                                                            'at '
+                                                                                                            'or '
+                                                                                                            'after '
+                                                                                                            'this '
+                                                                                                            'local '
+                                                                                                            'time '
+                                                                                                            '(ISO '
+                                                                                                            '8601). '
+                                                                                                            'Compared '
+                                                                                                            'with '
+                                                                                                            'the '
+                                                                                                            "image's "
+                                                                                                            'local '
+                                                                                                            'time '
+                                                                                                            '(DATE-LOC, '
+                                                                                                            'else '
+                                                                                                            'DATE-OBS '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            "observatory's "
+                                                                                                            'time '
+                                                                                                            'zone, '
+                                                                                                            'else '
+                                                                                                            'in '
+                                                                                                            'the '
+                                                                                                            'observer '
+                                                                                                            'timezone '
+                                                                                                            'setting), '
+                                                                                                            'as '
+                                                                                                            'wall-clock '
+                                                                                                            'time '
+                                                                                                            'without '
+                                                                                                            'an '
+                                                                                                            'offset. '
+                                                                                                            'Use '
+                                                                                                            'either '
+                                                                                                            'these '
+                                                                                                            'or '
+                                                                                                            '`start_datetime`/`end_datetime`, '
+                                                                                                            'not '
+                                                                                                            'both.',
+                                                                                             'title': 'Local '
+                                                                                                      'Start'},
+                                                                             'local_end': {'anyOf': [{'format': 'date-time',
+                                                                                                      'type': 'string'},
+                                                                                                     {'type': 'null'}],
+                                                                                           'default': None,
+                                                                                           'description': 'Only '
+                                                                                                          'images '
+                                                                                                          'observed '
+                                                                                                          'at '
+                                                                                                          'or '
+                                                                                                          'before '
+                                                                                                          'this '
+                                                                                                          'local '
+                                                                                                          'time '
+                                                                                                          '(ISO '
+                                                                                                          '8601). '
+                                                                                                          'Compared '
+                                                                                                          'with '
+                                                                                                          'the '
+                                                                                                          "image's "
+                                                                                                          'local '
+                                                                                                          'time '
+                                                                                                          '(DATE-LOC, '
+                                                                                                          'else '
+                                                                                                          'DATE-OBS '
+                                                                                                          'in '
+                                                                                                          'the '
+                                                                                                          "observatory's "
+                                                                                                          'time '
+                                                                                                          'zone, '
+                                                                                                          'else '
+                                                                                                          'in '
+                                                                                                          'the '
+                                                                                                          'observer '
+                                                                                                          'timezone '
+                                                                                                          'setting), '
+                                                                                                          'as '
+                                                                                                          'wall-clock '
+                                                                                                          'time '
+                                                                                                          'without '
+                                                                                                          'an '
+                                                                                                          'offset. '
+                                                                                                          'Use '
+                                                                                                          'either '
+                                                                                                          'these '
+                                                                                                          'or '
+                                                                                                          '`start_datetime`/`end_datetime`, '
+                                                                                                          'not '
+                                                                                                          'both.',
+                                                                                           'title': 'Local '
+                                                                                                    'End'},
+                                                                             'session_night': {'anyOf': [{'format': 'date',
+                                                                                                          'type': 'string'},
+                                                                                                         {'type': 'null'}],
+                                                                                               'default': None,
+                                                                                               'description': 'Only '
+                                                                                                              'images '
+                                                                                                              'of '
+                                                                                                              'this '
+                                                                                                              'observing '
+                                                                                                              'night '
+                                                                                                              '(YYYY-MM-DD): '
+                                                                                                              'the '
+                                                                                                              'local '
+                                                                                                              'date '
+                                                                                                              'on '
+                                                                                                              'which '
+                                                                                                              'the '
+                                                                                                              'night '
+                                                                                                              'began. '
+                                                                                                              'A '
+                                                                                                              'frame '
+                                                                                                              'belongs '
+                                                                                                              'to '
+                                                                                                              'the '
+                                                                                                              'night '
+                                                                                                              'of '
+                                                                                                              'its '
+                                                                                                              'local '
+                                                                                                              'time '
+                                                                                                              'minus '
+                                                                                                              '12 '
+                                                                                                              'hours, '
+                                                                                                              'so '
+                                                                                                              'frames '
+                                                                                                              'before '
+                                                                                                              'and '
+                                                                                                              'after '
+                                                                                                              'midnight '
+                                                                                                              'share '
+                                                                                                              'it. '
+                                                                                                              'Use '
+                                                                                                              'this '
+                                                                                                              'for '
+                                                                                                              'questions '
+                                                                                                              'like '
+                                                                                                              '"last '
+                                                                                                              'night".',
+                                                                                               'title': 'Session '
+                                                                                                        'Night'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
@@ -3086,7 +3695,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'fwhm',
                                                                                                                    'elongation',
                                                                                                                    'diagnosis',
-                                                                                                                   'layer'],
+                                                                                                                   'layer',
+                                                                                                                   'session_night'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,

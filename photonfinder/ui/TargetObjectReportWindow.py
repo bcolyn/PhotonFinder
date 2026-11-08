@@ -27,7 +27,7 @@ class TargetObjectReportWindow(QMainWindow, Ui_TargetObjectReportWindow, TableWi
         self.setupUi(self)
         self.context = context
         self.loader = TargetReportLoader(self.context)
-        self.headers = ["Object Name", "Filter", "Telescope", "Camera", "Total Exposure", "Latest data", "Paths"]
+        self.headers = ["Object Name", "Filter", "Telescope", "Camera", "Total Exposure", "Nights", "Latest data", "Paths"]
         self.loader.on_result.connect(self.on_complete)
         self.loader.on_error.connect(self.on_error)
         from .SearchPanel import SearchPanel
@@ -57,7 +57,7 @@ class TargetObjectReportWindow(QMainWindow, Ui_TargetObjectReportWindow, TableWi
         for row, data in enumerate(result):
             for col, value in enumerate(data):
                 if value:
-                    item = _NumericItem(str(value)) if col == 4 else QTableWidgetItem(str(value))
+                    item = _NumericItem(str(value)) if col in (4, 5) else QTableWidgetItem(str(value))
                     item.setFlags(item.flags() & ~ Qt.ItemFlag.ItemIsEditable)
                     item.setTextAlignment(Qt.AlignTop)
                     self.tableWidget.setItem(row, col, item)

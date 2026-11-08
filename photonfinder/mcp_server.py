@@ -37,7 +37,7 @@ import logging
 import threading
 import time
 import typing
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 import anyio
@@ -177,7 +177,7 @@ def _rows_to_csv(rows: list[dict], columns: list[str]) -> str:
 
 OUTPUT_FORMATS = ("json", "csv")
 _TARGET_CSV_COLUMNS = ["object_name", "filter", "telescope", "camera",
-                       "total_exposure_seconds", "file_count", "last_date_obs"]
+                       "total_exposure_seconds", "file_count", "nights", "last_date_obs"]
 _CATALOG_CSV_COLUMNS = ["catalog_id", "magnitude", "size", "file_count"]
 
 
@@ -207,6 +207,9 @@ def _criteria_from_dict(criteria: Optional[dict], tool: str = "search") -> Searc
                               "the rowid of an existing project (see list_projects)") from None
     sc.start_datetime = _naive_utc(sc.start_datetime)
     sc.end_datetime = _naive_utc(sc.end_datetime)
+    # Local times are wall-clock times: an offset given with one is dropped, not applied.
+    sc.local_start = sc.local_start.replace(tzinfo=None) if sc.local_start else None
+    sc.local_end = sc.local_end.replace(tzinfo=None) if sc.local_end else None
     sc.validate()
     return sc
 
@@ -448,6 +451,7 @@ def query_target_report(context: ApplicationContext, criteria: Optional[dict] = 
             "camera": r.camera,
             "total_exposure_seconds": r.total_exposure,
             "file_count": r.file_count,
+            "nights": r.nights,
             "last_date_obs": reports.iso_datetime(r.last_date_obs),
         }
         if include_paths:
@@ -695,6 +699,9 @@ class SearchCriteriaInput(BaseModel):
     coord_radius: Optional[float] = Field(default=None, description=mcp_description("coord_radius"))
     start_datetime: Optional[datetime] = Field(default=None, description=mcp_description("start_datetime"))
     end_datetime: Optional[datetime] = Field(default=None, description=mcp_description("end_datetime"))
+    local_start: Optional[datetime] = Field(default=None, description=mcp_description("local_start"))
+    local_end: Optional[datetime] = Field(default=None, description=mcp_description("local_end"))
+    session_night: Optional[date] = Field(default=None, description=mcp_description("session_night"))
     header_text: Optional[str] = Field(default=None, description=mcp_description("header_text"))
     plate_solved: Optional[bool] = Field(default=None, description=mcp_description("plate_solved"))
     project: Optional[int] = Field(default=None, description=mcp_description("project"))
@@ -862,6 +869,11 @@ def build_mcp(context: ApplicationContext):
         Discover valid values for `filter`/`type`/`camera`/etc. via `list_distinct_values`,
         and valid `paths` roots via `list_library_roots`.
 
+        Each result's `image` has `date_obs` (UTC), `local_time` (local wall-clock time:
+        DATE-LOC, else DATE-OBS in the observatory's zone, else in the observer timezone) and
+        `session_night`, the date the observing night began (local time minus 12 hours). For
+        "last night" or "on the night of ..." filter on `session_night`, not a UTC range.
+
         Each result's `stats` holds the stored image analysis, all null if never analysed.
         `stats.diagnosis` is the verdict against peer frames: null if not diagnosed, `OK`, or
         one or more `Bad ...` reasons joined by `, `.
@@ -881,7 +893,8 @@ def build_mcp(context: ApplicationContext):
         `start_datetime`/`end_datetime` range for one season.
 
         The same aggregate as the application's Target Report. Each row carries the summed exposure in seconds, the file count, the
-        most recent observation, and the library directories the files sit in. Files with no
+        number of observing nights (`nights`), the most recent observation, and the library
+        directories the files sit in. Files with no
         object name are excluded. Grouping is purely by the `object_name` recorded in each
         file's header (plus filter/telescope/camera) -- plate solving is not required.
 
@@ -942,8 +955,8 @@ def build_mcp(context: ApplicationContext):
             "returns only the `fields` you name, across every file matching `criteria`. Use "
             'it for questions like "what was FOCTEMP across last night\'s subs".\n\n'
             "`criteria` takes the same filters as `search_files` and should almost always be "
-            'given -- e.g. `criteria={"object_name": "M 31", "start_datetime": '
-            '"2025-03-01T18:00:00", "end_datetime": "2025-03-02T06:00:00"}`.\n\n'
+            'given -- e.g. `criteria={"object_name": "M 31", "session_night": "2025-03-01"}` '
+            "for the subs of the night that began on 1 March, local time.\n\n"
             "Each entry of `fields` names its source by prefix:\n"
             '- `"File.size"`, `"Image.exposure"` -- a PhotonFinder model field\n'
             '- `"WCS:CRVAL1"` -- a keyword from the plate-solve solution\n'

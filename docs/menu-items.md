@@ -21,7 +21,10 @@ The File menu contains options for managing tabs, databases, libraries, and appl
 - **Manage Libraries** - Opens the library management dialog to add, edit, or remove library root directories. Each root can carry an optional description of what it holds; it shows as a tooltip in the library tree and is exposed to MCP agents
 
 ### Application Settings
-- **Settings** - Opens the application settings dialog
+- **Settings** - Opens the application settings dialog. Under **Observatory**, the timezone is used for the local time of frames whose header has neither `DATE-LOC` nor site coordinates; it is set to the computer's timezone on first start, and changing it updates those frames in the background
+
+### Local time and observing nights
+Every frame gets a local time when it is indexed, from the first source its header has: `DATE-LOC` (the local time the capture software recorded), else `DATE-OBS` in the time zone of the observatory (`SITELAT`/`SITELONG` or `OBSGEO-B`/`OBSGEO-L`), else `DATE-OBS` in the timezone set under Settings. The grid's **Observation Date** column shows that local time (hover for UTC). The **Night** column shows the observing night: the local time minus 12 hours, as a date, so frames from before and after midnight share one night. Calibration matching, quality diagnosis and the export path tokens use the same night. After upgrading, existing frames get their local time in the background; until then their date shows in UTC.
 - **Exit** - Closes the application
 
 ## Filter Menu
@@ -31,7 +34,8 @@ The Filter menu provides various filtering options to narrow down search results
 ### Metadata Filters
 - **Exposure** - Filter files by exposure time
 - **Coordinates** - Filter files by celestial coordinates (RA/Dec)
-- **Date** - Filter files by capture date range
+- **Date** - Filter files by a capture date and time range, in **Local** time (the default, as the grid shows it) or in **UTC** (`DATE-OBS`). Prefilled from the selected row
+- **Night** - Show one observing night, prefilled with the selected row's night (or else last night). A night runs from noon to noon in local time, so it includes the frames taken after midnight. It can be combined with the Date filter
 - **Telescope** - Filter files by telescope used
 - **Binning** - Filter files by camera binning settings
 - **Gain** - Filter files by camera gain settings
@@ -72,7 +76,7 @@ The Report menu provides various reporting and analysis tools.
 - **Metadata Report** - Creates a detailed report of file metadata
 
 ### Aggregate Reports
-- **Target Report** - Total integration time per target, grouped by filter, telescope and camera
+- **Target Report** - Total integration time and number of observing nights per target, grouped by filter, telescope and camera
 - **Catalog Report** - Which catalog objects your plate-solved images cover. Besides the built-in catalogs you can use your own, see [Custom catalogs](#custom-catalogs)
 
 ### External Integration

@@ -1,6 +1,6 @@
 """The filter catalogue: each filter's label, summary, reset and round trip, without Qt."""
 import dataclasses
-from datetime import datetime, timezone
+from datetime import date, datetime
 
 import pytest
 
@@ -77,11 +77,6 @@ def test_mcp_describes_a_field_as_its_catalogue_entry_does():
 
 # --- every filter: label, summary, reset, round trip -------------------------------------------
 
-def _local(utc: datetime) -> str:
-    """How the grid and the date dialog show a criteria time: local time."""
-    return utc.replace(tzinfo=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
-
-
 START, END = datetime(2024, 1, 1, 22, 0), datetime(2024, 1, 2, 5, 30)
 
 # entry: (criteria setting only that filter, chip label or None, summary fragment)
@@ -102,8 +97,10 @@ EVERY_FILTER = {
     "project": (dict(project=NO_PROJECT), f"Project: {NO_PROJECT.name}", NO_PROJECT.name),
     "coordinates": (dict(coord_ra="00:42:44.3", coord_dec="+41:16:09", coord_radius=0.25, coord_query="M31"),
                     "Coordinates: M31, r=0.25°", "M31 ±0.25°"),
-    "dates": (dict(start_datetime=START, end_datetime=END),
-              f"Date {_local(START)} - {_local(END)}", f"{_local(START)} to {_local(END)}"),
+    "dates": (dict(local_start=START, local_end=END),
+              "Date (local) 2024-01-01 22:00:00 - 2024-01-02 05:30:00",
+              "(local) 2024-01-01 22:00:00 to 2024-01-02 05:30:00"),
+    "night": (dict(session_night=date(2024, 1, 1)), "Night 2024-01-01", "night 2024-01-01"),
     "image_size": (dict(width_min=4000, height_max=3000), "Size: W ≥4000, H ≤3000", "Size: W ≥4000, H ≤3000"),
     "plate_scale": (dict(scale_min=0.5, scale_max=1.5), "Scale: 0.5–1.5 arcsec/px", "Scale: 0.5–1.5 arcsec/px"),
     "image_quality": (dict(fwhm_max=3.5), "Quality: FWHM", "Quality: FWHM"),
@@ -153,12 +150,12 @@ def test_a_saved_filter_comes_back_with_the_same_label(key):
         assert entry.chip_label(restored) == entry.chip_label(criteria)
 
 
-def test_the_tab_title_shows_dates_in_local_time_like_the_chip():
-    """It used to show UTC timestamps while the chip showed local time."""
+def test_a_utc_range_shows_as_typed_and_says_so():
     criteria = SearchCriteria(start_datetime=START, end_datetime=END)
 
-    assert _local(START) in str(criteria)
-    assert _local(START) in filter_catalogue.DATES.chip_label(criteria)
+    assert filter_catalogue.DATES.chip_label(criteria) == "Date (UTC) 2024-01-01 22:00:00 - 2024-01-02 05:30:00"
+    assert str(criteria) == "(UTC) 2024-01-01 22:00:00 to 2024-01-02 05:30:00"
+    assert SearchCriteria.from_json(criteria.to_json()) == criteria
 
 
 def test_filters_combine_in_catalogue_order():

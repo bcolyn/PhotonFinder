@@ -26,7 +26,7 @@ from peewee import OP, SQL, Expression, fn
 from photonfinder import library_query, plate_solution
 from photonfinder.filesystem import decode_header_blob
 from photonfinder.models import (
-    CatalogEntry, File, Image, LibraryRoot, SearchCriteria,
+    CatalogEntry, File, Image, LibraryRoot, SearchCriteria, session_night_sql,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,7 @@ class TargetReportRow:
     last_date_obs: Optional[str]   # raw SQLite text; run through iso_datetime to normalize
     paths: list
     file_count: int
+    nights: int = 0  # distinct observing nights (images without a local time yet don't count)
 
 
 def target_report(criteria: SearchCriteria) -> list:
@@ -78,6 +79,7 @@ def target_report(criteria: SearchCriteria) -> list:
       image.object_name, image.filter, image.telescope, image.camera,
       SUM(image.exposure) as total_exposure,
       max(image.date_obs) as last_date,
+      count(DISTINCT date(image.local_time, '-12 hours')) as nights,
       rtrim(replace(group_concat(DISTINCT file.path||':'), ':,', char(10)), ':') AS paths,
       count(file.rowid) as file_count
     FROM file
@@ -97,6 +99,7 @@ def target_report(criteria: SearchCriteria) -> list:
                  Image.camera,
                  fn.SUM(Image.exposure),
                  fn.MAX(Image.date_obs),
+                 fn.COUNT(fn.DISTINCT(session_night_sql())),
                  fn.RTRIM(fn.REPLACE(fn.GROUP_CONCAT(fn.DISTINCT(File.path + ":")), ":,", "\n"), ":"),
                  fn.COUNT(File.rowid))
              .where(Image.object_name.is_null(False))  # also drops files without an Image row
@@ -109,7 +112,7 @@ def target_report(criteria: SearchCriteria) -> list:
 
     rows = []
     for (object_name, filter_, telescope, camera,
-         total_exposure, last_date_obs, paths, file_count) in query.tuples():
+         total_exposure, last_date_obs, nights, paths, file_count) in query.tuples():
         rows.append(TargetReportRow(
             object_name=object_name,
             filter=filter_,
@@ -121,6 +124,7 @@ def target_report(criteria: SearchCriteria) -> list:
             # is the delimiter trick that lets the SQL survive paths containing commas.
             paths=[p for p in (paths or "").split("\n") if p] if paths is not None else [],
             file_count=file_count or 0,
+            nights=nights or 0,
         ))
     return rows
 

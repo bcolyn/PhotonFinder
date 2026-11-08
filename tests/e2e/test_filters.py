@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt
 from photonfinder.ui.CoordinatesDialog import CoordinatesDialog
 from photonfinder.ui.DateRangeDialog import DateRangeDialog
 from photonfinder.ui.ExposureDialog import ExposureDialog
+from photonfinder.ui.NightDialog import NightDialog
 from photonfinder.ui.GainDialog import GainDialog
 from photonfinder.models import CORE_MODELS, DIAGNOSIS_BAD_VALUES, File, Image, ImageStats, SearchCriteria
 from photonfinder.ui.RangeFilterDialogs import DiagnosisFilterDialog, ImageQualityDialog, ImageSizeDialog, PlateScaleDialog
@@ -183,33 +184,36 @@ def test_coordinates_typed_in(sandbox, app, modals, libraries, grid):
     assert shown(grid) == matching(libraries, lambda f: f.object_name == "NGC 7000")
 
 
+def _first_ha(libraries):
+    return min((f for f in libraries.files.values()
+                if f.object_name == "NGC 7000" and f.filter == "Ha" and f.camera != OSC),
+               key=lambda f: f.date_obs)
+
+
 def test_date_range_from_the_selected_row(sandbox, app, modals, libraries, grid):
-    """The grid and the date dialog show the computer's local time, while date_obs and the
-    search criteria are UTC. Only a computer whose clock is not on UTC can tell the two
-    apart, so on a UTC machine (like the CI runner) this test proves less."""
-    first_ha = min((f for f in libraries.files.values()
-                    if f.object_name == "NGC 7000" and f.filter == "Ha" and f.camera != OSC),
-                   key=lambda f: f.date_obs)
+    """In local time by default: the frames' own, from DATE-LOC, as the grid shows them."""
+    first_ha = _first_ha(libraries)
     grid.select("File name", name_of(libraries, lambda f: f == first_ha))
-    local = first_ha.date_obs.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
+    local = first_ha.date_loc
 
     def half_an_hour(dialog: DateRangeDialog):
+        assert dialog.is_local()
         start, _ = dialog.get_datetime_range()
         assert abs(start - local) < timedelta(seconds=1), (start, local)
-        dialog.set_start_date(local - timedelta(minutes=1))
-        dialog.set_end_date(local + timedelta(minutes=30))
+        dialog.dateTimeEditFrom.setDateTime(local - timedelta(minutes=1))
+        dialog.dateTimeEditTo.setDateTime(local + timedelta(minutes=30))
 
     add_filter(sandbox, modals, app.actionDate, DateRangeDialog, half_an_hour)
 
-    start_utc = first_ha.date_obs - timedelta(minutes=1)
-    end_utc = first_ha.date_obs + timedelta(minutes=30)
-    expected = matching(libraries, lambda f: start_utc <= f.date_obs <= end_utc)
+    expected = matching(libraries, lambda f: local - timedelta(minutes=1) <= f.date_loc <= local + timedelta(minutes=30))
     assert shown(grid) == expected
     label = filter_button(grid, filter_catalogue.DATES).text()
-    assert label == f"Date {local - timedelta(minutes=1):%Y-%m-%d %H:%M:%S} - "                     f"{local + timedelta(minutes=30):%Y-%m-%d %H:%M:%S}"
+    assert label == (f"Date (local) {local - timedelta(minutes=1):%Y-%m-%d %H:%M:%S} - "
+                     f"{local + timedelta(minutes=30):%Y-%m-%d %H:%M:%S}")
 
     def unchanged(dialog: DateRangeDialog):
-        start, end = dialog.get_datetime_range()  # reopens in local time, not UTC
+        assert dialog.is_local()
+        start, end = dialog.get_datetime_range()
         assert abs(start - (local - timedelta(minutes=1))) < timedelta(seconds=1), start
         assert abs(end - (local + timedelta(minutes=30))) < timedelta(seconds=1), end
 
@@ -222,6 +226,51 @@ def test_date_range_from_the_selected_row(sandbox, app, modals, libraries, grid)
     grid = sandbox.grid(app.get_search_panels()[-1])
     assert filter_button(grid, filter_catalogue.DATES).text() == label
     assert shown(grid) == expected
+
+
+def test_date_range_in_utc(sandbox, app, modals, libraries, grid):
+    first_ha = _first_ha(libraries)
+    grid.select("File name", name_of(libraries, lambda f: f == first_ha))
+    utc = first_ha.date_obs
+
+    def half_an_hour_utc(dialog: DateRangeDialog):
+        dialog.utcRadio.setChecked(True)  # shows the selected frame's UTC time
+        start, _ = dialog.get_datetime_range()
+        assert abs(start - utc) < timedelta(seconds=1), (start, utc)
+        dialog.dateTimeEditFrom.setDateTime(utc - timedelta(minutes=1))
+        dialog.dateTimeEditTo.setDateTime(utc + timedelta(minutes=30))
+
+    add_filter(sandbox, modals, app.actionDate, DateRangeDialog, half_an_hour_utc)
+
+    assert shown(grid) == matching(libraries, lambda f: utc - timedelta(minutes=1) <= f.date_obs <= utc + timedelta(minutes=30))
+    assert filter_button(grid, filter_catalogue.DATES).text().startswith(
+        f"Date (UTC) {utc - timedelta(minutes=1):%Y-%m-%d %H:%M:%S}")
+
+    def reopens_in_utc(dialog: DateRangeDialog):
+        assert not dialog.is_local()
+
+    with modals.handle(DateRangeDialog, reopens_in_utc):
+        filter_button(grid, filter_catalogue.DATES).click()
+    sandbox.wait_idle()
+
+
+def test_night_from_the_selected_row(sandbox, app, modals, libraries, grid):
+    """A night runs from noon to noon in local time, so it takes in frames after midnight."""
+    first_ha = _first_ha(libraries)
+    grid.select("File name", name_of(libraries, lambda f: f == first_ha))
+    night = (first_ha.date_loc - timedelta(hours=12)).date()
+
+    def keep(dialog: NightDialog):
+        assert dialog.get_night() == night
+
+    add_filter(sandbox, modals, app.actionNight, NightDialog, keep)
+
+    assert shown(grid) == matching(libraries, lambda f: (f.date_loc - timedelta(hours=12)).date() == night)
+    assert filter_button(grid, filter_catalogue.NIGHT).text() == f"Night {night.isoformat()}"
+    assert set(grid.column("Night")) == {night.isoformat()}
+
+    remove_filter(sandbox, grid, filter_catalogue.NIGHT)
+    assert len(shown(grid)) > len(matching(libraries, lambda f: (f.date_loc - timedelta(hours=12)).date() == night))
 
 
 def test_plate_solved_and_unsolved(sandbox, app, modals, boundary, libraries, grid):

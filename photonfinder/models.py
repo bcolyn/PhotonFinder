@@ -75,8 +75,11 @@ class SearchCriteria:
     coord_dec: str = ""  # Declination in degrees (can be in various formats)
     coord_radius: float = 0.5  # Search radius in decimal degrees
     coord_query: str = ""  # Object name/catalog ID the coordinates were looked up from, if any
-    start_datetime: datetime | None = None
+    start_datetime: datetime | None = None  # UTC, compared with Image.date_obs
     end_datetime: datetime | None = None
+    local_start: datetime | None = None  # local wall-clock time, compared with Image.local_time
+    local_end: datetime | None = None
+    session_night: date | None = None  # one observing night (local time - 12 h)
     reference_file: Optional['File'] = None
     header_text: str = ""
     project: 'Project' = None
@@ -268,7 +271,7 @@ class SearchCriteria:
 
     @staticmethod
     def _serialize(value):
-        if isinstance(value, datetime):
+        if isinstance(value, (datetime, date)):
             return value.isoformat()
         if isinstance(value, File):
             return value.rowid
@@ -320,6 +323,11 @@ class SearchCriteria:
             data_dict['start_datetime'] = datetime.fromisoformat(data_dict['start_datetime'])
         if data_dict.get('end_datetime', None):
             data_dict['end_datetime'] = datetime.fromisoformat(data_dict['end_datetime'])
+        for name in ('local_start', 'local_end'):
+            if data_dict.get(name):
+                data_dict[name] = datetime.fromisoformat(data_dict[name])
+        if data_dict.get('session_night'):
+            data_dict['session_night'] = date.fromisoformat(data_dict['session_night'])
         return SearchCriteria(**data_dict)
 
 

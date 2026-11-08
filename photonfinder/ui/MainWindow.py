@@ -69,6 +69,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionExposure.setIcon(create_colored_svg_icon(":/res/clock.svg", size, text_color))
         self.actionCoordinates.setIcon(create_colored_svg_icon(":/res/crosshair.svg", size, text_color))
         self.actionDate.setIcon(create_colored_svg_icon(":/res/calendar3.svg", size, text_color))
+        self.actionNight.setIcon(create_colored_svg_icon(":/res/moon.svg", size, text_color))
         self.actionTelescope.setIcon(create_colored_svg_icon(":/res/telescope-icon-original.svg", size, text_color))
         self.actionBinning.setIcon(create_colored_svg_icon(":/res/border-outer.svg", size, text_color))
         self.actionGain.setIcon(create_colored_svg_icon(":/res/exposure.svg", size, text_color))
@@ -542,6 +543,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """The Search menu's filter actions, each with the catalogue entry it edits."""
         return {
             self.actionExposure: filter_catalogue.EXPOSURE, self.actionDate: filter_catalogue.DATES,
+            self.actionNight: filter_catalogue.NIGHT,
             self.actionCoordinates: filter_catalogue.COORDINATES, self.actionTelescope: filter_catalogue.TELESCOPE,
             self.actionBinning: filter_catalogue.BINNING, self.actionGain: filter_catalogue.GAIN,
             self.actionTemperature: filter_catalogue.TEMPERATURE, self.actionPlateSolved: filter_catalogue.PLATE_SOLVED,

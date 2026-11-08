@@ -17,10 +17,10 @@ import astropy.units as u
 from peewee import SQL, fn
 
 from photonfinder.core import hp
-from photonfinder.formatting import _format_date, _utc_to_local
+from photonfinder.formatting import _format_date
 from photonfinder.models import (
     DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_OK, File, FileWCS, FitsHeader, Image, ImageStats,
-    ProjectFile, SearchCriteria, norm_db_path,
+    ProjectFile, SearchCriteria, norm_db_path, session_night_sql,
 )
 
 _DEFAULTS = {}
@@ -359,30 +359,58 @@ COORDINATES = FilterEntry(
 )
 
 
-def _local(value) -> str:
-    """A criteria time (naive UTC) as the grid and the date dialog show it: local time."""
-    return _format_date(_utc_to_local(value))
+def _span(start, end, joiner: str) -> str:
+    if start and end:
+        return f"{_format_date(start)}{joiner}{_format_date(end)}"
+    if start:
+        return f"from {_format_date(start)}"
+    return f"until {_format_date(end)}"
+
+
+def _is_local(c: SearchCriteria) -> bool:
+    return c.local_start is not None or c.local_end is not None
 
 
 def _dates(c: SearchCriteria, joiner: str) -> str:
-    if c.start_datetime and c.end_datetime:
-        return f"{_local(c.start_datetime)}{joiner}{_local(c.end_datetime)}"
-    if c.start_datetime:
-        return f"from {_local(c.start_datetime)}"
-    return f"until {_local(c.end_datetime)}"
+    """The range as it was typed: in UTC or in local time, which the label says."""
+    if _is_local(c):
+        return f"(local) {_span(c.local_start, c.local_end, joiner)}"
+    return f"(UTC) {_span(c.start_datetime, c.end_datetime, joiner)}"
 
 
 _UTC_NOTE = ("Compared with DATE-OBS in UTC: a value with an offset is converted to UTC, one "
              "without is taken as UTC.")
+_LOCAL_NOTE = ("Compared with the image's local time (DATE-LOC, else DATE-OBS in the observatory's "
+               "time zone, else in the observer timezone setting), as wall-clock time without an "
+               "offset. Use either these or `start_datetime`/`end_datetime`, not both.")
 
+# One filter, two ways to give the range: in UTC (date_obs) or in local time (local_time). The
+# dialog sets one pair and clears the other. Separate fields, not a flag, so code that sets the
+# UTC pair (master and reference-frame matching) is never read as local.
 DATES = FilterEntry(
-    key="dates", fields=("start_datetime", "end_datetime"), column=Image.date_obs,
+    key="dates", fields=("start_datetime", "end_datetime", "local_start", "local_end"), column=Image.date_obs,
     chip_label=lambda c: f"Date {_dates(c, ' - ')}",
     summary=lambda c: _dates(c, " to "),
     conditions=_ranges(("start_datetime", Image.date_obs, operator.ge),
-                       ("end_datetime", Image.date_obs, operator.le)),
+                       ("end_datetime", Image.date_obs, operator.le),
+                       ("local_start", Image.local_time, operator.ge),
+                       ("local_end", Image.local_time, operator.le)),
     mcp_descriptions={"start_datetime": f"Only images observed at or after this time (ISO 8601). {_UTC_NOTE}",
-                      "end_datetime": f"Only images observed at or before this time (ISO 8601). {_UTC_NOTE}"},
+                      "end_datetime": f"Only images observed at or before this time (ISO 8601). {_UTC_NOTE}",
+                      "local_start": f"Only images observed at or after this local time (ISO 8601). {_LOCAL_NOTE}",
+                      "local_end": f"Only images observed at or before this local time (ISO 8601). {_LOCAL_NOTE}"},
+)
+
+# The observing night: local time minus 12 hours, as a date, through the indexed expression.
+NIGHT = FilterEntry(
+    key="night", fields=("session_night",), column=None,
+    chip_label=lambda c: f"Night {c.session_night.isoformat()}",
+    summary=lambda c: f"night {c.session_night.isoformat()}",
+    conditions=lambda c: [session_night_sql() == c.session_night.isoformat()] if c.session_night else [],
+    mcp_descriptions={"session_night": "Only images of this observing night (YYYY-MM-DD): the local date on "
+                                       "which the night began. A frame belongs to the night of its local "
+                                       "time minus 12 hours, so frames before and after midnight share it. "
+                                       "Use this for questions like \"last night\"."},
 )
 
 
@@ -498,7 +526,7 @@ QUALITY_DIAGNOSIS = FilterEntry(
 
 # Every entry, in the order of the criteria's text summary and of the chips on restore.
 ENTRIES = (PATHS, TYPE, FILTER, CAMERA, FILE_NAME, OBJECT_NAME, EXPOSURE, TELESCOPE, BINNING, GAIN,
-           TEMPERATURE, HEADER_TEXT, PLATE_SOLVED, PROJECT, COORDINATES, DATES, IMAGE_SIZE, PLATE_SCALE,
+           TEMPERATURE, HEADER_TEXT, PLATE_SOLVED, PROJECT, COORDINATES, DATES, NIGHT, IMAGE_SIZE, PLATE_SCALE,
            IMAGE_QUALITY, QUALITY_DIAGNOSIS)
 BY_KEY = {entry.key: entry for entry in ENTRIES}
 

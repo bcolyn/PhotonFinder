@@ -101,6 +101,7 @@
     <addaction name="actionExposure"/>
     <addaction name="actionCoordinates"/>
     <addaction name="actionDate"/>
+    <addaction name="actionNight"/>
     <addaction name="actionTelescope"/>
     <addaction name="actionBinning"/>
     <addaction name="actionGain"/>
@@ -321,6 +322,21 @@
    </property>
    <property name="text">
     <string>Date</string>
+   </property>
+  </action>
+  <action name="actionNight">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="icon">
+    <iconset resource="resources.qrc">
+     <normaloff>:/res/moon.svg</normaloff>:/res/moon.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Night</string>
+   </property>
+   <property name="toolTip">
+    <string>Frames of one observing night</string>
    </property>
   </action>
   <action name="actionTelescope">

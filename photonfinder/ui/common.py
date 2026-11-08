@@ -2,7 +2,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon, QPixmap, Qt, QPainter, QPen, QAction, QColor
 from PySide6.QtSvg import QSvgRenderer
 from photonfinder.formatting import (  # pylint: disable=unused-import  # re-exported for the GUI
-    _format_date, _format_dec, _format_file_size, _format_ra, _format_timestamp, _local_to_utc, _utc_to_local,
+    _format_date, _format_dec, _format_file_size, _format_ra, _format_timestamp,
 )
 from PySide6.QtWidgets import QStyle, QTableView, QMenu, QInputDialog, QMessageBox, QDialog, QVBoxLayout, QListWidget, QPushButton, QDialogButtonBox, QHBoxLayout
 

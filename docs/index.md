@@ -13,7 +13,7 @@ PhotonFinder (also known as AstroFileManager) is designed to help astronomers an
 - **Offline Operations** - Most functions work offline; searches can be performed without original files available (perfect for external media)
 - **Advanced Search & Filtering** - Narrow down searches using multiple criteria including:
   - Cone search around given coordinates
-  - Exposure time, date ranges, telescope, binning, gain, temperature
+  - Exposure time, date ranges (local time or UTC), observing night, telescope, binning, gain, temperature
   - FITS header text search
   - Custom metadata filters
 
