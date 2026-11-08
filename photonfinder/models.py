@@ -677,6 +677,13 @@ class FitsHeader(Model):
         indexes = ((('file', 'hdu'), True),)
 
 
+def first_image_of_file():
+    """Join condition for Image in a query over File that wants one row per file: the file's
+    first image (its lowest hdu). For file-level lists, such as a project's files."""
+    other = Image.alias()
+    return (Image.file == File.rowid) & (Image.hdu == other.select(fn.MIN(other.hdu)).where(other.file == File.rowid))
+
+
 def same_image(model):
     """Join condition for a per-image table (FitsHeader, ImageStats) in a query over File that
     outer-joins Image: the row for the same (file, hdu). A file without an Image row matches

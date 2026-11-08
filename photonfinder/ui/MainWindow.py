@@ -775,7 +775,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def add_selection_to_project(self, project: Project):
         edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)
-        selection = self.get_current_search_panel().get_selected_files()
+        # A project collects files: a file whose layers are both selected is added once.
+        selection = self.get_current_search_panel().get_selected_distinct_files()
         files_to_add = File.remove_already_mapped(project, selection)
         for file in files_to_add:
             edit_dialog.add_file(ProjectFile(project=project, file=file))
@@ -790,7 +791,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)
         temp_criteria = deepcopy(self.get_current_search_panel().search_criteria)
         temp_criteria.paths = [root_and_path]
-        for file in library_query.matching_files(temp_criteria, require_image=True):
+        for file in library_query.distinct_files(library_query.matching_files(temp_criteria, require_image=True)):
             edit_dialog.add_file(ProjectFile(project=project, file=file))
         edit_dialog.show()
         edit_dialog.refresh_table()

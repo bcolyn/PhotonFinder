@@ -17,7 +17,7 @@ from astropy.coordinates import SkyCoord
 
 from photonfinder import library_query
 from photonfinder.core import ApplicationContext, Change
-from photonfinder.models import Project, File, LibraryRoot, ProjectFile, Image, hp, RootAndPath, FileWCS
+from photonfinder.models import Project, File, LibraryRoot, ProjectFile, Image, hp, RootAndPath, FileWCS,     first_image_of_file
 from photonfinder.ui.common import _format_timestamp
 from photonfinder.ui.generated.ProjectEditDialog_ui import Ui_ProjectEditDialog
 
@@ -43,7 +43,8 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
                                   .join(File)
                                   # outer: a link to a file without an Image row must show, or
                                   # re-adding that file would collide with the hidden link
-                                  .join_from(File, Image, JOIN.LEFT_OUTER)
+                                  # a project holds files: one row each, with its first image
+                                  .join_from(File, Image, JOIN.LEFT_OUTER, on=first_image_of_file())
                                   .join_from(File, LibraryRoot)
                                   .where(ProjectFile.project == self.project.rowid)
                                   .order_by(LibraryRoot.name, File.path, File.name))
@@ -183,6 +184,7 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
             coord_groups))
 
         # build query
+        # A file once, whichever of its images is near: a project holds files
         q = (File.select(File, Image, LibraryRoot)
              .join_from(File, LibraryRoot).join_from(File, Image))
         q = q.where(Image.coord_pix256.in_(all_pixels))
@@ -208,7 +210,7 @@ class ProjectEditDialog(QWidget, Ui_ProjectEditDialog):
         q = q.order_by(*library_query.DEFAULT_ORDER)
 
         added_count = 0
-        for f in q.execute():
+        for f in library_query.distinct_files(q.execute()):
             # TODO: should we filter again on actual distance?
             pf = ProjectFile(file=f, project=self.project)
             self.add_file(pf)

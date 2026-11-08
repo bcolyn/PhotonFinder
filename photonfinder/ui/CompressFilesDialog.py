@@ -98,10 +98,10 @@ class CompressFilesDialog(QDialog, Ui_CompressFilesDialog):
         self.context = context
 
         if files is not None:
-            compressible = [f for f in files if is_compressible(f.name)]
+            compressible = [f for f in library_query.distinct_files(files) if is_compressible(f.name)]
         else:
             with self.context.database.bind_ctx(CORE_MODELS):
-                compressible = [f for f in library_query.matching_files(search_criteria)
+                compressible = [f for f in library_query.distinct_files(library_query.matching_files(search_criteria))
                                 if is_compressible(f.name)]
 
         for f in compressible:

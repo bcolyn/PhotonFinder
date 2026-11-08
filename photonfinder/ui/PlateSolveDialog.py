@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 
 from photonfinder import library_query, plate_solution, solve_service, solvers
 from photonfinder.core import ApplicationContext, library_busy_message
-from photonfinder.filesystem import decode_header_blob
+from photonfinder.filesystem import cached_header
 from photonfinder.models import File, FileWCS, FitsHeader, Image, SearchCriteria
 from photonfinder.platesolver import SolverHint
 from photonfinder.ui.BackgroundLoader import PlateSolveTask
@@ -48,8 +48,9 @@ class CopyWCSDialog(QDialog):
 
 def _infer_scale_from_header(file: File):
     try:
-        fh = FitsHeader.get(FitsHeader.file == file)
-        header = decode_header_blob(fh.header)
+        header = cached_header(file, 0)  # optics are in the primary header
+        if header is None:
+            raise FitsHeader.DoesNotExist()
         scale = header.get("SCALE") or header.get("PIXSCALE")
         if scale is not None:
             return float(scale)
@@ -86,7 +87,8 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         super().__init__(parent)
         self.setupUi(self)
         self.context = context
-        self.files = files
+        # A solution is the file's (of its first image): each file once, whichever layers were picked.
+        self.files = library_query.distinct_files(files) if files else files
         self.search_criteria = search_criteria
         self._task: PlateSolveTask | None = None
         self._pending_retry_files = None
@@ -530,7 +532,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
                  .join(Image)
                  .where(condition)
                  .order_by(File.name))
-        return [(f, f.image) for f in query]
+        return [(f, f.image) for f in library_query.distinct_files(query)]
 
     def _apply_wcs_copy(self, source_file, overwrite):
         result = plate_solution.copy(source_file, self.files, overwrite)

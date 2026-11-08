@@ -52,7 +52,7 @@ from photonfinder.models import (
     Project, ProjectFile, FitsHeader, FileWCS, CatalogEntry,
 )
 from photonfinder.library_query import (
-    SORTABLE_FIELDS, count_files, search_files as run_search_files, serialize_search_row,
+    SORTABLE_FIELDS, count_distinct_files, count_files, search_files as run_search_files, serialize_search_row,
     _SERIALIZED_IMAGE_FIELDS,
 )
 from photonfinder.platesolver import SolverHint
@@ -106,7 +106,11 @@ def _coerce_header_value(value):
 def _header_to_dict(blob: bytes) -> dict:
     """Decompress a stored FITS header blob into a flat keyword dict."""
     from photonfinder.filesystem import decode_header_blob
-    header = decode_header_blob(blob)
+    return _header_dict(decode_header_blob(blob))
+
+
+def _header_dict(header) -> dict:
+    """A FITS header as a flat keyword dict, without commentary cards."""
     out = {}
     for key in header:
         if key in ("COMMENT", "HISTORY", ""):
@@ -244,6 +248,7 @@ def query_search(context: ApplicationContext, criteria: Optional[dict] = None,
             "page": page,
             "page_size": page_size,
             "total": total,
+            "total_files": count_distinct_files(sc),
             "has_more": has_more,
         }
 
@@ -322,21 +327,20 @@ def query_file_details(context: ApplicationContext, rowid: int) -> dict:
             "has_wcs": has_wcs,
         }
 
-        image = getattr(file, "image", None)
-        if image is not None and image.rowid is not None:
-            image_data = {name: getattr(image, name) for name in _SERIALIZED_IMAGE_FIELDS}
-            date_obs = image.date_obs
-            image_data["date_obs"] = date_obs.isoformat() if isinstance(date_obs, datetime) else date_obs
-            details["image"] = image_data
-        else:
-            details["image"] = None
+        # `image` is the file's first image; `images` lists every image of a file holding
+        # several (a multi-layer FITS or XISF), each with its layer's merged header.
+        images = list(Image.select().where(Image.file == file).order_by(Image.hdu))
+        details["image"] = _serialize_image(images[0]) if images else None
+        details["images"] = [{"hdu": image.hdu, "extname": image.extname, **_serialize_image(image),
+                              "header": _layer_header(file, image.hdu)} for image in images]
 
         details["projects"] = [
             pf.project.name for pf in
             ProjectFile.select(ProjectFile, Project).join(Project).where(ProjectFile.file == rowid)
         ]
 
-        header_row = FitsHeader.select().where(FitsHeader.file == rowid).get_or_none()
+        header_row = (FitsHeader.select().where(FitsHeader.file == rowid)
+                      .order_by(FitsHeader.hdu).first())
         if header_row is not None:
             try:
                 details["header"] = _header_to_dict(header_row.header)
@@ -346,6 +350,24 @@ def query_file_details(context: ApplicationContext, rowid: int) -> dict:
         else:
             details["header"] = None
         return details
+
+
+def _serialize_image(image: Image) -> dict:
+    image_data = {name: getattr(image, name) for name in _SERIALIZED_IMAGE_FIELDS}
+    date_obs = image.date_obs
+    image_data["date_obs"] = date_obs.isoformat() if isinstance(date_obs, datetime) else date_obs
+    return image_data
+
+
+def _layer_header(file: File, hdu: int) -> Optional[dict]:
+    """One image's header as it was indexed (an extension's merged with the primary's)."""
+    from photonfinder.filesystem import cached_header
+    try:
+        header = cached_header(file, hdu)
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.warning("Failed to decode header %s of file %s: %s", hdu, file.rowid, e)
+        return None
+    return None if header is None else _header_dict(header)
 
 
 # The MCP server can't import catalogs (it is read-only), but the user can: tell the model
@@ -831,7 +853,12 @@ def build_mcp(context: ApplicationContext):
                            page_size: int = 100) -> dict:
         """Search the file library.
 
-        Returns `{results, page, page_size, total, has_more}`. `page` is zero-based.
+        Returns `{results, page, page_size, total, total_files, has_more}`. `page` is zero-based.
+        A result is an image: a file holding several images (a multi-layer FITS, e.g. a dual-band
+        stack, or a multi-image XISF) has one result per image, with the same `rowid` and its own
+        `hdu` (0 for the primary/first image) and `extname` (the layer name; null for the first),
+        each with that layer's filter, exposure and stats. `total` counts results (images),
+        `total_files` the files they are in.
         Discover valid values for `filter`/`type`/`camera`/etc. via `list_distinct_values`,
         and valid `paths` roots via `list_library_roots`.
 
@@ -977,7 +1004,12 @@ def build_mcp(context: ApplicationContext):
     async def get_file_details(rowid: int) -> dict:
         """Get full metadata for a single file by its rowid, including the decompressed
         FITS header keywords and plate-solve status. Use the `rowid` from `search_files`
-        results."""
+        results.
+
+        `image` and `header` are the file's first image. `images` lists every image of the file
+        (one for most files; one per layer of a multi-layer FITS or multi-image XISF), each with
+        its `hdu`, `extname`, metadata and `header`: an extension's header merged with the
+        primary's. A plate solution is the file's, and applies to every layer of its size."""
         return await anyio.to_thread.run_sync(query_file_details, context, rowid)
 
     @tool(annotations=read_only("List catalogs"))

@@ -45,6 +45,26 @@ _PROJECT_NAMES = (
 )
 
 
+def image_key(row: File) -> tuple[int, int]:
+    """(file id, hdu) of a search row's image: what tells the rows of one file apart. A row
+    without an Image (its header couldn't be read) is its file's hdu 0."""
+    image = row.__dict__.get('image')
+    return row.rowid, image.hdu if isinstance(image, Image) and image.hdu is not None else 0
+
+
+def distinct_files(rows) -> list[File]:
+    """The files of these search rows, each once, in the order first seen: what an action on
+    files (export, move, delete, add to a project) works on, whichever of a file's images were
+    selected."""
+    seen = set()
+    files = []
+    for row in rows:
+        if row.rowid not in seen:
+            seen.add(row.rowid)
+            files.append(row)
+    return files
+
+
 def search_row_stat(row: File, alias: str):
     """An aliased ImageStats column of a search row. Peewee keeps it on the joined model."""
     return getattr(getattr(row, 'imagestats', None), alias, None)
@@ -114,6 +134,8 @@ RESULT_COLUMNS = (
                  lambda row: search_row_stat(row, 'stats_elongation_median'), text=_number_text(3)),
     ResultColumn("diagnosis", "Diagnosis", ImageStats.diagnosis.alias('stats_diagnosis'),
                  lambda row: search_row_stat(row, 'stats_diagnosis') or ""),
+    # Last, so that saved sort positions (SearchCriteria.sorting_index) keep their column.
+    ResultColumn("layer", "Layer", Image.extname, _image_value('extname')),
 )
 COLUMN_INDEX = {column.key: i for i, column in enumerate(RESULT_COLUMNS)}
 
@@ -131,14 +153,16 @@ def cell(column: ResultColumn, value) -> tuple:
 class SearchPage(NamedTuple):
     """One page of a search. `rows` are File instances with their Image and LibraryRoot
     joined, plus the aliased columns read through search_row_stat, `has_wcs` and
-    `projectfile.project_names`."""
+    `projectfile.project_names`. A row is an image: a file holding several images (a
+    multi-layer FITS or XISF) has a row for each, the same File with another Image. `total`
+    counts rows; `count_distinct_files` counts the files they are in."""
     rows: list
     total: int
     has_more: bool
 
 
 def search_files(criteria: SearchCriteria, page: int = 0, page_size: int = 100) -> SearchPage:
-    """The files matching the criteria, sorted as they ask, one zero-based page at a time.
+    """The images matching the criteria, sorted as they ask, one zero-based page at a time.
 
     Raises ValueError for an unknown `sorting_field`.
     """
@@ -150,8 +174,19 @@ def search_files(criteria: SearchCriteria, page: int = 0, page_size: int = 100) 
 
 
 def count_files(criteria: SearchCriteria) -> int:
-    """How many files match the criteria."""
+    """How many search rows match the criteria: one per image, a file without an Image row
+    counting once. See count_distinct_files for the files."""
     return _files_query(criteria).count()
+
+
+def count_distinct_files(criteria: SearchCriteria) -> int:
+    """How many files the matching search rows are in."""
+    return select_matching(criteria, fn.COUNT(File.rowid.distinct())).scalar() or 0
+
+
+def count_text(images: int, files: int) -> str:
+    """"N files", or "N images in M files" when some files hold several images."""
+    return f"{files} files" if images == files else f"{images} images in {files} files"
 
 
 def matching_files(criteria: SearchCriteria, *, require_image: bool = False, with_header: bool = False,
@@ -245,7 +280,8 @@ def unsolved_lights(criteria: SearchCriteria) -> list[File]:
              .where((Image.image_type == "LIGHT") | (Image.image_type == "MASTER LIGHT") |
                     Image.image_type.is_null())
              .where(File.rowid.not_in(FileWCS.select(FileWCS.file))))
-    return list(query.order_by(*DEFAULT_ORDER))
+    # A solution is the file's: each file once, however many of its layers matched.
+    return distinct_files(query.order_by(*DEFAULT_ORDER))
 
 
 def files_by_id(file_ids, *, with_header: bool = False, with_solution: bool = False) -> list[File]:
@@ -287,6 +323,8 @@ def serialize_search_row(row: File) -> dict:
     }
 
     image = getattr(row, "image", None)
+    result["hdu"] = image.hdu if image is not None and image.rowid is not None else None
+    result["extname"] = image.extname if image is not None and image.rowid is not None else None
     if image is not None and image.rowid is not None:
         image_data = {name: getattr(image, name) for name in _SERIALIZED_IMAGE_FIELDS}
         date_obs = image.date_obs

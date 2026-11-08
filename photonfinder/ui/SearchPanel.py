@@ -15,9 +15,10 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame
 
 from photonfinder import filter_catalogue, plate_solution
 from photonfinder.core import ApplicationContext, Change, library_busy_message
-from photonfinder.filesystem import is_compressible, decode_header_blob
+from photonfinder.filesystem import is_compressible, cached_header
 from photonfinder.library_query import (
-    COLUMN_INDEX, RESULT_COLUMNS, cell, diagnosis_counts, distinct_values, search_row_stat,
+    COLUMN_INDEX, RESULT_COLUMNS, cell, count_text, diagnosis_counts, distinct_files, distinct_values,
+    image_key, search_row_stat,
 )
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, \
     ProjectFile, LibraryRoot
@@ -55,7 +56,8 @@ class _FileDragProxyModel(QSortFilterProxyModel):
             item = self.sourceModel().itemFromIndex(source_idx)
             if item:
                 file = item.data(ROWID_ROLE)
-                if file is not None:
+                # A file's layers are rows of their own; a project takes the file once.
+                if file is not None and str(file.rowid) not in rowids:
                     rowids.append(str(file.rowid))
         mime.setData(FILE_DRAG_MIME, QByteArray(",".join(rowids).encode()))
         return mime
@@ -81,7 +83,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.mainWindow = mainWindow
         self.search_criteria = SearchCriteria() #TODO: previous / next?
         self.advanced_options = dict()
-        self.total_files = 0  # Track total number of files in search results
+        self.total_files = 0  # Search result rows: one per image
+        self.total_result_files = 0  # The files those rows are in
         self.pending_selections = list()  # Store pending path selections
 
         # Initialize the search results loader
@@ -286,7 +289,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         button.deleteLater()
 
     def get_selected_files(self) -> List[File]:
-        """Get the currently selected files in the data grid."""
+        """The selected rows of the data grid: one File per image, so a file whose layers are
+        both selected comes twice, each with its own Image. Actions on files take
+        get_selected_distinct_files."""
         selected_indexes = self.dataView.selectionModel().selectedRows()
         selected_files = []
 
@@ -297,6 +302,20 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 selected_files.append(file)
 
         return selected_files
+
+    def get_selected_distinct_files(self) -> List[File]:
+        """The files of the selected rows, each once: what export, move, compress, plate solving
+        and adding to a project work on."""
+        return distinct_files(self.get_selected_files())
+
+    def _counts_text(self) -> str:
+        return count_text(self.total_files, self.total_result_files)
+
+    def _update_title(self):
+        if self.search_criteria.is_empty():
+            self.set_title(f"{self._counts_text()} (All)")
+        else:
+            self.set_title(f"{self._counts_text()} [{str(self.search_criteria)}]")
 
     def refresh_data_grid(self):
         """Trigger a search with the current search criteria."""
@@ -353,12 +372,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def on_data_selection_changed(self, selected, deselected):
         """Handle selection changes in the data grid."""
-        # Get the number of selected rows
-        selected_count = len(self.dataView.selectionModel().selectedRows())
-
-        # Update the status bar with the selection information
-        if selected_count > 0:
-            self.context.status_reporter.update_status(f"{selected_count} files out of {self.total_files} selected", bulk=True)
+        selected = self.get_selected_files()
+        if selected:
+            selection = count_text(len(selected), len(distinct_files(selected)))
+            self.context.status_reporter.update_status(f"{selection} out of {self._counts_text()} selected",
+                                                       bulk=True)
 
         self.mainWindow.enable_actions_for_current_tab()
 
@@ -404,11 +422,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
             # Reset total files counter when starting a new search
             self.total_files = total_files
-            # Update our tab title
-            if self.search_criteria.is_empty():
-                self.set_title(f"{self.total_files} files (All)")
-            else:
-                self.set_title(f"{self.total_files} files [{str(self.search_criteria)}]")
+            self.total_result_files = self.search_results_loader.total_result_files
+            self._update_title()
             # clear the status bar
             self.context.status_reporter.update_status("")
 
@@ -443,7 +458,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 # All data loaded, now select all
                 self.select_all_pending = False
                 self.dataView.selectAll()
-                self.context.status_reporter.update_status(f"All {self.total_files} files selected", bulk=False)
+                self.context.status_reporter.update_status(f"All {self._counts_text()} selected", bulk=False)
 
         if not self.has_more_results:
             self.data_fully_loaded.emit()
@@ -736,9 +751,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         *dialog_parent* lets the image viewer show the prompt over itself.
         Returns False if the user declined or the rename failed."""
         import fnmatch
+        with self.context.database.bind_ctx(CORE_MODELS):
+            layers = Image.select().where(Image.file == file).count()
+        whole_file = f"\n\nThis removes the whole file, with all {layers} of its image layers." if layers > 1 else ""
         answer = QMessageBox.question(
             dialog_parent or self, "Mark as Bad",
-            f"Rename {file.name} to BAD_{file.name} and remove it from the library?",
+            f"Rename {file.name} to BAD_{file.name} and remove it from the library?{whole_file}",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes)  # Del, Enter keeps culling in the viewer quick
         if answer != QMessageBox.StandardButton.Yes:
@@ -762,22 +780,30 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             )
         with self.context.database.bind_ctx(CORE_MODELS):
             file.delete_instance()
-        self.data_model.removeRow(self.proxy_model.mapToSource(self.proxy_model.index(row, 0)).row())
-        self.total_files -= 1
-        if self.search_criteria.is_empty():
-            self.set_title(f"{self.total_files} files (All)")
-        else:
-            self.set_title(f"{self.total_files} files [{str(self.search_criteria)}]")
+        # Every row of the file goes: one per image layer.
+        rows = self._source_rows_of(file)
+        for source_row in reversed(rows):
+            self.data_model.removeRow(source_row)
+        self.total_files -= len(rows)
+        self.total_result_files -= 1
+        self._update_title()
         return True
+
+    def _source_rows_of(self, file: File) -> list[int]:
+        """The source-model rows of a file, one per image of it in the results."""
+        return [row for row in range(self.data_model.rowCount())
+                if (other := self.data_model.index(row, 0).data(ROWID_ROLE)) is not None
+                and other.rowid == file.rowid]
 
     def clear_plate_solution(self, file: File, model_row: int):
         """Remove the file's plate solution and update the grid row: RA/Dec show the header's
         pointing position again, if it has one."""
         with self.context.database.bind_ctx(CORE_MODELS):
             ra, dec = plate_solution.clear(file)
-        # The source model's row: a sorted proxy moves the row as soon as a sort value changes.
-        source_row = self.proxy_model.mapToSource(self.proxy_model.index(model_row, 0)).row()
-        _set_cells(self.data_model, source_row, coord_ra=ra, coord_dec=dec, solved="False")
+        # The solution is the file's: every row of it (one per image layer) loses it. Source-model
+        # rows, as a sorted proxy moves a row as soon as a sort value changes.
+        for source_row in self._source_rows_of(file):
+            _set_cells(self.data_model, source_row, coord_ra=ra, coord_dec=dec, solved="False")
 
     def on_item_double_clicked(self, index):
         """Handle double-click on an item in the data view."""
@@ -821,9 +847,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 return
 
             try:
-                # Try to get the FitsHeader for this file
-                fits_header = FitsHeader.get(FitsHeader.file == file)
-                header = decode_header_blob(fits_header.header)
+                # The header of the row's image; an extension's merged with the primary's
+                header = cached_header(file, image_key(file)[1])
+                if header is None:
+                    raise FitsHeader.DoesNotExist()
                 wcs_header = plate_solution.load(file)
 
                 # Show the header dialog
@@ -1187,7 +1214,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 response = QMessageBox.question(
                     self,
                     "Export Confirmation",
-                    f"No files are selected. Do you want to export all {self.total_files} files matching the current filters?",
+                    f"No files are selected. Do you want to export all {self._counts_text()} matching the current filters?",
                     QMessageBox.Yes | QMessageBox.No
                 )
                 if response == QMessageBox.No:
@@ -1200,7 +1227,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def compress_files(self):
         from .CompressFilesDialog import CompressFilesDialog
-        selected = self.get_selected_files()
+        selected = self.get_selected_distinct_files()
         if selected:
             dialog = CompressFilesDialog(
                 context=self.context, files=selected, search_criteria=None, parent=self)
@@ -1284,7 +1311,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.update_search_criteria()
 
     def plate_solve_files(self):
-        selected_files = self.get_selected_files()
+        # A solution is the file's (of its first image), so each file is solved once.
+        selected_files = self.get_selected_distinct_files()
         if not selected_files and self.total_files > 100:
             response = QMessageBox.question(
                 self,
@@ -1311,7 +1339,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         if not selected_files and self.total_files > 100:
             if QMessageBox.question(
                 self, "Image Analysis",
-                f"No files selected. Analyse all {self.total_files} files matching the current filters?",
+                f"No files selected. Analyse all {self._counts_text()} matching the current filters?",
                 QMessageBox.Yes | QMessageBox.No,
             ) == QMessageBox.No:
                 return
@@ -1329,13 +1357,14 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def on_files_analysed(self, task: ImageAnalysisTask):
         if not task.analyzed_files:
             return
-        result_map = {f: r for f, r in task.analyzed_files}
+        # By image: a file's layers are analysed, and are rows, of their own.
+        result_map = {image_key(f): r for f, r in task.analyzed_files}
         model = self.data_model  # not the sorted proxy, which moves rows as sort values change
         for row in range(model.rowCount()):
             file = model.index(row, 0).data(ROWID_ROLE)
-            if file not in result_map:
+            if file is None or image_key(file) not in result_map:
                 continue
-            r = result_map[file]
+            r = result_map[image_key(file)]
 
             measured = dict(background=r.background_median, background_rms=r.background_rms,
                             star_count=r.star_count, fwhm=r.fwhm_median, elongation=r.elongation_median)
@@ -1343,22 +1372,37 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             _set_cells(model, row, diagnosis="", **{k: v for k, v in measured.items() if v is not None})
 
     def on_files_solved(self, task: PlateSolveTask):
-        solved_files = {f: f for f in task.solved_files}
+        solved_ids = {f.rowid for f in task.solved_files}
+        # Each row shows its own image's centre: the solved row's from its loaded Image (storing
+        # the solution updated it), another layer's as stored, as a solution reaches only the
+        # layers of its size.
+        centres = {image_key(f): (f.image.coord_ra, f.image.coord_dec)
+                   for f in task.solved_files if isinstance(f.__dict__.get('image'), Image)}
         model = self.data_model  # not the sorted proxy, which moves rows as sort values change
+        other_layers = {image_key(file) for row in range(model.rowCount())
+                        if (file := model.index(row, 0).data(ROWID_ROLE)) is not None
+                        and file.rowid in solved_ids and image_key(file) not in centres
+                        and getattr(file.__dict__.get('image'), 'rowid', None) is not None}
+        if other_layers:
+            with self.context.database.bind_ctx(CORE_MODELS):
+                centres.update({(file_id, hdu): (ra, dec) for file_id, hdu, ra, dec in
+                                Image.select(Image.file, Image.hdu, Image.coord_ra, Image.coord_dec)
+                                .where(Image.file.in_(list({file_id for file_id, _ in other_layers}))).tuples()
+                                if (file_id, hdu) in other_layers})
         for row in range(model.rowCount()):
-            index = model.index(row, 0)
-            file = solved_files.get(index.data(ROWID_ROLE))
-            if file is not None:
-                image = getattr(file, 'image', None)
-                if image:
-                    _set_cells(model, row, coord_ra=image.coord_ra, coord_dec=image.coord_dec)
-                _set_cells(model, row, solved="True")
+            file = model.index(row, 0).data(ROWID_ROLE)
+            if file is None or file.rowid not in solved_ids:
+                continue
+            if image_key(file) in centres:
+                ra, dec = centres[image_key(file)]
+                _set_cells(model, row, coord_ra=ra, coord_dec=dec)
+            _set_cells(model, row, solved="True")
 
-        if solved_files and self.search_criteria.plate_solved is not None:
+        if solved_ids and self.search_criteria.plate_solved is not None:
             self.refresh_data_grid()
 
     def report_list_files(self):
-        selected_files = self.get_selected_files()
+        selected_files = self.get_selected_distinct_files()
         # Show file save dialog
         file_path, _ = QFileDialog.getSaveFileName(
             self,

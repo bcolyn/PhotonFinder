@@ -43,6 +43,7 @@ class _ControlledSearch:
 def fake_search(monkeypatch):
     fake = _ControlledSearch()
     monkeypatch.setattr(BackgroundLoader, "search_files", fake)
+    monkeypatch.setattr(BackgroundLoader, "count_distinct_files", lambda criteria: 1000)
     return fake
 
 

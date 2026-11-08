@@ -235,26 +235,42 @@ TEMPERATURE = FilterEntry(
 )
 
 
+def _row_hdu():
+    """The hdu of the search row's image (the query joins Image); 0 for a file without one."""
+    return fn.COALESCE(Image.hdu, 0)
+
+
+def _header_value(key: str, hdu):
+    """The value of `key` in one cached header of the row's file, as a correlated subquery."""
+    header = FitsHeader.alias()
+    return (header.select(fn.decompress_header_value(header.header, key))
+            .where((header.file == File.rowid) & (header.hdu == hdu)))
+
+
 def _header_conditions(criteria: SearchCriteria) -> list:
-    """KEY=n, KEY<n or KEY>n compare a header value; anything else searches the header text."""
+    """KEY=n, KEY<n or KEY>n compare a header value; anything else searches the header text.
+
+    A row is matched on its image's header as it was indexed: an extension's own header, completed
+    with the primary's (hdu 0). A value comes from the extension when it has the keyword, else
+    from the primary; text is searched in both.
+    """
     header_text = criteria.header_text
     if not header_text:
         return []
-    header_condition = None
     for symbol, compare in (('=', operator.eq), ('<', operator.lt), ('>', operator.gt)):
         if symbol in header_text:
             try:
                 key, value = header_text.split(symbol)
-                header_condition = compare(fn.decompress_header_value(FitsHeader.header, key.strip()),
-                                           float(value.strip()))
+                merged = fn.COALESCE(_header_value(key.strip(), _row_hdu()), _header_value(key.strip(), 0))
+                return [compare(merged, float(value.strip()))]
             except ValueError:
                 pass
             break
-    if header_condition is None:
-        header_condition = fn.decompress(FitsHeader.header).contains(header_text)
     # A correlated subquery rather than a join, so callers that already join
     # FitsHeader (e.g. to read header values) don't end up with it joined twice.
-    return [fn.EXISTS(FitsHeader.select(SQL('1')).where((FitsHeader.file == File.rowid) & header_condition))]
+    return [fn.EXISTS(FitsHeader.select(SQL('1')).where(
+        (FitsHeader.file == File.rowid) & FitsHeader.hdu.in_([0, _row_hdu()])
+        & fn.decompress(FitsHeader.header).contains(header_text)))]
 
 
 HEADER_TEXT = FilterEntry(
@@ -425,7 +441,7 @@ def _quality_conditions(criteria: SearchCriteria) -> list:
             stats.append(column >= low)
         if high is not None:
             stats.append(column <= high)
-    return [File.rowid.in_(ImageStats.select(ImageStats.file).where(*stats))] if stats else []
+    return [fn.EXISTS(_row_stats().where(*stats))] if stats else []
 
 
 IMAGE_QUALITY = FilterEntry(
@@ -451,17 +467,21 @@ IMAGE_QUALITY = FilterEntry(
 )
 
 
+def _row_stats():
+    """The search row's image's ImageStats row, as a correlated subquery (the query joins Image)."""
+    return ImageStats.select(SQL('1')).where((ImageStats.file == File.rowid) & (ImageStats.hdu == _row_hdu()))
+
+
 def diagnosis_conditions(hidden: list) -> list:
-    """Conditions hiding every file with any of the given diagnosis values."""
+    """Conditions hiding every image with any of the given diagnosis values."""
     hiding = []
     if DIAGNOSIS_NOT_ANALYSED in hidden:
-        hiding.append(File.rowid.in_(ImageStats.select(ImageStats.file).where(ImageStats.diagnosis.is_null(False))))
+        hiding.append(fn.EXISTS(_row_stats().where(ImageStats.diagnosis.is_null(False))))
     matches = [ImageStats.diagnosis == DIAGNOSIS_OK if value == DIAGNOSIS_OK
                else ImageStats.diagnosis.contains(value)
                for value in hidden if value != DIAGNOSIS_NOT_ANALYSED]
     if matches:
-        hidden_files = ImageStats.select(ImageStats.file).where(reduce(operator.or_, matches))
-        hiding.append(File.rowid.not_in(hidden_files))
+        hiding.append(~fn.EXISTS(_row_stats().where(reduce(operator.or_, matches))))
     return hiding
 
 

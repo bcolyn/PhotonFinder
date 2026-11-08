@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from photonfinder import library_query
 from photonfinder.core import ApplicationContext, library_busy_message
 from photonfinder.models import DIAGNOSIS_BAD_VALUES, DIAGNOSIS_MISSING_METRICS, SearchCriteria
 from photonfinder.quality_diagnosis import (
@@ -43,12 +44,12 @@ class _DiagnosisLoader(BackgroundLoaderBase):
     saved = Signal(bool)  # False: another writer holds the library
     save_failed = Signal(str)
 
-    def load(self, criteria: SearchCriteria, selected_file_ids: set[int] | None):
-        self.run_in_thread(self._load, criteria, selected_file_ids)
+    def load(self, criteria: SearchCriteria, selected_images: set[tuple[int, int]] | None):
+        self.run_in_thread(self._load, criteria, selected_images)
 
-    def _load(self, criteria: SearchCriteria, selected_file_ids: set[int] | None):
+    def _load(self, criteria: SearchCriteria, selected_images: set[tuple[int, int]] | None):
         try:
-            self.scope_loaded.emit(load_scope(self.context, criteria, selected_file_ids), criteria)
+            self.scope_loaded.emit(load_scope(self.context, criteria, selected_images), criteria)
         except Exception as exc:
             logging.error("Could not load the diagnosis scope", exc_info=True)
             self.load_failed.emit(str(exc), criteria)
@@ -207,7 +208,7 @@ class DiagnoseQualityDialog(QDialog):
         panel = self.main_window.get_current_search_panel()
         self._scope = None
         self._scope_criteria = scope_criteria(panel.search_criteria)
-        self._scope_selection = self._selected_file_ids(panel)
+        self._scope_selection = self._selected_images(panel)
         self._update_stale_note()
         self._load_scope()
 
@@ -253,14 +254,15 @@ class DiagnoseQualityDialog(QDialog):
         self._update_stale_note()
 
     @staticmethod
-    def _selected_file_ids(panel) -> set[int]:
-        return {file.rowid for file in panel.get_selected_files()}
+    def _selected_images(panel) -> set[tuple[int, int]]:
+        """The selected rows as (file id, hdu): a file's layers are frames of their own."""
+        return {library_query.image_key(row) for row in panel.get_selected_files()}
 
     def _update_stale_note(self):
         panel = self._watched_panel
         stale = False
         if panel is not None and self._scope_criteria is not None:
-            selection = self._selected_file_ids(panel)
+            selection = self._selected_images(panel)
             # An emptied selection alone is no new scope: refreshing the grid after a save clears it.
             stale = (scope_criteria(panel.search_criteria) != self._scope_criteria
                      or (bool(selection) and selection != self._scope_selection))
@@ -328,17 +330,17 @@ class DiagnoseQualityDialog(QDialog):
     # --- Analysing missing frames --------------------------------------------------------
 
     def _analyse_missing(self):
-        file_ids = frames_needing_analysis(self._scope, self.current_settings())
-        if not file_ids:
+        images = frames_needing_analysis(self._scope, self.current_settings())
+        if not images:
             return
         try:
-            task = MissingFramesAnalysisTask(self.context, file_ids)
+            task = MissingFramesAnalysisTask(self.context, images)
             task.ended.connect(self._on_analysis_ended)
             # On the window, as this dialog may be gone by the time the run ends.
             task.ended.connect(self.main_window.refresh_current_search)
             # Not a child of this dialog: analysis carries on if this one is closed.
             progress = ImageAnalysisDialog(self.context, None, SearchCriteria(), parent=self.main_window,
-                                           task=task, label=f"Analysing {len(file_ids)} file(s)...")
+                                           task=task, label=f"Analysing {len(images)} image(s)...")
             progress.setAttribute(Qt.WA_DeleteOnClose)
         except Exception as exc:
             logging.error("Could not start the analysis", exc_info=True)

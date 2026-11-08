@@ -411,8 +411,9 @@ def reindex_library(status_reporter, settings) -> None:
 def cached_header(file: File, hdu: int = 0) -> Header | None:
     """The cached header of one of the file's images, as it was indexed: a FITS extension's
     header merged with the primary's. None when the file has no cached header for it."""
-    rows = {row.hdu: row.header for row in FitsHeader.select(FitsHeader.hdu, FitsHeader.header)
-            .where((FitsHeader.file == file) & FitsHeader.hdu.in_({0, hdu}))}
+    query = (FitsHeader.select(FitsHeader.hdu, FitsHeader.header)
+             .where((FitsHeader.file == file) & FitsHeader.hdu.in_({0, hdu})))
+    rows = {row.hdu: row.header for row in query}  # pylint: disable=not-an-iterable  # Peewee query
     if hdu not in rows:
         return None
     header = decode_header_blob(rows[hdu])

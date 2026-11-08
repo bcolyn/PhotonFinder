@@ -10,7 +10,7 @@ from photonfinder.core import ApplicationContext, library_busy_message
 from photonfinder.models import File, Image, LibraryRoot, SearchCriteria, \
     Project, ImageStats
 from photonfinder import library_query
-from photonfinder.library_query import search_files
+from photonfinder.library_query import count_distinct_files, search_files
 from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
 from photonfinder.filesystem import reindex_library
 from photonfinder import solve_service
@@ -196,9 +196,11 @@ class SearchResultsLoader(BackgroundLoaderBase):
         self.page_size = 100
         self.current_page = 0
         self.total_results = 0
+        self.total_result_files = 0  # the files the total_results rows (images) are in
         self.last_criteria: Optional[SearchCriteria] = None  # snapshot the current search runs on
         self._request_id = 0
         self._in_flight: set[tuple[int, int]] = set()  # (request id, page) not yet delivered
+        self._files_by_request: dict[int, int] = {}  # request id -> distinct files, from page 0
         self._page_ready.connect(self._on_page_ready)
 
     def search(self, search_criteria, page=0):
@@ -231,6 +233,11 @@ class SearchResultsLoader(BackgroundLoaderBase):
         except Exception as e:
             logging.error(f"Error searching files: {e}", exc_info=True)
             results, total, has_more = [], 0, False
+        if page == 0 and results:
+            try:
+                self._files_by_request[request_id] = count_distinct_files(search_criteria)
+            except Exception as e:  # pylint: disable=broad-exception-caught  # only a count: the rows stand
+                logging.error(f"Error counting the files of a search: {e}", exc_info=True)
         self._page_ready.emit(results, page, total, has_more, request_id)
 
     @Slot(list, int, int, bool, int)
@@ -240,6 +247,7 @@ class SearchResultsLoader(BackgroundLoaderBase):
             return  # a newer search has started since; its own pages will follow
         if page == 0 or total:
             self.total_results = total
+            self.total_result_files = self._files_by_request.pop(request_id, total)
         self.results_loaded.emit(results, page, self.total_results, has_more)
 
 
@@ -442,6 +450,10 @@ class FileListTask(FileProcessingTask):
             self.fd = fd
             super()._process_files()
 
+    def load_files(self) -> List[File]:
+        """The matching files, each once: a list of paths, not of images."""
+        return library_query.distinct_files(super().load_files())
+
     def _process_file(self, file, index):
         self.message.emit(f"Processing file {index + 1}/{self.total}:\n {file.full_filename()}")
         self.fd.write(f"{str(Path(file.full_filename()))}\n")
@@ -523,15 +535,18 @@ class ImageAnalysisTask(FileProcessingTask):
 
 
 class MissingFramesAnalysisTask(ImageAnalysisTask):
-    """Analyses the given files, which it loads by id, while holding the library write lock."""
+    """Analyses the given images, (file id, hdu), which it loads by id, while holding the
+    library write lock."""
 
-    def __init__(self, context: ApplicationContext, file_ids: List[int]):
+    def __init__(self, context: ApplicationContext, images: List[tuple[int, int]]):
         super().__init__(context, SearchCriteria(), [])
-        self.file_ids = file_ids
+        self.images = set(images)
 
     def _analyse(self):
         try:
-            self.files = library_query.files_by_id(self.file_ids)
+            file_ids = list(dict.fromkeys(file_id for file_id, _ in self.images))
+            self.files = [row for row in library_query.files_by_id(file_ids)
+                          if library_query.image_key(row) in self.images]
         except Exception as e:
             logging.error(f"Error loading files to analyse: {e}", exc_info=True)
             self.error.emit(str(e))

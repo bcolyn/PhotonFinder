@@ -64,10 +64,20 @@ def template_filename_with_ref(file: File, ref: File, template: string.Template,
         return os.path.join(ref_path, regular_name)
 
 
+def _template_image(file: File) -> Optional[Image]:
+    """The image whose values ($filter, $exposure, ...) place a file: its first. A file holding
+    several images is exported once, where its first image puts it, whichever of its rows
+    (layers) was selected."""
+    image = file.image if hasattr(file, 'image') and file.image else None
+    if image is not None and image.hdu:  # a row of a later layer: look up the first
+        image = Image.first_of(file) or image
+    return image
+
+
 def template_filename(file: File, template: string.Template, settings: Settings,
                       decompress=False, export_xisf_as_fits=False,
                       sess_date=None) -> str:
-    image = file.image if hasattr(file, 'image') and file.image else None
+    image = _template_image(file)
     file_name = file.name
 
     # drop the last extension for the decompressed file name

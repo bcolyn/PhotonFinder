@@ -280,7 +280,7 @@ def test_result_columns_keep_their_positions_and_labels():
     assert [c.label for c in RESULT_COLUMNS] == [
         "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
         "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved",
-        "Projects", "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation", "Diagnosis",
+        "Projects", "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation", "Diagnosis", "Layer",
     ]
 
 
@@ -313,6 +313,7 @@ _SERIALIZED = {
     "background": lambda r: r["stats"]["background_median"],
     "fwhm": lambda r: r["stats"]["fwhm_median"],
     "elongation": lambda r: r["stats"]["elongation_median"],
+    "layer": lambda r: r["extname"],
 }
 for _key in ("filter", "exposure", "gain", "offset", "binning", "camera", "telescope", "object_name",
              "coord_ra", "coord_dec"):

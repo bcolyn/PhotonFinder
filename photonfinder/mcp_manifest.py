@@ -42,8 +42,17 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
  'tools': [{'name': 'search_files',
             'description': 'Search the file library.\n'
                            '\n'
-                           'Returns `{results, page, page_size, total, has_more}`. `page` is '
-                           'zero-based.\n'
+                           'Returns `{results, page, page_size, total, total_files, has_more}`. '
+                           '`page` is zero-based.\n'
+                           'A result is an image: a file holding several images (a multi-layer '
+                           'FITS, e.g. a dual-band\n'
+                           'stack, or a multi-image XISF) has one result per image, with the same '
+                           '`rowid` and its own\n'
+                           '`hdu` (0 for the primary/first image) and `extname` (the layer name; '
+                           'null for the first),\n'
+                           "each with that layer's filter, exposure and stats. `total` counts "
+                           'results (images),\n'
+                           '`total_files` the files they are in.\n'
                            'Discover valid values for `filter`/`type`/`camera`/etc. via '
                            '`list_distinct_values`,\n'
                            'and valid `paths` roots via `list_library_roots`.\n'
@@ -688,7 +697,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'star_count',
                                                                                                                    'fwhm',
                                                                                                                    'elongation',
-                                                                                                                   'diagnosis'],
+                                                                                                                   'diagnosis',
+                                                                                                                   'layer'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,
@@ -1459,7 +1469,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'star_count',
                                                                                                                    'fwhm',
                                                                                                                    'elongation',
-                                                                                                                   'diagnosis'],
+                                                                                                                   'diagnosis',
+                                                                                                                   'layer'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,
@@ -2268,7 +2279,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'star_count',
                                                                                                                    'fwhm',
                                                                                                                    'elongation',
-                                                                                                                   'diagnosis'],
+                                                                                                                   'diagnosis',
+                                                                                                                   'layer'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,
@@ -3073,7 +3085,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'star_count',
                                                                                                                    'fwhm',
                                                                                                                    'elongation',
-                                                                                                                   'diagnosis'],
+                                                                                                                   'diagnosis',
+                                                                                                                   'layer'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,
@@ -3264,7 +3277,16 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            'decompressed\n'
                            'FITS header keywords and plate-solve status. Use the `rowid` from '
                            '`search_files`\n'
-                           'results.',
+                           'results.\n'
+                           '\n'
+                           "`image` and `header` are the file's first image. `images` lists every "
+                           'image of the file\n'
+                           '(one for most files; one per layer of a multi-layer FITS or '
+                           'multi-image XISF), each with\n'
+                           "its `hdu`, `extname`, metadata and `header`: an extension's header "
+                           'merged with the\n'
+                           "primary's. A plate solution is the file's, and applies to every layer "
+                           'of its size.',
             'inputSchema': {'properties': {'rowid': {'title': 'Rowid', 'type': 'integer'}},
                             'required': ['rowid'],
                             'title': 'get_file_detailsArguments',

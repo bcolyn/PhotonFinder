@@ -174,11 +174,15 @@ def _session_info_from_blob(blob: bytes) -> tuple:
 
 
 def load_session_info(file_ids: list[int]) -> dict[int, tuple]:
-    """(date_loc, sitelat, sitelong) per file, from its cached header."""
+    """(date_loc, sitelat, sitelong) per file, from its cached primary header (its first, by
+    hdu): an extension's header holds only what differs from the primary, never where and when."""
     result = {}
     for batch in chunked(file_ids, _BATCH_SIZE):
-        query = FitsHeader.select(FitsHeader.file, FitsHeader.header).where(FitsHeader.file.in_(batch))
+        query = (FitsHeader.select(FitsHeader.file, FitsHeader.header).where(FitsHeader.file.in_(batch))
+                 .order_by(FitsHeader.file, FitsHeader.hdu))
         for file_id, blob in query.tuples():
+            if file_id in result:
+                continue
             try:
                 result[file_id] = _session_info_from_blob(blob)
             except Exception as exc:

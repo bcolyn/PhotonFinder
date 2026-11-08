@@ -21,11 +21,7 @@ def _mock_file(name="image.fits"):
 
 def _call_infer_scale(header_dict, filename="image.fits"):
     file = _mock_file(filename)
-    mock_fh = MagicMock()
-    mock_fh.header = b"ignored"
-    with patch("photonfinder.ui.PlateSolveDialog.FitsHeader") as mock_FH, \
-         patch("photonfinder.ui.PlateSolveDialog.decode_header_blob", return_value=header_dict):
-        mock_FH.get.return_value = mock_fh
+    with patch("photonfinder.ui.PlateSolveDialog.cached_header", return_value=header_dict):
         return _infer_scale_from_header(file)
 
 
@@ -66,35 +62,23 @@ def test_infer_scale_pixsz_without_focallen_returns_none():
 
 def test_infer_scale_db_exception_returns_none():
     file = _mock_file()
-    with patch("photonfinder.ui.PlateSolveDialog.FitsHeader") as mock_FH:
-        mock_FH.get.side_effect = Exception("not found")
+    with patch("photonfinder.ui.PlateSolveDialog.cached_header", side_effect=Exception("not found")):
         assert _infer_scale_from_header(file) is None
 
 
-def test_infer_scale_xisf_uses_decoded_header():
-    file = _mock_file("image.xisf")
-    mock_fh = MagicMock()
-    mock_fh.header = b"ignored"
-    with patch("photonfinder.ui.PlateSolveDialog.FitsHeader") as mock_FH, \
-         patch("photonfinder.ui.PlateSolveDialog.decode_header_blob",
-               return_value={"SCALE": "1.5"}) as mock_decode:
-        mock_FH.get.return_value = mock_fh
+def test_infer_scale_without_a_cached_header_returns_none():
+    with patch("photonfinder.ui.PlateSolveDialog.cached_header", return_value=None):
+        assert _infer_scale_from_header(_mock_file()) is None
+
+
+@pytest.mark.parametrize("filename", ["image.xisf", "image.fits"])
+def test_infer_scale_reads_the_primary_header(filename):
+    """The optics (FOCALLEN, pixel size) are in the primary header, whichever layer was picked."""
+    file = _mock_file(filename)
+    with patch("photonfinder.ui.PlateSolveDialog.cached_header", return_value={"SCALE": "1.5"}) as read:
         result = _infer_scale_from_header(file)
     assert result == pytest.approx(1.5)
-    mock_decode.assert_called_once_with(b"ignored")
-
-
-def test_infer_scale_fits_file_uses_decoded_header():
-    file = _mock_file("image.fits")
-    mock_fh = MagicMock()
-    mock_fh.header = b"ignored"
-    with patch("photonfinder.ui.PlateSolveDialog.FitsHeader") as mock_FH, \
-         patch("photonfinder.ui.PlateSolveDialog.decode_header_blob",
-               return_value={"SCALE": "0.5"}) as mock_decode:
-        mock_FH.get.return_value = mock_fh
-        result = _infer_scale_from_header(file)
-    assert result == pytest.approx(0.5)
-    mock_decode.assert_called_once_with(b"ignored")
+    read.assert_called_once_with(file, 0)
 
 
 # ---------------------------------------------------------------------------

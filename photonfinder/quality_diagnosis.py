@@ -105,6 +105,12 @@ class FrameStats:
     has_stats: bool = True
     values: dict[Metric, Optional[float]] = field(default_factory=dict)
     background_rms: Optional[float] = None
+    hdu: int = 0  # the image in a file holding several
+
+    @property
+    def image(self) -> tuple[int, int]:
+        """(file id, hdu): the frame's key in verdicts, as one file can hold several frames."""
+        return self.file_id, self.hdu
 
     @property
     def read_failed(self) -> bool:
@@ -210,47 +216,52 @@ def diagnose(scope: DiagnosisScope, settings: DiagnosisSettings) -> DiagnosisRes
                 result.by_label.update(labels)
                 result.rejected += bool(labels)
                 result.ok += not labels
-            result.verdicts[frame.file_id] = verdict
+            result.verdicts[frame.image] = verdict
     return result
 
 
-def frames_needing_analysis(scope: DiagnosisScope, settings: DiagnosisSettings) -> list[int]:
-    """Frames without usable stats, in groups big enough to be judged once they have them."""
-    return [frame.file_id
+def frames_needing_analysis(scope: DiagnosisScope, settings: DiagnosisSettings) -> list[tuple[int, int]]:
+    """Frames, as (file id, hdu), without usable stats, in groups big enough to be judged once
+    they have them."""
+    return [frame.image
             for group in scope.groups
             if len(group.frames) >= settings.min_group_size and group.key.session_night is not None
             for frame in group.frames
             if not frame.has_stats or frame.read_failed]
 
 
-def _lights_in_search(criteria: SearchCriteria) -> set[int]:
-    query = library_query.select_matching(criteria, File.rowid).where(fn.UPPER(Image.image_type) == "LIGHT")
-    return {rowid for rowid, in query.tuples()}
+def _lights_in_search(criteria: SearchCriteria) -> set[tuple[int, int]]:
+    query = (library_query.select_matching(criteria, File.rowid, Image.hdu)
+             .where(fn.UPPER(Image.image_type) == "LIGHT"))
+    return set(query.tuples())
 
 
-def _lights_among(file_ids: set[int]) -> set[int]:
+def _lights_among(images: set[tuple[int, int]]) -> set[tuple[int, int]]:
     lights = set()
-    for batch in chunked(file_ids, _BATCH_SIZE):
-        query = Image.select(Image.file).where(Image.file.in_(batch), fn.UPPER(Image.image_type) == "LIGHT")
-        lights.update(file_id for file_id, in query.tuples())
+    for batch in chunked({file_id for file_id, _ in images}, _BATCH_SIZE):
+        query = (Image.select(Image.file, Image.hdu)
+                 .where(Image.file.in_(batch), fn.UPPER(Image.image_type) == "LIGHT"))
+        lights.update(key for key in query.tuples() if key in images)
     return lights
 
 
 def load_scope(context: ApplicationContext, criteria: SearchCriteria,
-               selected_file_ids: Optional[set[int]] = None) -> DiagnosisScope:
+               selected_images: Optional[set[tuple[int, int]]] = None) -> DiagnosisScope:
     """Load the peer groups of the selected LIGHT frames, or else of those matching `criteria`.
+    A frame is an image, (file id, hdu): the layers of a multi-layer file are frames of their own,
+    with their own filter and so their own peers.
 
     Groups are always whole, including frames the search hid or the user didn't select, so
     that a group is judged together. Only frames that could be a peer need their header read
     for the session night.
     """
     with context.database.bind_ctx(CORE_MODELS):
-        scope_ids = _lights_among(selected_file_ids) if selected_file_ids else _lights_in_search(criteria)
+        scope_ids = _lights_among(selected_images) if selected_images else _lights_in_search(criteria)
         if not scope_ids:
             return DiagnosisScope(groups=[])
 
         query = (Image
-                 .select(Image.file, Image.object_name, Image.filter, Image.exposure, Image.gain, Image.binning,
+                 .select(Image.file, Image.hdu, Image.object_name, Image.filter, Image.exposure, Image.gain, Image.binning,
                          Image.camera, Image.telescope, Image.date_obs, ImageStats.rowid, ImageStats.fwhm_median,
                          ImageStats.elongation_median, ImageStats.background_median, ImageStats.star_count,
                          ImageStats.background_rms)
@@ -259,15 +270,15 @@ def load_scope(context: ApplicationContext, criteria: SearchCriteria,
                  .where(fn.UPPER(Image.image_type) == "LIGHT"))
         rows = list(query.tuples())
 
-        scope_equipment = {row[1:8] for row in rows if row[0] in scope_ids}
-        candidates = [row for row in rows if row[1:8] in scope_equipment]
-        session_info = load_session_info([row[0] for row in candidates])
+        scope_equipment = {row[2:9] for row in rows if row[:2] in scope_ids}
+        candidates = [row for row in rows if row[2:9] in scope_equipment]
+        session_info = load_session_info(list({row[0] for row in candidates}))
 
     fallback_tz = CalibrationMatcher(context)._fallback_tz()
     groups: dict[PeerKey, list[FrameStats]] = {}
     scope_keys = set()
     for row in candidates:
-        file_id, object_name, filter_, exposure, gain, binning, camera, telescope, date_obs, stats_id, \
+        file_id, hdu, object_name, filter_, exposure, gain, binning, camera, telescope, date_obs, stats_id, \
             fwhm, elongation, background, star_count, background_rms = row
         date_loc, sitelat, sitelong = session_info.get(file_id, (None, None, None))
         key = PeerKey(session_date_for(date_obs, date_loc=date_loc, sitelat=sitelat, sitelong=sitelong,
@@ -279,28 +290,32 @@ def load_scope(context: ApplicationContext, criteria: SearchCriteria,
             values={Metric.FWHM: fwhm, Metric.ELONGATION: elongation, Metric.BACKGROUND: background,
                     Metric.STAR_COUNT: star_count},
             background_rms=background_rms,
+            hdu=hdu,
         ))
-        if file_id in scope_ids:
+        if (file_id, hdu) in scope_ids:
             scope_keys.add(key)
     return DiagnosisScope(groups=[PeerGroup(key, frames) for key, frames in groups.items() if key in scope_keys],
-                          selected_lights=len(scope_ids) if selected_file_ids else 0)
+                          selected_lights=len(scope_ids) if selected_images else 0)
 
 
 SAVING_DIAGNOSIS = "Saving diagnosis"
 
 
-def save_diagnoses(context: ApplicationContext, verdicts: dict[int, Optional[str]]) -> bool:
-    """Store the verdicts. Returns False, writing nothing, if another writer holds the library."""
+def save_diagnoses(context: ApplicationContext, verdicts: dict[tuple[int, int], Optional[str]]) -> bool:
+    """Store the verdicts, keyed by (file id, hdu). Returns False, writing nothing, if another
+    writer holds the library."""
     if not context.library_write_lock.acquire(blocking=False, holder=SAVING_DIAGNOSIS):
         return False
     try:
-        by_verdict: dict[Optional[str], list[int]] = {}
-        for file_id, verdict in verdicts.items():
-            by_verdict.setdefault(verdict, []).append(file_id)
+        # Grouped by verdict and hdu, so that each update is a plain IN on file ids.
+        by_verdict: dict[tuple[Optional[str], int], list[int]] = {}
+        for (file_id, hdu), verdict in verdicts.items():
+            by_verdict.setdefault((verdict, hdu), []).append(file_id)
         with context.database.bind_ctx(CORE_MODELS), context.database.atomic():
-            for verdict, file_ids in by_verdict.items():
+            for (verdict, hdu), file_ids in by_verdict.items():
                 for batch in chunked(file_ids, _BATCH_SIZE):
-                    ImageStats.update(diagnosis=verdict).where(ImageStats.file.in_(batch)).execute()
+                    (ImageStats.update(diagnosis=verdict)
+                     .where(ImageStats.file.in_(batch) & (ImageStats.hdu == hdu)).execute())
         return True
     finally:
         context.library_write_lock.release()

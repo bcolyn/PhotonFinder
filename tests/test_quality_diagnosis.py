@@ -48,7 +48,7 @@ def _steady(count=9, **values) -> list[FrameStats]:
 
 def _verdict(frame, peers, rules=None, min_group_size=5):
     settings = DiagnosisSettings(rules=rules or DiagnosisSettings().rules, min_group_size=min_group_size)
-    return diagnose(DiagnosisScope([PeerGroup(KEY, [*peers, frame])]), settings).verdicts[frame.file_id]
+    return diagnose(DiagnosisScope([PeerGroup(KEY, [*peers, frame])]), settings).verdicts[frame.image]
 
 
 @pytest.mark.parametrize("metric, values, label", [
@@ -99,7 +99,7 @@ def test_several_failures_are_listed_in_a_fixed_order():
 def test_no_stats_row_is_not_analysed():
     frame = FrameStats(file_id=1, has_stats=False)
     result = diagnose(DiagnosisScope([PeerGroup(KEY, [*_steady(), frame])]), DiagnosisSettings())
-    assert result.verdicts[1] is None
+    assert result.verdicts[(1, 0)] is None
     assert result.not_analysed == 1
 
 
@@ -107,7 +107,7 @@ def test_small_group_is_not_judged():
     peers = _steady(count=3)
     bad = _frame(fwhm=9.0)
     result = diagnose(DiagnosisScope([PeerGroup(KEY, [*peers, bad])]), DiagnosisSettings(min_group_size=5))
-    assert result.verdicts[bad.file_id] is None
+    assert result.verdicts[bad.image] is None
     assert result.too_few_peers == 4
 
 
@@ -120,13 +120,13 @@ def test_frames_without_a_date_have_no_peers():
     key = PeerKey(None, "M31", "Ha", 300.0, 100, 1, "ASI2600", "RC8")
     frame = _frame(fwhm=9.0)
     result = diagnose(DiagnosisScope([PeerGroup(key, [*_steady(), frame])]), DiagnosisSettings())
-    assert result.verdicts[frame.file_id] is None
+    assert result.verdicts[frame.image] is None
 
 
 def test_read_failure_stays_not_analysed_and_is_counted():
     failed = FrameStats(file_id=2, values=_values(None, None, None, None))
     result = diagnose(DiagnosisScope([PeerGroup(KEY, [*_steady(), failed])]), DiagnosisSettings())
-    assert result.verdicts[2] is None
+    assert result.verdicts[(2, 0)] is None
     assert result.read_failed == 1
     assert result.rejected == 0
 
@@ -134,7 +134,7 @@ def test_read_failure_stays_not_analysed_and_is_counted():
 def test_no_stars_is_missing_metrics():
     no_stars = FrameStats(file_id=3, values=_values(fwhm=None, elongation=None, stars=0), background_rms=5.0)
     result = diagnose(DiagnosisScope([PeerGroup(KEY, [*_steady(), no_stars])]), DiagnosisSettings())
-    assert result.verdicts[3] == DIAGNOSIS_MISSING_METRICS
+    assert result.verdicts[(3, 0)] == DIAGNOSIS_MISSING_METRICS
     assert result.rejected == 1
 
 
@@ -156,7 +156,7 @@ def test_unusable_frames_are_left_out_of_medians_and_group_size():
 
     too_small = PeerGroup(KEY, [*_steady(count=2), *unusable])
     good = too_small.frames[0]
-    assert diagnose(DiagnosisScope([too_small]), DiagnosisSettings()).verdicts[good.file_id] is None
+    assert diagnose(DiagnosisScope([too_small]), DiagnosisSettings()).verdicts[good.image] is None
 
 
 def test_frames_needing_analysis_skips_small_groups_and_frames_with_stats():
@@ -171,8 +171,8 @@ def test_frames_needing_analysis_skips_small_groups_and_frames_with_stats():
 
     scope = DiagnosisScope([big, small, undated])
 
-    assert frames_needing_analysis(scope, DiagnosisSettings()) == [1, 2]
-    assert frames_needing_analysis(scope, DiagnosisSettings(min_group_size=1)) == [1, 2, 4]
+    assert frames_needing_analysis(scope, DiagnosisSettings()) == [(1, 0), (2, 0)]
+    assert frames_needing_analysis(scope, DiagnosisSettings(min_group_size=1)) == [(1, 0), (2, 0), (4, 0)]
 
 
 def test_counts_add_up():
@@ -249,7 +249,7 @@ def test_selection_scopes_to_the_peer_groups_of_its_lights(context, library):
     dark = _light(library, image_type="DARK")
     other = _light(library, object_name="M33")
 
-    scope = load_scope(context, SearchCriteria(object_name="M33"), {selected.rowid, dark.rowid})
+    scope = load_scope(context, SearchCriteria(object_name="M33"), {(selected.rowid, 0), (dark.rowid, 0)})
 
     assert [sorted(frame.file_id for frame in group.frames) for group in scope.groups] \
         == [sorted([selected.rowid, peer.rowid])]
@@ -310,11 +310,11 @@ def test_unreadable_card_falls_back_to_the_full_parser():
 
 def test_save_stores_verdicts_and_overwrites_with_null(context, library):
     a, b = _light(library), _light(library)
-    assert save_diagnoses(context, {a.rowid: "Bad FWHM", b.rowid: DIAGNOSIS_OK})
+    assert save_diagnoses(context, {(a.rowid, 0): "Bad FWHM", (b.rowid, 0): DIAGNOSIS_OK})
     assert ImageStats.get(ImageStats.file == a).diagnosis == "Bad FWHM"
     assert ImageStats.get(ImageStats.file == b).diagnosis == DIAGNOSIS_OK
 
-    assert save_diagnoses(context, {a.rowid: None})
+    assert save_diagnoses(context, {(a.rowid, 0): None})
     assert ImageStats.get(ImageStats.file == a).diagnosis is None
     assert ImageStats.get(ImageStats.file == b).diagnosis == DIAGNOSIS_OK
 
@@ -323,11 +323,11 @@ def test_save_is_refused_while_another_writer_holds_the_library(context, library
     file = _light(library)
     assert context.library_write_lock.acquire(blocking=False)
     try:
-        assert save_diagnoses(context, {file.rowid: "Bad FWHM"}) is False
+        assert save_diagnoses(context, {(file.rowid, 0): "Bad FWHM"}) is False
     finally:
         context.library_write_lock.release()
     assert ImageStats.get(ImageStats.file == file).diagnosis is None
-    assert save_diagnoses(context, {file.rowid: "Bad FWHM"})  # and the lock was released again
+    assert save_diagnoses(context, {(file.rowid, 0): "Bad FWHM"})  # and the lock was released again
 
 
 def test_load_diagnose_save_round_trip(context, library):
@@ -347,7 +347,7 @@ def test_load_diagnose_save_round_trip(context, library):
 def test_reanalysing_a_frame_clears_its_diagnosis(context, library):
     from photonfinder.ui.BackgroundLoader import ImageAnalysisTask
     file = _light(library)
-    assert save_diagnoses(context, {file.rowid: "Bad FWHM"})
+    assert save_diagnoses(context, {(file.rowid, 0): "Bad FWHM"})
 
     task = ImageAnalysisTask(context, SearchCriteria(), [file])
     with patch("photonfinder.ui.BackgroundLoader.analyze_file", return_value=ImageAnalysisResult(star_count=7)):
@@ -361,7 +361,7 @@ def test_reanalysing_a_frame_clears_its_diagnosis(context, library):
 def test_failed_analysis_keeps_the_existing_stats_and_diagnosis(context, library):
     from photonfinder.ui.BackgroundLoader import ImageAnalysisTask
     file = _light(library)  # its file is not on disk, so reading it really fails
-    assert save_diagnoses(context, {file.rowid: "Bad FWHM"})
+    assert save_diagnoses(context, {(file.rowid, 0): "Bad FWHM"})
 
     task = ImageAnalysisTask(context, SearchCriteria(), [file])
     task._process_file(file, 0)

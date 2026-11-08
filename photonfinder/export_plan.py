@@ -32,6 +32,18 @@ class ExportEntry(NamedTuple):
     session_date: Optional[datetime.date]
 
 
+def _each_file_once(files: list[File]) -> list[File]:
+    """The files in order, a file listed more than once (a row per image of it) only the first time."""
+    seen = set()
+    result = []
+    for f in files:
+        key = f.rowid if f.rowid is not None else id(f)
+        if key not in seen:
+            seen.add(key)
+            result.append(f)
+    return result
+
+
 def coerce_value(value: str):
     """A header value as int, else float, else the string itself."""
     try:
@@ -203,12 +215,17 @@ class ExportPlan:
 
     def entries(self) -> list[ExportEntry]:
         """Everything the export writes: the lights with their session dates, then the
-        calibration, with a file under the shared path listed only once."""
+        calibration, with a file under the shared path listed only once. A file holding several
+        images is a light (and gets calibration matched) once per image, but is written once,
+        with the session date of its first."""
         if not self.light_files:
-            return [ExportEntry(f, None) for f in self.other_files]
-        session_dates = {f.rowid: key.session_date for key in self.session_keys for f in self.sessions[key]
-                         if f.rowid is not None and key.session_date is not None}
-        light_entries = [ExportEntry(f, session_dates.get(f.rowid)) for f in self.light_files]
+            return [ExportEntry(f, None) for f in _each_file_once(self.other_files)]
+        session_dates = {}
+        for key in self.session_keys:
+            for f in self.sessions[key]:
+                if f.rowid is not None and key.session_date is not None:
+                    session_dates.setdefault(f.rowid, key.session_date)
+        light_entries = [ExportEntry(f, session_dates.get(f.rowid)) for f in _each_file_once(self.light_files)]
         calib_entries = self.calibration_entries()
         shared_ids = self.shared_file_ids()
         if shared_ids:

@@ -33,6 +33,9 @@ logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[int, int], None]
 
+# For the file's first image (lowest hdu), in a correlated subquery.
+_FIRST_IMAGE = Image.alias()
+
 
 def _noop_progress(done: int, total: int) -> None:
     pass
@@ -222,7 +225,9 @@ def catalog_report(context, catalog: str, criteria: SearchCriteria,
         Image.coord_pix256,
         Image.coord_radius,
         solved_only=True,
-    ).where(Image.coord_ra.is_null(False))  # also drops files without an Image row
+    ).where(Image.coord_ra.is_null(False)  # also drops files without an Image row
+            # A solution is the file's: its first image stands for it, not every layer of it.
+            & (Image.hdu == _FIRST_IMAGE.select(fn.MIN(_FIRST_IMAGE.hdu)).where(_FIRST_IMAGE.file == File.rowid)))
     image_rows = list(img_q.tuples())
     images_considered = len(image_rows)
     logger.debug("Phase 1: %d candidate images in %.2fs", images_considered, time.monotonic() - t1)
@@ -420,8 +425,14 @@ def extract_photonfinder_field(file: File, field_name: str):
 def extract_fits_field(file: File, field_name: str):
     """Extract field from FITS header."""
     try:
+        image = file.__dict__.get('image')
         if hasattr(file, 'header_obj') and file.header_obj:
             header = file.header_obj
+        elif isinstance(image, Image) and image.hdu:
+            # A later layer's own header holds only what differs: read it merged with the primary's
+            from photonfinder.filesystem import cached_header
+            header = cached_header(file, image.hdu)
+            file.header_obj = header
         else:
             if hasattr(file, 'fitsheader') and file.fitsheader:
                 header = decode_header_blob(file.fitsheader.header)

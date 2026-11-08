@@ -51,12 +51,18 @@ def ensure_header_widths(table_view, extra_padding=12):
             header.resizeSection(col, total_needed)
 
 
+# Columns added after layouts were first saved, which a layout shows only when it says so with
+# a "+<label>" token: a layout saved before such a column existed lists only the columns it
+# hid, and must not start showing the new one.
+_OPT_IN_COLUMNS = {"Layer"}
+
+# Hidden columns per preset; the opt-in columns are hidden unless listed as "+<label>".
 _BUILTIN_PRESETS = {
     "Essentials": {"Gain", "Offset", "Binning", "Set Temp", "Camera", "Telescope",
                    "Size", "Modified", "RA", "DEC", "Solved", "Path",
                    "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation"},
     "Standard": {"Size", "Modified", "RA", "DEC", "Solved"},
-    "Full": set(),
+    "Full": {f"+{label}" for label in _OPT_IN_COLUMNS},
 }
 
 
@@ -176,16 +182,20 @@ class ColumnVisibilityController:
         dlg.exec()
 
     def save_visibility(self) -> str:
-        hidden_columns = []
-        for col in range(self.model.columnCount()):
-            if self.table_view.isColumnHidden(col):
-                header = str(self.model.headerData(col, Qt.Horizontal))
-                hidden_columns.append(header)
-        return ",".join(hidden_columns)
-
-    def load_visibility(self, csv_string: str):
-        hidden_headers = set(h.strip() for h in csv_string.split(",") if h.strip())
+        """The hidden columns' labels, and "+<label>" for each opt-in column shown."""
+        tokens = []
         for col in range(self.model.columnCount()):
             header = str(self.model.headerData(col, Qt.Horizontal))
-            self.table_view.setColumnHidden(col, header in hidden_headers)
+            if self.table_view.isColumnHidden(col):
+                tokens.append(header)
+            elif header in _OPT_IN_COLUMNS:
+                tokens.append(f"+{header}")
+        return ",".join(tokens)
+
+    def load_visibility(self, csv_string: str):
+        tokens = set(h.strip() for h in csv_string.split(",") if h.strip())
+        for col in range(self.model.columnCount()):
+            header = str(self.model.headerData(col, Qt.Horizontal))
+            hidden = header in tokens or (header in _OPT_IN_COLUMNS and f"+{header}" not in tokens)
+            self.table_view.setColumnHidden(col, hidden)
 
