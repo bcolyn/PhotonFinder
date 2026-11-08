@@ -1157,6 +1157,18 @@ def build_mcp(context: ApplicationContext):
     return mcp
 
 
+def _is_shutdown_cancellation(record: logging.LogRecord) -> bool:
+    """uvicorn's ERROR records for the requests it cancels when the graceful shutdown
+    timeout runs out: expected on every exit while a client is connected, not a fault."""
+    import asyncio
+    if record.exc_info and isinstance(record.exc_info[1], asyncio.CancelledError):
+        return True
+    return record.getMessage().startswith("Cancel ") and "timeout graceful shutdown" in record.getMessage()
+
+
+logging.getLogger("uvicorn.error").addFilter(lambda record: not _is_shutdown_cancellation(record))
+
+
 class McpServerController:
     """Hosts the MCP server inside the application, on a loopback port.
 
@@ -1187,6 +1199,7 @@ class McpServerController:
         self._server = None
 
     STARTUP_TIMEOUT = 15  # seconds for uvicorn to start accepting
+    GRACEFUL_SHUTDOWN_TIMEOUT = 0.5  # seconds open requests and streams get before cancellation
 
     @property
     def running(self) -> bool:
@@ -1222,8 +1235,12 @@ class McpServerController:
         # log_config=None: uvicorn's default config builds a formatter that probes
         # sys.stdout.isatty(), and the windowed build has no stdout at all -- configuring
         # it there fails outright. Our own logging is already set up by main.py.
+        # timeout_graceful_shutdown: a connected client holds an event stream open that
+        # never finishes on its own, and uvicorn would wait for it forever -- stop() then
+        # sat out its whole join timeout and the window took that long to close.
         self._server = uvicorn.Server(
-            uvicorn.Config(app, log_config=None, log_level="warning"))
+            uvicorn.Config(app, log_config=None, log_level="warning",
+                           timeout_graceful_shutdown=self.GRACEFUL_SHUTDOWN_TIMEOUT))
 
         def serve():
             try:
