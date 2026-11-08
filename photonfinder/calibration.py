@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from astropy.io.fits import Card
 from peewee import chunked
+from tzlocal import get_localzone
 
 from photonfinder import library_query
 from photonfinder.core import ApplicationContext, decompress
@@ -307,8 +308,13 @@ class CalibrationMatcher:
                 return ZoneInfo(tz_name)
             except Exception:
                 logging.warning(f"Invalid timezone name in settings: {tz_name!r}")
-        # System local timezone
-        return datetime.datetime.now().astimezone().tzinfo
+        # The system zone with its DST rules: a fixed offset taken now would give a winter
+        # frame the summer offset.
+        try:
+            return get_localzone()
+        except Exception:
+            logging.warning("Could not determine the system timezone", exc_info=True)
+            return None
 
     def _load_session_info(self, files: list[File]) -> dict[
         int, tuple[Optional[datetime.datetime], Optional[float], Optional[float]]]:

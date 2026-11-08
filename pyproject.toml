@@ -32,6 +32,8 @@ dependencies = [
     "timezonefinder~=9.2.0",
     # Not imported: the time zone database zoneinfo needs on Windows.
     "tzdata",
+    # The system time zone as an IANA zone with DST rules (not a fixed offset).
+    "tzlocal~=5.4",
     # 2.x removed FastMCP; moving to it means migrating mcp_server.py.
     "mcp~=1.2",
     "anyio~=4.13",
