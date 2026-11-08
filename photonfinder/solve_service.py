@@ -426,7 +426,7 @@ class SolvePlan:
         return [group for group in self.groups if group.gave_up]
 
     def describe(self) -> str:
-        line = (f"One frame per target per night: {len(self.groups)} groups to solve "
+        line = (f"One frame per group of similar frames: {len(self.groups)} groups to solve "
                 f"from {self.total_files} files")
         if self.skipped:
             line += f"; {len(self.skipped)} skipped, already solved: " +                     "; ".join(group.describe() for group in self.skipped[:5]) +                     (" ..." if len(self.skipped) > 5 else "")

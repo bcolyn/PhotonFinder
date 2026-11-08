@@ -98,7 +98,7 @@
     <property name="title">
      <string>F&amp;ilter</string>
     </property>
-    <addaction name="actionGroupByNight"/>
+    <addaction name="actionGroupSimilarFrames"/>
     <addaction name="separator"/>
     <addaction name="actionExposure"/>
     <addaction name="actionCoordinates"/>
@@ -326,7 +326,7 @@
     <string>Date</string>
    </property>
   </action>
-  <action name="actionGroupByNight">
+  <action name="actionGroupSimilarFrames">
    <property name="checkable">
     <bool>true</bool>
    </property>
@@ -335,10 +335,10 @@
      <normaloff>:/res/box-seam.svg</normaloff>:/res/box-seam.svg</iconset>
    </property>
    <property name="text">
-    <string>Group by Night</string>
+    <string>Group Similar Frames</string>
    </property>
    <property name="toolTip">
-    <string>One row per target per night (and image type, folder, filter and exposure), with how many frames it stands for. Double-click a row to see its frames</string>
+    <string>One row per group of similar frames: the same target, observing night, image type, folder, filter and exposure, with how many frames it stands for. Double-click a row to see its frames</string>
    </property>
   </action>
   <action name="actionNight">

@@ -22,7 +22,7 @@ def test_a_grouped_grid_solves_one_frame_per_group(sandbox, app, monkeypatch):
 
     assert not _open_dialog(panel).one_per_group_check.isChecked()  # one row per image: every frame
 
-    app.actionGroupByNight.trigger()
+    app.actionGroupSimilarFrames.trigger()
     sandbox.wait_idle()
     dialog = _open_dialog(panel)
     assert dialog.one_per_group_check.isChecked()

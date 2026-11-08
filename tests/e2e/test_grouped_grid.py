@@ -1,4 +1,4 @@
-"""Group by Night on a grid holding all three synthetic libraries: one row per group with its
+"""Group Similar Frames on a grid holding all three synthetic libraries: one row per group with its
 frame count, a selected row standing for its frames, the drill-in, and the mode surviving a
 restart."""
 from collections import Counter
@@ -25,7 +25,7 @@ def _groups(libraries) -> Counter:
 
 
 def _group_by_night(sandbox, app) -> Grid:
-    app.actionGroupByNight.trigger()
+    app.actionGroupSimilarFrames.trigger()
     sandbox.wait_idle()
     return sandbox.grid()
 
@@ -40,10 +40,10 @@ def test_one_row_per_group_with_its_frames(sandbox, app, libraries, grid):
     assert grid.total == len(expected)
     assert sorted(int(n) for n in grid.column("Frames")) == sorted(expected.values())
     assert not panel.dataView.isColumnHidden(COLUMN_INDEX["frames"])
-    assert app.actionGroupByNight.isChecked()
+    assert app.actionGroupSimilarFrames.isChecked()
     assert panel.title.startswith(f"{len(libraries.files)} files in {len(expected)} groups")
 
-    app.actionGroupByNight.trigger()  # back to one row per image
+    app.actionGroupSimilarFrames.trigger()  # back to one row per image
     sandbox.wait_idle()
     assert grid.total == len(libraries.files)
     assert panel.dataView.isColumnHidden(COLUMN_INDEX["frames"])

@@ -43,10 +43,10 @@
       <item row="2" column="0" colspan="2">
        <widget class="QCheckBox" name="one_per_group_check">
         <property name="toolTip">
-         <string>Solve only the earliest unsolved frame of each target per night (and image type, folder, filter and exposure); groups with a solved frame are skipped, and Retry Failed tries the next frame of a failed group. The other frames stay unsolved; the catalog report counts them by the solved one</string>
+         <string>Solve only the earliest unsolved frame of each group of similar frames (the same target, observing night, image type, folder, filter and exposure); groups with a solved frame are skipped, and Retry Failed tries the next frame of a failed group. The other frames stay unsolved; the catalog report counts them by the solved one</string>
         </property>
         <property name="text">
-         <string>Only one frame per target per night</string>
+         <string>Only one frame per group of similar frames</string>
         </property>
        </widget>
       </item>
