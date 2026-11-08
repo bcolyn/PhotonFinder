@@ -92,6 +92,22 @@ def session_night(local_time: Optional[datetime.datetime]) -> Optional[datetime.
     return (local_time - NIGHT_OFFSET).date() if local_time is not None else None
 
 
+_missing_noted = False
+
+
+def night_of(image) -> Optional[datetime.date]:
+    """The session night of a loaded Image, from its stored local time; None without one. That
+    only happens without date_obs, or while the background fill hasn't reached the image (once,
+    after the upgrade to schema version 3), which is logged once."""
+    global _missing_noted  # pylint: disable=global-statement  # log once per run
+    if image is None:
+        return None
+    if image.local_time is None and image.date_obs is not None and not _missing_noted:
+        _missing_noted = True
+        logging.info("Some images have no local time yet (still being computed): their night is unknown for now")
+    return session_night(image.local_time)
+
+
 def local_time_for(date_obs: Optional[datetime.datetime], *, date_loc: Optional[datetime.datetime] = None,
                    sitelat: Optional[float] = None, sitelong: Optional[float] = None,
                    tz: Optional[datetime.tzinfo] = None) -> tuple[Optional[datetime.datetime], Optional[str]]:
@@ -125,14 +141,6 @@ def file_local_times(dates_obs: list, info: SessionInfo, tz) -> list[tuple]:
             loc = loc + (date_obs - reference) if date_obs is not None and reference is not None else None
         result.append(local_time_for(date_obs, date_loc=loc, sitelat=sitelat, sitelong=sitelong, tz=tz))
     return result
-
-
-def session_date_for(date_obs: Optional[datetime.datetime], *, date_loc: Optional[datetime.datetime] = None,
-                     sitelat: Optional[float] = None, sitelong: Optional[float] = None,
-                     fallback_tz=None) -> Optional[datetime.date]:
-    """The night of a UTC timestamp, computed on the spot (see local_time_for)."""
-    local, _ = local_time_for(date_obs, date_loc=date_loc, sitelat=sitelat, sitelong=sitelong, tz=fallback_tz)
-    return session_night(local)
 
 
 def _naive(value: datetime.datetime) -> datetime.datetime:

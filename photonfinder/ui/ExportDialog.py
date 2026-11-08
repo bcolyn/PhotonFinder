@@ -19,7 +19,8 @@ from PySide6.QtWidgets import (QDialog, QFileDialog, QMessageBox, QDialogButtonB
 from astropy.io import fits
 
 from photonfinder import library_query, plate_solution
-from photonfinder.calibration import CalibrationMatcher, CalibrationCandidate, SessionKey, session_date_for
+from photonfinder.calibration import CalibrationMatcher, CalibrationCandidate, SessionKey
+from photonfinder.local_time import night_of
 from photonfinder.export_plan import CALIB_TYPES, ExportEntry, ExportPlan
 from photonfinder.core import ApplicationContext, Settings, Change
 from photonfinder.filesystem import is_compressed, fopen, Importer, header_from_xisf_dict, repair_header
@@ -101,16 +102,15 @@ def template_filename(file: File, template: string.Template, settings: Settings,
         'object_name': image.object_name if image else None,
         'date_obs': image.date_obs.isoformat() if image and image.date_obs else None
     }
-    if image and image.date_obs:
-        mapping['date_minus12'] = session_date_for(image.date_obs).isoformat()
-        mapping['date'] = image.date_obs.date().isoformat()
-    else:
-        mapping['date_minus12'] = None
-        mapping['date'] = None
+    # Both from the stored local time (local_time): the local capture date, and the night (local
+    # time minus 12 hours) the frame belongs to. None without a local time.
+    night = night_of(image)
+    mapping['date_minus12'] = night.isoformat() if night else None
+    mapping['date'] = image.local_time.date().isoformat() if image and image.local_time else None
 
     # sess_date: the date of the light-frame session this file belongs to.
-    # For light frames this equals date_minus12; for calibration frames it is
-    # the session date of the lights they were matched to, which may differ.
+    # For light frames this equals date_minus12 (both are the night); for calibration frames it
+    # is the night of the lights they were matched to, which may differ from their own.
     # Falls back to date_minus12 when no session context is available.
     mapping['sess_date'] = sess_date.isoformat() if sess_date else mapping['date_minus12']
 

@@ -21,7 +21,7 @@ import numpy as np
 from peewee import JOIN, chunked, fn
 
 from photonfinder import library_query
-from photonfinder.calibration import CalibrationMatcher, load_session_info, session_date_for
+from photonfinder.local_time import session_night
 from photonfinder.core import ApplicationContext
 from photonfinder.models import (
     CORE_MODELS, DIAGNOSIS_BAD_BACKGROUND, DIAGNOSIS_BAD_ELONGATION, DIAGNOSIS_BAD_FWHM, DIAGNOSIS_BAD_STAR_COUNT,
@@ -252,8 +252,8 @@ def load_scope(context: ApplicationContext, criteria: SearchCriteria,
     with their own filter and so their own peers.
 
     Groups are always whole, including frames the search hid or the user didn't select, so
-    that a group is judged together. Only frames that could be a peer need their header read
-    for the session night.
+    that a group is judged together. The session night comes from each frame's stored local
+    time: a frame without one yet (still being computed after an upgrade) has an unknown night.
     """
     with context.database.bind_ctx(CORE_MODELS):
         scope_ids = _lights_among(selected_images) if selected_images else _lights_in_search(criteria)
@@ -262,7 +262,7 @@ def load_scope(context: ApplicationContext, criteria: SearchCriteria,
 
         query = (Image
                  .select(Image.file, Image.hdu, Image.object_name, Image.filter, Image.exposure, Image.gain, Image.binning,
-                         Image.camera, Image.telescope, Image.date_obs, ImageStats.rowid, ImageStats.fwhm_median,
+                         Image.camera, Image.telescope, Image.local_time, ImageStats.rowid, ImageStats.fwhm_median,
                          ImageStats.elongation_median, ImageStats.background_median, ImageStats.star_count,
                          ImageStats.background_rms)
                  .join(ImageStats, JOIN.LEFT_OUTER,
@@ -272,18 +272,13 @@ def load_scope(context: ApplicationContext, criteria: SearchCriteria,
 
         scope_equipment = {row[2:9] for row in rows if row[:2] in scope_ids}
         candidates = [row for row in rows if row[2:9] in scope_equipment]
-        session_info = load_session_info(list({row[0] for row in candidates}))
 
-    fallback_tz = CalibrationMatcher(context)._fallback_tz()
     groups: dict[PeerKey, list[FrameStats]] = {}
     scope_keys = set()
     for row in candidates:
-        file_id, hdu, object_name, filter_, exposure, gain, binning, camera, telescope, date_obs, stats_id, \
+        file_id, hdu, object_name, filter_, exposure, gain, binning, camera, telescope, local, stats_id, \
             fwhm, elongation, background, star_count, background_rms = row
-        date_loc, sitelat, sitelong = session_info.get(file_id, (None, None, None))
-        key = PeerKey(session_date_for(date_obs, date_loc=date_loc, sitelat=sitelat, sitelong=sitelong,
-                                       fallback_tz=fallback_tz),
-                      object_name, filter_, exposure, gain, binning, camera, telescope)
+        key = PeerKey(session_night(local), object_name, filter_, exposure, gain, binning, camera, telescope)
         groups.setdefault(key, []).append(FrameStats(
             file_id=file_id,
             has_stats=stats_id is not None,

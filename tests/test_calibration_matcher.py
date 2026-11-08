@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from photonfinder.calibration import CalibrationMatcher, SessionKey, CalibrationCandidate
-from photonfinder.local_time import _dms_to_deg, session_date_for, session_info_from_header
+from photonfinder.local_time import _dms_to_deg, local_time_for, session_info_from_header, session_night
 from photonfinder.models import File, Image, LibraryRoot, SearchCriteria
 from .conftest import DynamicSettings
 
@@ -105,8 +105,13 @@ class TestSessionInfoFromHeader:
         assert lon is None
 
 
+def session_date_for(date_obs, *, fallback_tz=None, **sources):
+    """The night of a UTC timestamp, as the stored local time gives it."""
+    return session_night(local_time_for(date_obs, tz=fallback_tz, **sources)[0])
+
+
 class TestSessionDateFor:
-    """session_date_for priority logic."""
+    """Which source the local time, and so the night, comes from."""
 
     def test_returns_none_when_date_obs_is_none(self):
         assert session_date_for(None) is None
@@ -170,6 +175,7 @@ def _make_file(name, image_type, filter_name=None, date_obs=None, camera="Cam",
         binning=binning,
         set_temp=set_temp,
         date_obs=date_obs,
+        local_time=local_time_for(date_obs)[0],  # as stored for a frame without DATE-LOC or site, in UTC
     )
     f.image = img
     return f

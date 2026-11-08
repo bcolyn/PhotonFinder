@@ -31,8 +31,10 @@ def add_frames(sandbox, target: str, fwhms: list[float], names: list[str] | None
         for i, fwhm in enumerate(fwhms):
             name = names[i] if names else f"{target}_{i}.fits"
             file = File.create(root=root, path=f"{target}/", name=name, size=1, mtime_millis=1)
+            date_obs = datetime(2024, 1, 1, 22) + timedelta(minutes=i)
             Image.create(file=file, image_type="LIGHT", object_name=target, filter="Ha", exposure=300.0, gain=100,
-                         binning=1, camera="C", telescope="T", date_obs=datetime(2024, 1, 1, 22) + timedelta(minutes=i))
+                         binning=1, camera="C", telescope="T", date_obs=date_obs,
+                         local_time=date_obs, local_time_source="fallback")  # as import stores it, in UTC
             ImageStats.create(file=file, fwhm_median=fwhm, elongation_median=1.2, background_median=100.0,
                               background_rms=5.0, star_count=500)
 
@@ -267,8 +269,10 @@ def add_unanalysed(sandbox, target: str, count: int):
         root = LibraryRoot.get_or_create(name="Main", path="/data/")[0]
         for i in range(count):
             file = File.create(root=root, path=f"{target}/", name=f"{target}_new{i}.fits", size=1, mtime_millis=1)
+            date_obs = datetime(2024, 1, 1, 23) + timedelta(minutes=i)
             Image.create(file=file, image_type="LIGHT", object_name=target, filter="Ha", exposure=300.0, gain=100,
-                         binning=1, camera="C", telescope="T", date_obs=datetime(2024, 1, 1, 23) + timedelta(minutes=i))
+                         binning=1, camera="C", telescope="T", date_obs=date_obs,
+                         local_time=date_obs, local_time_source="fallback")  # as import stores it, in UTC
 
 
 def stats_of(sandbox, name: str):

@@ -26,9 +26,19 @@ The export dialog uses Python [string.Template](https://docs.python.org/3/librar
 | `${telescope}` | Telescope name from the FITS header. |
 | `${object_name}` | Target object name. |
 | `${date_obs}` | Full capture timestamp in UTC ISO format. |
-| `${date}` | Capture date without time (`YYYY-MM-DD`). |
-| `${date_minus12}` | Capture date minus 12 hours. Maps all frames from a single observing night to one date regardless of whether the session ran past midnight. |
-| `${sess_date}` | Date of the light-frame session this file belongs to. For light frames this is the same as `${date_minus12}`. For calibration frames (darks, flats, bias) it is the session date of the lights they were matched to — which may differ from the calibration frame's own capture date. Falls back to `${date_minus12}` when no session context is available. |
+| `${date}` | Local capture date (`YYYY-MM-DD`), from the frame's local time (see below). |
+| `${date_minus12}` | The observing night: the local capture time minus 12 hours, as a date. All frames of one night share it, whether taken before or after midnight. |
+| `${sess_date}` | Night of the light-frame session this file belongs to. For light frames this is the same as `${date_minus12}`. For calibration frames (darks, flats, bias) it is the night of the lights they were matched to — which may differ from the calibration frame's own capture date. Falls back to `${date_minus12}` when no session context is available. |
+
+### Local time
+
+`${date}` and `${date_minus12}` use each frame's local time, taken from the first source its header has:
+
+1. `DATE-LOC`, the local time the capture software recorded;
+2. `DATE-OBS` in the time zone of the observatory (`SITELAT`/`SITELONG`, or `OBSGEO-B`/`OBSGEO-L`);
+3. `DATE-OBS` in the timezone set under Settings → Observatory.
+
+Releases before library version 3 used the UTC date of `DATE-OBS` for `${date}`, and UTC minus 12 hours for `${date_minus12}`. Re-exporting can therefore put some frames under another date folder: with `${date}`, frames taken between local midnight and the UTC date change; with `${date_minus12}`, frames far from UTC (in the Americas or Asia-Pacific, for example).
 
 ## Example patterns
 

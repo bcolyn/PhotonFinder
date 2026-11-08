@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 from photonfinder import library_query, mcp_server
-from photonfinder.calibration import CalibrationMatcher, load_session_info
+from photonfinder.calibration import CalibrationMatcher
+from photonfinder.local_time import load_session_info
 from photonfinder.core import ApplicationContext, StatusReporter
 from photonfinder.export_plan import ExportPlan
 from photonfinder.filesystem import ChangeList, update_fits_header_cache

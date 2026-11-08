@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from astropy.io.fits import Header
@@ -9,6 +10,7 @@ from peewee import SqliteDatabase
 
 from photonfinder.core import ApplicationContext, compress
 from photonfinder.filesystem import decode_header_blob
+from photonfinder import local_time
 from photonfinder.local_time import _session_info_from_blob, session_info_from_header
 from photonfinder.image_analysis import ImageAnalysisResult
 from photonfinder.models import (
@@ -210,6 +212,8 @@ def _light(root, *, date_obs=NIGHT, stats=True, path="lights/", header=None, ima
         for key, value in header.items():
             h[key] = value
         FitsHeader.create(file=file, header=compress(h.tostring().encode("ascii")))
+    # its local time, as import or the background fill stores it, from the header when it has one
+    assert local_time.update_library(ZoneInfo("UTC"))  # the library fixture's obs_timezone
     return file
 
 
@@ -266,7 +270,7 @@ def test_no_selection_falls_back_to_the_search(context, library):
         assert scope.selected_lights == 0
 
 
-def test_a_night_runs_across_midnight_using_the_cached_header(context, library):
+def test_a_night_runs_across_midnight_using_the_header_s_local_time(context, library):
     # UTC+12: by UTC alone, the first two would land in different nights.
     evening = _light(library, date_obs=datetime(2024, 1, 1, 10, 30), header={"DATE-LOC": "2024-01-01T22:30:00"})
     morning = _light(library, date_obs=datetime(2024, 1, 1, 15, 30), header={"DATE-LOC": "2024-01-02T03:30:00"})

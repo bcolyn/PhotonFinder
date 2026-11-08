@@ -7,7 +7,7 @@ from typing import Optional
 
 from photonfinder import library_query
 from photonfinder.core import ApplicationContext
-from photonfinder.local_time import load_session_info, obs_zone, session_date_for
+from photonfinder.local_time import night_of, session_night
 from photonfinder.models import File, Image, SearchCriteria
 
 
@@ -121,41 +121,14 @@ class CalibrationMatcher:
     def __init__(self, context: ApplicationContext):
         self.context = context
 
-    def _fallback_tz(self) -> Optional[datetime.tzinfo]:
-        """The obs_timezone setting, for frames without DATE-LOC or a site; None to read them as UTC."""
-        if not hasattr(self, 'context'):
-            return None
-        return obs_zone(self.context.settings)
-
-    def _load_session_info(self, files: list[File]) -> dict[
-        int, tuple[Optional[datetime.datetime], Optional[float], Optional[float]]]:
-        """Batch-load FITS header info for given files."""
-        if not hasattr(self, 'context') or not files:
-            return {}
-        return load_session_info([f.rowid for f in files if f.rowid is not None])
-
     def get_sessions(self, light_files: list[File]) -> dict[SessionKey, list[File]]:
         """Group LIGHT files by (session_date, filter), sorted by date then filter."""
-        session_info = self._load_session_info(light_files)
-        fallback_tz = self._fallback_tz()
         groups: dict[SessionKey, list] = {}
         for f in light_files:
             image = f.image if hasattr(f, 'image') else None
             if not image:
                 continue
-            info = session_info.get(f.rowid, (None, None, None))
-            date_loc, sitelat, sitelong = info
-            key = SessionKey(
-                session_date=session_date_for(
-                    image.date_obs,
-                    date_loc=date_loc,
-                    sitelat=sitelat,
-                    sitelong=sitelong,
-                    fallback_tz=fallback_tz,
-                ),
-                filter=image.filter,
-                exposure=image.exposure,
-            )
+            key = SessionKey(session_date=night_of(image), filter=image.filter, exposure=image.exposure)
             if key not in groups:
                 groups[key] = []
             groups[key].append(f)
@@ -184,20 +157,10 @@ class CalibrationMatcher:
         files = self._query_files(criteria)
         by_temperature = (criteria.type or "").upper() == "DARK"
 
-        session_info = self._load_session_info(files)
-        fallback_tz = self._fallback_tz()
         cal_groups: dict[tuple, list] = {}
         for f in files:
             image = f.image if hasattr(f, 'image') else None
-            info = session_info.get(f.rowid, (None, None, None))
-            date_loc, sitelat, sitelong = info
-            d = session_date_for(
-                image.date_obs if image else None,
-                date_loc=date_loc,
-                sitelat=sitelat,
-                sitelong=sitelong,
-                fallback_tz=fallback_tz,
-            )
+            d = night_of(image)
             filt = image.filter if image else None
             temp_key = round(image.set_temp) if by_temperature and image and image.set_temp is not None else None
             cal_groups.setdefault((d, filt, temp_key), []).append(f)
@@ -248,7 +211,8 @@ class CalibrationMatcher:
             return round(v) if v is not None else None
 
         def _datetime_median(vals):
-            # date_obs is naive UTC: without a tzinfo, .timestamp() would read it as local time.
+            # Naive times (UTC, or local wall-clock): read as UTC, so .timestamp() doesn't apply
+            # the system zone, and given back as they were.
             clean = [v if v.tzinfo else v.replace(tzinfo=datetime.timezone.utc) for v in vals if v is not None]
             if not clean:
                 return None
@@ -265,6 +229,8 @@ class CalibrationMatcher:
         ref.binning = _int_median(img.binning for img in images)
         ref.set_temp = _median(img.set_temp for img in images)
         ref.date_obs = _datetime_median(img.date_obs for img in images)
+        # Naive local times: the median of the same frames, so on their night (all share one).
+        ref.local_time = _datetime_median(img.local_time for img in images)
         ref.file =  images[0].file # peewee enforces non-null, even on a transient object it seems
         return ref
 
@@ -280,7 +246,7 @@ class CalibrationMatcher:
             relaxed.exposure_tolerance = 1.0
             relaxed.temperature_tolerance = 5.0
             results = self.find_candidates(relaxed)
-        ref_date = ref.date_obs.date() if ref.date_obs else None
+        ref_date = session_night(ref.local_time)  # the lights' night, not a UTC date
         results = self._sort_by_exposure_then_date(results, ref.exposure, ref_date)
         _log_candidates("Dark candidates", results)
         return results
@@ -290,7 +256,7 @@ class CalibrationMatcher:
         if not ref:
             return []
         _log.info("Flat candidates for %d light(s), reference %s", len(session_lights), _describe_image(ref))
-        ref_date = ref.date_obs.date() if ref.date_obs else None
+        ref_date = session_night(ref.local_time)  # the lights' night, not a UTC date
         results = self.find_candidates(SearchCriteria.find_flat(ref))
         if not results:
             _log.info("  no flats within the date window: relaxed search without dates")
@@ -310,7 +276,7 @@ class CalibrationMatcher:
             return []
         _log.info("Bias candidates for %d light(s), reference %s", len(session_lights), _describe_image(ref))
         results = self.find_candidates(SearchCriteria.find_bias(ref))
-        ref_date = ref.date_obs.date() if ref.date_obs else None
+        ref_date = session_night(ref.local_time)  # the lights' night, not a UTC date
         results = self._sort_by_exposure_then_date(results, None, ref_date)
         _log_candidates("Bias candidates", results)
         return results
@@ -331,7 +297,7 @@ class CalibrationMatcher:
             relaxed.exposure_tolerance = 1.0
             relaxed.temperature_tolerance = 5.0
             results = self.find_candidates(relaxed)
-        ref_date = ref_image.date_obs.date() if ref_image.date_obs else None
+        ref_date = night_of(ref_image)
         results = self._sort_by_exposure_then_date(results, ref_image.exposure, ref_date)
         _log_candidates("Dark-flat candidates", results)
         return results
