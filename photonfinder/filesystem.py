@@ -15,9 +15,8 @@ from astropy.io.fits import Header, Card
 from fs.base import FS
 from fs.info import Info
 from peewee import JOIN
-from xisf import XISF
 
-from photonfinder import plate_solution
+from photonfinder import image_hdus, plate_solution
 from photonfinder.core import StatusReporter, compress, decompress
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import File, LibraryRoot, FitsHeader, Image, norm_db_path, FileWCS, ImageStats
@@ -55,84 +54,43 @@ def is_compressed(filename):
     return compression_ext(filename) is not None
 
 
-_FITS_BLOCK_SIZE = 2880
-_FITS_CARD_SIZE = 80
-
-
-def _has_end_card(block: bytes) -> bool:
-    """Whether a card in this block is END. ENDTIME and the like are ordinary keywords."""
-    return any(block[start:start + 8].rstrip(b" \0") == b"END"
-               for start in range(0, len(block), _FITS_CARD_SIZE))
-
-
 def read_fits_header(file: str | Path, status_reporter: StatusReporter = None) -> bytes | None:
     """
-    Read the FITS header from a file.
-
-    A FITS header consists of one or more blocks of 2880 bytes.
-    Each block contains 36 lines of 80 characters.
-    The header ends with the END card.
-
-    Args:
-        file: filename or Path object
+    The FITS header of the file's first image: the header blocks (2880 bytes each, up to and
+    including the one with END) of the primary HDU, or, when the primary holds no image, the
+    first image extension's header merged with the primary's (see `image_hdus.merged_header`).
+    A file with no image HDU at all gets its primary header.
 
     Returns:
-        The FITS header as a string, or None if the file is not a valid FITS file
+        The header bytes, or None if the file is not a valid FITS file
     """
     if status_reporter:
         status_reporter.update_status(f"Reading FITS header for {file}...", bulk=True)
-    try:
-        with fopen(file) as f:
-            header = bytes()
-
-            while True:
-                block = f.read(_FITS_BLOCK_SIZE)
-                if not block:
-                    # End of file without finding END
-                    log(ERROR, f"End block not found in FITS file: {file}")
-                    return None
-
-                if len(header) == 0:  # first block
-                    if not block[:80].decode('ascii').startswith('SIMPLE  ='):
-                        log(ERROR, f"Cannot decode as FITS file: {file}")
-                        return None
-
-                header += block
-
-                if _has_end_card(block):
-                    return header
-
-    except Exception as e:
-        log(DEBUG, f"Error reading FITS header from {file}: {str(e)}")
+    scan = image_hdus.scan_fits(file, first_only=True)
+    if scan is None:
         return None
+    image = image_hdus.first_image(scan)
+    if image is None or image.index == 0:
+        return scan.primary_header
+    try:
+        merged = image_hdus.merged_header(Header.fromstring(scan.primary_header), Header.fromstring(image.header))
+        return merged.tostring().encode("ascii")
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        log(WARN, f"Cannot merge the headers of HDU {image.index} in {file}, using the primary: {e}")
+        return scan.primary_header
 
 
 def read_xisf_header(file: str | Path, status_reporter: StatusReporter = None) -> (tuple[bytes, dict[str, list]] |
                                                                                    tuple[None, None]):
-    try:
-        if status_reporter:
-            status_reporter.update_status(f"Reading XISF header for {file}...", bulk=True)
-        xisf = XISF(file)
-        metas = xisf.get_images_metadata()
-        for meta in metas:
-            if "FITSKeywords" in meta:
-                fits_keywords = meta["FITSKeywords"]
-                geometry = meta.get("geometry", ())
-                if len(geometry) >= 2:
-                    # geometry="dim1:...:dimN:channel-count" e.g. (8288, 5644, 1)
-                    channels = geometry[-1]
-                    if 'NAXIS' not in fits_keywords:
-                        fits_keywords['NAXIS'] = [{'value': '3' if channels > 1 else '2', 'comment': ''}]
-                    if 'NAXIS1' not in fits_keywords:
-                        fits_keywords['NAXIS1'] = [{'value': str(geometry[0]), 'comment': ''}]
-                    if 'NAXIS2' not in fits_keywords:
-                        fits_keywords['NAXIS2'] = [{'value': str(geometry[1]), 'comment': ''}]
-                    if channels > 1 and 'NAXIS3' not in fits_keywords:
-                        fits_keywords['NAXIS3'] = [{'value': str(channels), 'comment': ''}]
-                return json.dumps(fits_keywords).encode(), fits_keywords
-    except Exception as e:
-        log(WARN, f"Error reading XISF header from {file}: {str(e)}")
-    return None, None
+    """The FITS keywords of the file's first image that has them, as JSON bytes and as the dict
+    get_images_metadata() returns, with NAXISn filled in from the geometry."""
+    if status_reporter:
+        status_reporter.update_status(f"Reading XISF header for {file}...", bulk=True)
+    scan = image_hdus.scan_xisf(file)
+    image = image_hdus.first_image(scan) if scan else None
+    if image is None:
+        return None, None
+    return image.header, image.keywords
 
 
 class ScanCancelled(Exception):
@@ -395,7 +353,7 @@ def check_missing_header_cache(status_reporter, settings, cancelled=lambda: Fals
 def _is_truncated_header(raw: bytes) -> bool:
     """A cached FITS header without an END card. An older version stopped reading at any card
     starting with END, such as ENDTIME, and lost the blocks after it."""
-    return not raw.startswith(b'{') and not _has_end_card(raw[-_FITS_BLOCK_SIZE:])
+    return not raw.startswith(b'{') and not image_hdus.has_end_card(raw[-image_hdus.FITS_BLOCK:])
 
 
 def _repair_truncated_header(file: File, status_reporter, settings):

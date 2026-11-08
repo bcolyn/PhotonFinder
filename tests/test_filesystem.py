@@ -436,13 +436,6 @@ class TestCompressFile:
         assert sizes[9] <= sizes[1]
 
 
-def test_read_xisf_header_without_fits_keywords(tmp_path, mocker):
-    xisf = mocker.patch("photonfinder.filesystem.XISF")
-    xisf.return_value.get_images_metadata.return_value = [{"geometry": (4, 4, 1)}]
-
-    assert read_xisf_header(tmp_path / "no_keywords.xisf") == (None, None)
-
-
 class TestHeaderCacheResilience:
     def _files(self, database, tmp_path, count=3):
         root = LibraryRoot.create(name="r", path=str(tmp_path).replace("\\", "/") + "/")

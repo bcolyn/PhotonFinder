@@ -65,8 +65,9 @@ class _ImageCache:
     file is never shown with the old pixels.
     """
 
+    # Keyed by (filename, hdu); hdu None is "the first image", see image_hdus.
     # Store layout per entry: (compressed_bytes, dtype, shape, header, compressed_size, stamp)
-    _store: OrderedDict[str, tuple[bytes, np.dtype, tuple, dict, int, tuple[int, int]]]
+    _store: OrderedDict[tuple[str, int | None], tuple[bytes, np.dtype, tuple, dict, int, tuple[int, int]]]
 
     def __init__(self) -> None:
         self._store = OrderedDict()
@@ -74,25 +75,26 @@ class _ImageCache:
         self._total_bytes: int = 0
         self._lock = threading.Lock()
 
-    def get(self, filename: str) -> tuple[np.ndarray, dict] | None:
+    def get(self, filename: str, hdu: int | None = None) -> tuple[np.ndarray, dict] | None:
         import zstd
         stamp = _file_stamp(filename)
+        key = (filename, hdu)
         with self._lock:
-            entry = self._store.get(filename)
+            entry = self._store.get(key)
             if entry is None:
                 return None
             if stamp is None or entry[5] != stamp:
-                del self._store[filename]
+                del self._store[key]
                 self._total_bytes -= entry[4]
                 logger.debug("Cache stale: %s changed on disk", filename)
                 return None
-            self._store.move_to_end(filename)
+            self._store.move_to_end(key)
             compressed, dtype, shape, header, _, _ = entry
         raw = zstd.decompress(compressed)
         return np.frombuffer(raw, dtype=dtype).reshape(shape), header
 
     def put(self, filename: str, data: np.ndarray, header: dict,
-            stamp: tuple[int, int] | None = None) -> None:
+            stamp: tuple[int, int] | None = None, hdu: int | None = None) -> None:
         """Store *data*; *stamp* is the file's (mtime, size) from before it was read."""
         import zstd
         if stamp is None:
@@ -102,15 +104,16 @@ class _ImageCache:
         raw = np.ascontiguousarray(data).tobytes()
         compressed = zstd.compress(raw, 1)
         compressed_size = len(compressed)
+        key = (filename, hdu)
         with self._lock:
-            if filename in self._store:
-                self._total_bytes -= self._store[filename][4]
-                del self._store[filename]
-            self._store[filename] = (compressed, data.dtype, data.shape, header, compressed_size, stamp)
+            if key in self._store:
+                self._total_bytes -= self._store[key][4]
+                del self._store[key]
+            self._store[key] = (compressed, data.dtype, data.shape, header, compressed_size, stamp)
             self._total_bytes += compressed_size
             logger.debug(
-                "Cache put: %s (%.1f MB compressed) — total %.1f / %.1f MB",
-                filename, compressed_size / 1024**2,
+                "Cache put: %s hdu %s (%.1f MB compressed) — total %.1f / %.1f MB",
+                filename, hdu, compressed_size / 1024**2,
                 self._total_bytes / 1024**2, self._max_bytes / 1024**2,
             )
             while self._total_bytes > self._max_bytes and self._store:
@@ -137,92 +140,33 @@ image_cache = _ImageCache()
 # Loading
 # ---------------------------------------------------------------------------
 
-def load_image_data(filename: str | Path) -> tuple[np.ndarray, dict]:
-    """Load pixel data and header dict from a FITS, compressed FITS, or XISF file.
+def load_image_data(filename: str | Path, hdu: int | None = None) -> tuple[np.ndarray, dict]:
+    """Load pixel data and header dict of one image in a FITS, compressed FITS, or XISF file.
 
-    Results are cached; repeated loads of the same path are free.
+    *hdu* is the FITS HDU number or XISF image index; None is the file's first image (see
+    `image_hdus`). Results are cached per (path, hdu); repeated loads are free.
     """
-    from photonfinder.filesystem import Importer
+    from photonfinder.image_hdus import load_hdu
     filename = str(filename)
-    cached = image_cache.get(filename)
+    cached = image_cache.get(filename, hdu)
     if cached is not None:
-        logger.debug("Cache hit: %s", filename)
+        logger.debug("Cache hit: %s hdu %s", filename, hdu)
         return cached
     stamp = _file_stamp(filename)  # before reading: a change during the read must not be cached
-    if Importer.is_xisf_by_name(filename):
-        result = _load_xisf(filename)
-    else:
-        result = _load_fits(filename)
+    result = load_hdu(filename, hdu)
     data, header = result
     if data.ndim == 3 and data.shape[0] == 1:
         # A single-plane cube (FITS NAXIS3 = 1, or a one-channel XISF) is monochrome.
         result = data.squeeze(0), header
-    image_cache.put(filename, *result, stamp=stamp)
+    image_cache.put(filename, *result, stamp=stamp, hdu=hdu)
     return result
 
 
-def prefetch_image(filename: str) -> None:
+def prefetch_image(filename: str, hdu: int | None = None) -> None:
     """Load and cache an image in a background daemon thread if not already cached."""
-    if image_cache.get(filename) is None:
-        t = threading.Thread(target=load_image_data, args=(filename,), daemon=True)
+    if image_cache.get(filename, hdu) is None:
+        t = threading.Thread(target=load_image_data, args=(filename, hdu), daemon=True)
         t.start()
-
-
-def _load_fits(filename: str) -> tuple[np.ndarray, dict]:
-    import time
-    from astropy.io import fits
-
-    suffix = Path(filename).suffix.lower()
-    t0 = time.perf_counter()
-
-    # astropy handles .gz and .fz natively with mmap; only bz2/xz need fopen()
-    if suffix in ('.bz2', '.xz'):
-        from photonfinder.filesystem import fopen, repair_header
-        with fopen(filename) as f:
-            t1 = time.perf_counter()
-            with fits.open(f, memmap=False) as hdul:
-                t2 = time.perf_counter()
-                hdu = hdul[0]
-                data = hdu.data  # memmap=False → already in RAM, no copy needed
-                repair_header(hdu.header)
-                header = dict(hdu.header)
-        t3 = time.perf_counter()
-        logger.debug(
-            "FITS load (%s): decompress %.0fms  fits.open %.0fms  data.copy %.0fms  total %.0fms",
-            suffix, (t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000, (t3 - t0) * 1000,
-        )
-    else:
-        from photonfinder.filesystem import repair_header
-        with fits.open(filename) as hdul:  # memmap=True by default
-            t1 = time.perf_counter()
-            hdu = hdul[0]
-            data = hdu.data.copy()
-            repair_header(hdu.header)
-            header = dict(hdu.header)
-        t2 = time.perf_counter()
-        logger.debug(
-            "FITS load (%s): fits.open %.0fms  data.copy %.0fms  total %.0fms",
-            suffix, (t1 - t0) * 1000, (t2 - t1) * 1000, (t2 - t0) * 1000,
-        )
-
-    if data is None:
-        raise ValueError(f"No image data in {filename}")
-    return data, header
-
-
-def _load_xisf(filename: str) -> tuple[np.ndarray, dict]:
-    from xisf import XISF
-    xf = XISF(filename)
-    metadata_list = xf.get_images_metadata()
-    if not metadata_list:
-        raise ValueError(f"No images in {filename}")
-    data = xf.read_image(0, 'channels_first')
-    fits_keywords = metadata_list[0].get('FITSKeywords', {})
-    header = {}
-    for key, entries in fits_keywords.items():
-        if entries:
-            header[key] = entries[0].get('value', '')
-    return data, header
 
 
 # ---------------------------------------------------------------------------
