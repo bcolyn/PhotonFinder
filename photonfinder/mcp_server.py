@@ -64,6 +64,9 @@ logger.setLevel(logging.DEBUG)
 
 MAX_PAGE_SIZE = 500
 MAX_SOLVE_BATCH = 10
+# With one_per_group the rowids are the frames to choose from (a night's subs, say), and
+# MAX_SOLVE_BATCH caps the groups instead: at most MAX_GROUP_TRIES solves each.
+MAX_GROUPED_ROWIDS = 2000
 
 # Caps on the lists nested inside a report row. The GUI reports are unbounded because a
 # table widget and a CSV file do not care how many rows they hold; a context window does.
@@ -579,7 +582,8 @@ MCP_SOLVE_WRITER = "Plate solving (MCP)"
 def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Optional[str] = None,
                        backup_solver: Optional[str] = None, hint_ra: Optional[float] = None,
                        hint_dec: Optional[float] = None, hint_scale: Optional[float] = None,
-                       hint_mode: Optional[str] = None, use_camera_scales: bool = False) -> dict:
+                       hint_mode: Optional[str] = None, use_camera_scales: bool = False,
+                       one_per_group: bool = False) -> dict:
     # Checked here rather than by leaving the tool unregistered, so that the advertised
     # tool set is the same for every run and can be generated ahead of time. The gate is
     # unchanged: without the setting, no solver runs.
@@ -589,7 +593,11 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
                          "plate solving'."}
     if not rowids:
         return {"error": "No rowids given."}
-    if len(rowids) > MAX_SOLVE_BATCH:
+    if one_per_group:
+        if len(rowids) > MAX_GROUPED_ROWIDS:
+            return {"error": f"Too many files: {len(rowids)} (max {MAX_GROUPED_ROWIDS} per call "
+                             f"with one_per_group)."}
+    elif len(rowids) > MAX_SOLVE_BATCH:
         return {"error": f"Too many files: {len(rowids)} (max {MAX_SOLVE_BATCH} per call)."}
 
     s = context.settings
@@ -604,16 +612,18 @@ def query_plate_solve(context: ApplicationContext, rowids: list[int], solver: Op
     try:
         with solve_service.holding_library(context, MCP_SOLVE_WRITER):
             return _solve_files(context, rowids, primary_index, backup_index, hint_ra, hint_dec,
-                                hint_scale, hint_mode, use_camera_scales)
+                                hint_scale, hint_mode, use_camera_scales, one_per_group)
     except LibraryBusyError as e:
         return {"error": f"{e} Try again shortly."}
     except solve_service.SolveLockBusy as e:
         return {"error": str(e)}
 
 
-def _solve_files(context, rowids, primary_index, backup_index, hint_ra, hint_dec, hint_scale,
-                 hint_mode, use_camera_scales) -> dict:
-    """The MCP side of a solve run: the given files in order, each outcome as a dict."""
+def _solve_files(context, rowids, primary_index, backup_index, hint_ra, hint_dec, hint_scale,  # pylint: disable=too-many-locals
+                 hint_mode, use_camera_scales, one_per_group=False) -> dict:
+    """The MCP side of a solve run: the given files in order, each outcome as a dict. With
+    `one_per_group`, a solve_service.SolvePlan over them instead: rounds of one frame per
+    group, a failed group moving on to its next frame, until each solved or gave up."""
     s = context.settings
     try:
         primary, backup = solvers.build_solvers(s, primary_index, backup_index)
@@ -638,12 +648,31 @@ def _solve_files(context, rowids, primary_index, backup_index, hint_ra, hint_dec
                                       .join_from(File, Image, JOIN.LEFT_OUTER)
                                       .where(File.rowid.in_(rowids)))}
         missing = [rowid for rowid in rowids if rowid not in files]
-        outcomes = dict((file.rowid, outcome) for file, outcome
-                        in run.run(files[rowid] for rowid in rowids if rowid in files))
-        for rowid in rowids:
+        plan = None
+        if one_per_group:
+            plan = solve_service.SolvePlan([files[rowid] for rowid in dict.fromkeys(rowids)
+                                            if rowid in files and files[rowid].image is not None])
+            if len(plan.groups) > MAX_SOLVE_BATCH:
+                return {"error": f"Too many groups to solve: {len(plan.groups)} (max {MAX_SOLVE_BATCH} "
+                                 "per call). Pass the frames of fewer targets or nights."}
+            outcomes = {}
+            while frames := plan.next_round():
+                tried = len(outcomes)
+                for file, outcome in run.run(frames):
+                    outcomes[file.rowid] = outcome
+                    plan.record(file, outcome.success)
+                if len(outcomes) == tried:  # nothing ran (cancelled): don't go round again
+                    break
+            attempted = list(outcomes)
+        else:
+            outcomes = dict((file.rowid, outcome) for file, outcome
+                            in run.run(files[rowid] for rowid in rowids if rowid in files))
+            attempted = rowids
+        for rowid in missing:
+            results.append({"rowid": rowid, "success": False, "error": f"No file with rowid {rowid}"})
+            failed += 1
+        for rowid in attempted:
             if rowid in missing:
-                results.append({"rowid": rowid, "success": False, "error": f"No file with rowid {rowid}"})
-                failed += 1
                 continue
             file, outcome = files[rowid], outcomes[rowid]
             if outcome.success:
@@ -662,7 +691,15 @@ def _solve_files(context, rowids, primary_index, backup_index, hint_ra, hint_dec
                     "rowid": rowid, "path": file.full_filename(), "success": False,
                     "error": outcome.error,
                 })
-    return {"results": results, "solved": solved, "failed": failed}
+    response = {"results": results, "solved": solved, "failed": failed}
+    if plan is not None:
+        response["groups"] = {
+            "solved": sum(group.solved for group in plan.groups),
+            "failed": len(plan.failed_groups()),
+            "skipped_already_solved": len(plan.skipped),
+            "files_given": plan.total_files,
+        }
+    return response
 
 
 class _RootAndPathInput(BaseModel):
@@ -1073,6 +1110,15 @@ def build_mcp(context: ApplicationContext):
             "With `use_camera_scales` true, a file that fails is retried with each pixel scale "
             "earlier solves found for its camera; off by default, as every retry is another "
             "solve and a failing batch then takes much longer. "
+            f"With `one_per_group` true (up to {MAX_GROUPED_ROWIDS} rowids, at most "
+            f"{MAX_SOLVE_BATCH} groups to solve), only one frame per group of the given files is solved: a "
+            "group is one target on one observing night with the same image type, folder, filter "
+            "and exposure (as `search_files` with `one_per_group` shows them). Each group's earliest "
+            "frame is tried first; if it fails, the next one, up to three frames. Groups that "
+            "already have a solved frame are skipped. The other frames stay unsolved; "
+            "`report_catalog_coverage` counts them through the solved one. The response then "
+            "also has `groups` {solved, failed, skipped_already_solved, files_given}, and "
+            "`results` lists only the frames tried. "
             "Returns {results, solved, failed}. `results` is a list of per-file dicts "
             "with `rowid`, `path`, `success`, and on success `ra`/`dec`/`scale_arcsec`/`solver`, "
             "or on failure `error`. One file's failure does not abort the rest of the batch. "
@@ -1098,10 +1144,10 @@ def build_mcp(context: ApplicationContext):
                                 hint_ra: Optional[float] = None, hint_dec: Optional[float] = None,
                                 hint_scale: Optional[float] = None,
                                 hint_mode: Optional[str] = None,
-                                use_camera_scales: bool = False) -> dict:
+                                use_camera_scales: bool = False, one_per_group: bool = False) -> dict:
         return await anyio.to_thread.run_sync(
             query_plate_solve, context, rowids, solver, backup_solver,
-            hint_ra, hint_dec, hint_scale, hint_mode, use_camera_scales)
+            hint_ra, hint_dec, hint_scale, hint_mode, use_camera_scales, one_per_group)
 
     return mcp
 

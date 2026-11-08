@@ -92,12 +92,15 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.search_criteria = search_criteria
         self._task: PlateSolveTask | None = None
         self._pending_retry_files = None
+        self._pending_plan: solve_service.SolvePlan | None = None  # one per group: Retry Failed's next round
         self._lock_held = False  # the library write lock, from start until the task has stopped
         self._start_available = True  # Start (or Retry Failed) applies, if the library is free
         self._cancelling = False
 
         self._populate_combos()
         self._load_settings()
+        # As the grid shows it: a grouped grid solves one frame per group.
+        self.one_per_group_check.setChecked(bool(search_criteria and search_criteria.one_per_group))
         self._infer_hints()
         self._update_title()
         self._camera_scales = solve_service.CameraScales.load()
@@ -236,10 +239,12 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         if hasattr(self, '_results_scroll'):
             self._cleanup_results()
         files = self._pending_retry_files if self._pending_retry_files is not None else self.files
+        plan = self._pending_plan
         self._pending_retry_files = None
-        self._run_task(files)
+        self._pending_plan = None
+        self._run_task(files, plan)
 
-    def _run_task(self, files):
+    def _run_task(self, files, plan: solve_service.SolvePlan | None = None):
         refused = solve_service.try_hold_library(self.context, PlateSolveTask.writer_name)
         if refused:
             QMessageBox.warning(self, "Library busy", refused)
@@ -265,16 +270,20 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
             backup_solver=backup_solver,
             hint=hint,
             camera_scales=self._camera_scales if self.use_camera_scales_check.isChecked() else None,
+            one_per_group=self.one_per_group_check.isChecked(),
+            plan=plan,
         )
         assert self._task is not None
         self._task.progress.connect(self.progressBar.setValue)
         self._task.total_found.connect(self.progressBar.setMaximum)
+        self._task.total_found.connect(self._on_total_found)
         self._task.message.connect(self._append_log)
         self._task.finished.connect(self._on_finished)
         self._task.error.connect(self._on_error)
 
         self.progressBar.setValue(0)
         self.log_edit.clear()
+        self.one_per_group_check.setEnabled(False)  # a retry carries on with the same choice
         self._start_available = False
         self.start_button.setEnabled(False)
         self.direct_copy_button.setEnabled(False)
@@ -282,6 +291,11 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.close_button.setText("Cancel")
 
         self._task.start()
+
+    def _on_total_found(self, count: int):
+        task = self._task
+        if task is not None and task.plan is not None:
+            self.setWindowTitle(f"Plate Solve — solving {count} of {task.plan.total_files} files")
 
     def _release_write_lock(self):
         if self._lock_held:
@@ -333,7 +347,14 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
         self.direct_copy_button.setEnabled(True)
 
         failed_files = [f for f, success, _ in task.file_results if not success]
-        if failed_files:
+        if task.plan is not None:
+            # Retry Failed moves each failed group on to its next frame, until it gave up.
+            if task.plan.next_round():
+                self._pending_plan = task.plan
+                self.start_button.setText("Retry Failed")
+                self._start_available = True
+                self._update_start_button()
+        elif failed_files:
             self._pending_retry_files = failed_files
             self.start_button.setText("Retry Failed")
             self._start_available = True
@@ -363,6 +384,14 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
                     btn.clicked.connect(lambda checked=False, msg=error_msg: self._show_error_popup(msg))
                     grid.addWidget(btn, row, 2)
             n_rows = len(task.file_results)
+        if task.plan is not None:
+            for group in task.plan.failed_groups():
+                icon = QLabel("✗")
+                icon.setStyleSheet("color: red; font-weight: bold;")
+                grid.addWidget(icon, n_rows, 0)
+                grid.addWidget(QLabel(f"Group failed after {len(group.failed)} frames: {group.describe()}"),
+                               n_rows, 1, 1, 2)
+                n_rows += 1
 
         grid.setRowStretch(n_rows, 1)
 

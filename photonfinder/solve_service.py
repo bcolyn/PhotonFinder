@@ -13,7 +13,7 @@ import logging
 import math
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -21,7 +21,9 @@ from astropy.io.fits import Header
 
 from photonfinder import plate_solution, solvers
 from photonfinder.core import library_busy_message
-from photonfinder.models import File, FileWCS, Image
+from peewee import chunked
+
+from photonfinder.models import File, FileWCS, Image, LibraryRoot, group_key_sql
 from photonfinder.platesolver import SolverBase, SolverHint, SolverError, SolverFailure, SolverCancelled
 
 logger = logging.getLogger(__name__)
@@ -336,3 +338,113 @@ class SolveRun:
                                         dec=self.hint.dec if self.hint else None,
                                         scale=scale, mode='fallback'))
         return hints
+
+
+# --- one frame per group ---------------------------------------------------------------------
+
+MAX_GROUP_TRIES = 3  # frames of a group tried before it is reported as failed
+
+
+@dataclass
+class SolveGroup:
+    """The unsolved frames of one group (models.group_key_sql), earliest first, and how far
+    solving it has got."""
+    key: tuple
+    candidates: list
+    failed: list = field(default_factory=list)  # frames tried that didn't solve
+    solved: bool = False
+
+    def next_frame(self) -> Optional[File]:
+        """The frame to try next; None once solved, out of frames or tried MAX_GROUP_TRIES."""
+        if self.solved or len(self.failed) >= min(MAX_GROUP_TRIES, len(self.candidates)):
+            return None
+        return self.candidates[len(self.failed)]
+
+    @property
+    def gave_up(self) -> bool:
+        return not self.solved and bool(self.failed) and self.next_frame() is None
+
+    def describe(self) -> str:
+        image = self.candidates[0].image
+        night = self.key[-1]
+        parts = [image.object_name or image.image_type or "no object", image.filter,
+                 f"{image.exposure:g} s" if image.exposure is not None else None,
+                 f"night {night.isoformat()}" if night else None]
+        return ", ".join(part for part in parts if part)
+
+
+class SolvePlan:
+    """Plate solving one frame per group instead of every frame: dithered subs of one target on
+    one night differ by arcseconds, and the catalog report counts the rest of a group by the
+    solved one. Each group's earliest unsolved frame is solved; a failed group moves on to its
+    next frame (Retry Failed), up to MAX_GROUP_TRIES. A group with a frame solved already, in
+    the whole library, is skipped. The other frames stay unsolved.
+
+    `files` are the frames to choose from (a plate-solve run's own: a selection, or the search's
+    unsolved lights), each with its `image` loaded. Queries the library, so build it where the
+    database may be used.
+    """
+
+    def __init__(self, files: list[File]):
+        self.total_files = len(files)
+        keys = _group_keys(files)
+        solved = _solved_group_keys()
+        by_key: dict[tuple, list] = {}
+        for file in sorted(files, key=_group_order):
+            key = keys.get((file.rowid, file.image.hdu))
+            if key is not None:
+                by_key.setdefault(key, []).append(file)
+        self.groups = [SolveGroup(key, frames) for key, frames in by_key.items() if key not in solved]
+        self.skipped = [SolveGroup(key, frames) for key, frames in by_key.items() if key in solved]
+        self._group_of = {file.rowid: group for group in self.groups for file in group.candidates}
+
+    def next_round(self) -> list[File]:
+        """The next frame of every group not solved yet: its first, or after a failure (or a
+        cancel before it was reached) the next one."""
+        return [frame for group in self.groups if (frame := group.next_frame()) is not None]
+
+    def record(self, file: File, success: bool):
+        group = self._group_of.get(file.rowid)
+        if group is None:
+            return
+        if success:
+            group.solved = True
+        elif file not in group.failed:
+            group.failed.append(file)
+
+    def failed_groups(self) -> list[SolveGroup]:
+        """Groups that tried MAX_GROUP_TRIES frames (or all they had) without a solve."""
+        return [group for group in self.groups if group.gave_up]
+
+    def describe(self) -> str:
+        line = (f"One frame per target per night: {len(self.groups)} groups to solve "
+                f"from {self.total_files} files")
+        if self.skipped:
+            line += f"; {len(self.skipped)} skipped, already solved: " +                     "; ".join(group.describe() for group in self.skipped[:5]) +                     (" ..." if len(self.skipped) > 5 else "")
+        return line
+
+
+def _group_order(file: File):
+    """As models.group_order_sql: the earliest date_obs first, frames without one last."""
+    image = file.image
+    return image.date_obs is None, image.date_obs or 0, file.rowid, image.hdu
+
+
+def _group_keys(files: list[File]) -> dict[tuple, tuple]:
+    """(file rowid, hdu) -> the group key of that image, as SQL computes it."""
+    keys = {}
+    for batch in chunked([f.rowid for f in files], 500):
+        query = (File.select(File.rowid, Image.hdu, *group_key_sql())
+                 .join_from(File, Image).join_from(File, LibraryRoot)
+                 .where(File.rowid.in_(batch)))
+        for rowid, hdu, *key in query.tuples():
+            keys[(rowid, hdu)] = tuple(key)
+    return keys
+
+
+def _solved_group_keys() -> set[tuple]:
+    """The groups with a plate-solved frame, anywhere in the library."""
+    query = (File.select(*group_key_sql())
+             .join_from(File, Image).join_from(File, FileWCS)
+             .distinct())
+    return {tuple(row) for row in query.tuples()}

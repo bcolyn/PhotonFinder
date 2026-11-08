@@ -8,7 +8,7 @@ from PySide6.QtCore import Signal, QObject, QThreadPool, QRunnable, Slot
 from PySide6.QtWidgets import QWidget
 
 from photonfinder.core import ApplicationContext, library_busy_message
-from photonfinder.models import File, Image, LibraryRoot, SearchCriteria, \
+from photonfinder.models import CORE_MODELS, File, Image, LibraryRoot, SearchCriteria, \
     Project, ImageStats
 from photonfinder import library_query
 from photonfinder.library_query import count_distinct_files, search_files
@@ -429,11 +429,16 @@ class PlateSolveTask(FileProcessingTask):
 
     def __init__(self, context: ApplicationContext, search_criteria: SearchCriteria, files: List[File],
                  solver: SolverBase, backup_solver: SolverBase = None, hint: SolverHint = None,
-                 camera_scales: Optional[solve_service.CameraScales] = None):
+                 camera_scales: Optional[solve_service.CameraScales] = None, one_per_group: bool = False,
+                 plan: Optional[solve_service.SolvePlan] = None):
         super().__init__(context, search_criteria, files)
         self.solved_files = list()
         self.file_results = list()  # list of (file, success: bool, error_msg: str | None)
         self.first_solution: tuple | None = None  # (ra, dec, scale_arcsec) of first successful solve
+        # One frame per group: a plan made from the files on the first run, its next round on a
+        # retry (solve_service.SolvePlan).
+        self.one_per_group = one_per_group or plan is not None
+        self.plan = plan
         self.solve_run = solve_service.SolveRun(solver, backup_solver, hint, camera_scales,
                                                 output=self.message.emit, cancelled=lambda: self.cancelled)
 
@@ -441,7 +446,18 @@ class PlateSolveTask(FileProcessingTask):
         self.message.emit(self.solve_run.describe())
         self.message.emit("")
         try:
-            if self.files is not None and len(self.files) > 0:
+            if self.one_per_group:
+                with self.context.database.bind_ctx(CORE_MODELS):
+                    if self.plan is None:
+                        self.plan = solve_service.SolvePlan(self.files or self.load_files())
+                        self.message.emit(self.plan.describe())
+                    files = self.plan.next_round()
+                self.message.emit(f"Solving {len(files)} of {self.plan.total_files} files.")
+                self.message.emit("")
+                self.total = len(files)
+                self.total_found.emit(self.total)
+                self._solve_all(files)
+            elif self.files is not None and len(self.files) > 0:
                 self.total = len(self.files)
                 self.total_found.emit(self.total)
                 self._solve_all(self.files)
@@ -479,6 +495,8 @@ class PlateSolveTask(FileProcessingTask):
             self.progress.emit(index + 1)  # files done, so the last one fills the bar
 
     def _report(self, file, outcome):
+        if self.plan is not None and not outcome.cancelled:
+            self.plan.record(file, outcome.success)
         if outcome.success:
             self.context.status_reporter.update_status(f"Solved file {file.full_filename()}")
             self.solved_files.append(file)

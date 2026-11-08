@@ -4219,14 +4219,23 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            '`use_camera_scales` true, a file that fails is retried with each pixel '
                            'scale earlier solves found for its camera; off by default, as every '
                            'retry is another solve and a failing batch then takes much longer. '
-                           'Returns {results, solved, failed}. `results` is a list of per-file '
-                           'dicts with `rowid`, `path`, `success`, and on success '
-                           "`ra`/`dec`/`scale_arcsec`/`solver`, or on failure `error`. One file's "
-                           'failure does not abort the rest of the batch. Returns {"error": ...} '
-                           'if the batch is empty, too large, if another job is writing to the '
-                           'library (a plate-solve, scan, compression or analysis, here or in '
-                           'another PhotonFinder window), or if the user has not enabled '
-                           'agent-triggered plate solving in Settings.',
+                           'With `one_per_group` true (up to 2000 rowids, at most 10 groups to '
+                           'solve), only one frame per group of the given files is solved: a group '
+                           'is one target on one observing night with the same image type, folder, '
+                           'filter and exposure (as `search_files` with `one_per_group` shows '
+                           "them). Each group's earliest frame is tried first; if it fails, the "
+                           'next one, up to three frames. Groups that already have a solved frame '
+                           'are skipped. The other frames stay unsolved; `report_catalog_coverage` '
+                           'counts them through the solved one. The response then also has '
+                           '`groups` {solved, failed, skipped_already_solved, files_given}, and '
+                           '`results` lists only the frames tried. Returns {results, solved, '
+                           'failed}. `results` is a list of per-file dicts with `rowid`, `path`, '
+                           '`success`, and on success `ra`/`dec`/`scale_arcsec`/`solver`, or on '
+                           "failure `error`. One file's failure does not abort the rest of the "
+                           'batch. Returns {"error": ...} if the batch is empty, too large, if '
+                           'another job is writing to the library (a plate-solve, scan, '
+                           'compression or analysis, here or in another PhotonFinder window), or '
+                           'if the user has not enabled agent-triggered plate solving in Settings.',
             'inputSchema': {'properties': {'rowids': {'items': {'type': 'integer'},
                                                       'title': 'Rowids',
                                                       'type': 'array'},
@@ -4256,7 +4265,10 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                          'title': 'Hint Mode'},
                                            'use_camera_scales': {'default': False,
                                                                  'title': 'Use Camera Scales',
-                                                                 'type': 'boolean'}},
+                                                                 'type': 'boolean'},
+                                           'one_per_group': {'default': False,
+                                                             'title': 'One Per Group',
+                                                             'type': 'boolean'}},
                             'required': ['rowids'],
                             'title': 'plate_solve_filesArguments',
                             'type': 'object'},

@@ -170,6 +170,16 @@
          </spacer>
         </item>
         <item>
+         <widget class="QCheckBox" name="one_per_group_check">
+          <property name="toolTip">
+           <string>Solve only the earliest unsolved frame of each target per night (and image type, folder, filter and exposure); groups with a solved frame are skipped, and Retry Failed tries the next frame of a failed group. The other frames stay unsolved; the catalog report counts them by the solved one</string>
+          </property>
+          <property name="text">
+           <string>Only one frame per target per night</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QCheckBox" name="use_camera_scales_check">
           <property name="toolTip">
            <string>If solving fails, retry using image scales derived from previous successful solves for this camera</string>
