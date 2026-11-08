@@ -32,3 +32,13 @@ def test_a_grouped_grid_solves_one_frame_per_group(sandbox, app, monkeypatch):
 
     assert sorted(solver.solved) == ["M81_0.fits", "M82_0.fits"]  # the earliest of each
     assert dialog.windowTitle() == "Plate Solve — solving 2 of 2 groups"
+
+    # Again: every group has a solved frame now, so nothing is solved and the bar shows done,
+    # not Qt's busy animation (a 0..0 range).
+    dialog = _open_dialog(panel)
+    dialog.start_button.click()
+    sandbox.qtbot.waitUntil(lambda: dialog._task is None, timeout=10000)
+
+    assert sorted(solver.solved) == ["M81_0.fits", "M82_0.fits"]
+    assert dialog.progressBar.maximum() > 0
+    assert dialog.progressBar.value() == dialog.progressBar.maximum()

@@ -343,6 +343,8 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
     def _show_results(self, task: PlateSolveTask):
         self.log_edit.hide()
         self.close_button.setText("Close")
+        if self.progressBar.maximum() == 0:  # nothing to solve: a 0..0 bar is Qt's busy animation
+            self.progressBar.setRange(0, 1)
         self.progressBar.setValue(self.progressBar.maximum())
         self.direct_copy_button.setEnabled(True)
 
