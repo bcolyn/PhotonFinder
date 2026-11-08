@@ -452,7 +452,7 @@ class PlateSolveTask(FileProcessingTask):
                         self.plan = solve_service.SolvePlan(self.files or self.load_files())
                         self.message.emit(self.plan.describe())
                     files = self.plan.next_round()
-                self.message.emit(f"Solving {len(files)} of {self.plan.total_files} files.")
+                self.message.emit(f"Solving {len(files)} of {len(self.plan.groups)} groups, one frame each.")
                 self.message.emit("")
                 self.total = len(files)
                 self.total_found.emit(self.total)

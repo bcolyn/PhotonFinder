@@ -295,7 +295,7 @@ class PlateSolveDialog(QDialog, Ui_PlateSolveDialog):
     def _on_total_found(self, count: int):
         task = self._task
         if task is not None and task.plan is not None:
-            self.setWindowTitle(f"Plate Solve — solving {count} of {task.plan.total_files} files")
+            self.setWindowTitle(f"Plate Solve — solving {count} of {len(task.plan.groups)} groups")
 
     def _release_write_lock(self):
         if self._lock_held:

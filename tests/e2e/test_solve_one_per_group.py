@@ -31,4 +31,4 @@ def test_a_grouped_grid_solves_one_frame_per_group(sandbox, app, monkeypatch):
     sandbox.qtbot.waitUntil(lambda: dialog._task is None, timeout=10000)
 
     assert sorted(solver.solved) == ["M81_0.fits", "M82_0.fits"]  # the earliest of each
-    assert dialog.windowTitle() == "Plate Solve — solving 2 of 7 files"
+    assert dialog.windowTitle() == "Plate Solve — solving 2 of 2 groups"
