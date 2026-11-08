@@ -56,6 +56,10 @@ def ensure_header_widths(table_view, extra_padding=12):
 # hid, and must not start showing the new one.
 _OPT_IN_COLUMNS = {"Layer"}
 
+# Columns shown by the search's mode, not by the user's layout: what a row of the grouped grid
+# stands for. Presets and saved layouts leave them alone, and the column menu doesn't list them.
+_MODE_COLUMNS = {"Frames", "Integration"}
+
 # Hidden columns per preset; the opt-in columns are hidden unless listed as "+<label>".
 _BUILTIN_PRESETS = {
     "Essentials": {"Gain", "Offset", "Binning", "Set Temp", "Camera", "Telescope",
@@ -93,6 +97,8 @@ class ColumnVisibilityController:
 
         for col in range(self.model.columnCount()):
             header = self.model.headerData(col, Qt.Horizontal)
+            if header in _MODE_COLUMNS:
+                continue
             action = QAction(header, menu)
             action.setCheckable(True)
             action.setChecked(not self.table_view.isColumnHidden(col))
@@ -186,6 +192,8 @@ class ColumnVisibilityController:
         tokens = []
         for col in range(self.model.columnCount()):
             header = str(self.model.headerData(col, Qt.Horizontal))
+            if header in _MODE_COLUMNS:
+                continue
             if self.table_view.isColumnHidden(col):
                 tokens.append(header)
             elif header in _OPT_IN_COLUMNS:
@@ -196,6 +204,8 @@ class ColumnVisibilityController:
         tokens = set(h.strip() for h in csv_string.split(",") if h.strip())
         for col in range(self.model.columnCount()):
             header = str(self.model.headerData(col, Qt.Horizontal))
+            if header in _MODE_COLUMNS:
+                continue
             hidden = header in tokens or (header in _OPT_IN_COLUMNS and f"+{header}" not in tokens)
             self.table_view.setColumnHidden(col, hidden)
 

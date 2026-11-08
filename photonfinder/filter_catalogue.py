@@ -20,7 +20,7 @@ from photonfinder.core import hp
 from photonfinder.formatting import _format_date
 from photonfinder.models import (
     DIAGNOSIS_BAD_VALUES, DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_OK, File, FileWCS, FitsHeader, Image, ImageStats,
-    ProjectFile, SearchCriteria, norm_db_path, session_night_sql,
+    ProjectFile, SearchCriteria, group_condition, norm_db_path, session_night_sql,
 )
 
 _DEFAULTS = {}
@@ -414,6 +414,25 @@ NIGHT = FilterEntry(
 )
 
 
+def _group_label(c: SearchCriteria) -> str:
+    if len(c.groups) > 1:
+        return f"Groups: {len(c.groups)}"
+    g = c.groups[0]
+    parts = [g.get('object_name') or g.get('image_type') or "no object", g.get('filter'),
+             f"{_number(g['exposure'])} s" if g.get('exposure') is not None else None,
+             f"night {g['session_night']}" if g.get('session_night') else None]
+    return "Group: " + ", ".join(part for part in parts if part)
+
+
+# The images of some groups (models.group_condition): a grouped row's drill-in, and the
+# members a grouped selection stands for.
+GROUPS = FilterEntry(
+    key="groups", fields=("groups",),
+    chip_label=_group_label, summary=_group_label,
+    conditions=lambda c: [reduce(operator.or_, [group_condition(g) for g in c.groups])] if c.groups else [],
+)
+
+
 def _size(c: SearchCriteria) -> str:
     parts = [f"{axis} {r}" for axis, r in (("W", _range(c.width_min, c.width_max)),
                                             ("H", _range(c.height_min, c.height_max))) if r]
@@ -526,7 +545,7 @@ QUALITY_DIAGNOSIS = FilterEntry(
 
 # Every entry, in the order of the criteria's text summary and of the chips on restore.
 ENTRIES = (PATHS, TYPE, FILTER, CAMERA, FILE_NAME, OBJECT_NAME, EXPOSURE, TELESCOPE, BINNING, GAIN,
-           TEMPERATURE, HEADER_TEXT, PLATE_SOLVED, PROJECT, COORDINATES, DATES, NIGHT, IMAGE_SIZE, PLATE_SCALE,
+           TEMPERATURE, HEADER_TEXT, PLATE_SOLVED, PROJECT, COORDINATES, DATES, NIGHT, GROUPS, IMAGE_SIZE, PLATE_SCALE,
            IMAGE_QUALITY, QUALITY_DIAGNOSIS)
 BY_KEY = {entry.key: entry for entry in ENTRIES}
 

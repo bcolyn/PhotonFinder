@@ -281,6 +281,7 @@ def test_result_columns_keep_their_positions_and_labels():
         "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
         "Camera", "Telescope", "Object", "Observation Date", "Path", "Size", "Modified", "RA", "DEC", "Solved",
         "Projects", "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation", "Diagnosis", "Layer", "Night",
+        "Frames", "Integration",
     ]
 
 
@@ -310,6 +311,8 @@ _SERIALIZED = {
     # shown in local time, or in UTC until the image has one
     "date_obs": lambda r: (r["image"] or {}).get("local_time") or (r["image"] or {}).get("date_obs"),
     "session_night": lambda r: (r["image"] or {}).get("session_night"),
+    "frames": lambda r: r.get("frames"),  # grouped mode only
+    "integration": lambda r: r.get("integration_seconds"),
     "solved": lambda r: r["has_wcs"],
     "projects": lambda r: r["projects"],
     "background": lambda r: r["stats"]["background_median"],

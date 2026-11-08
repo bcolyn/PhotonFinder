@@ -1,9 +1,10 @@
 import json
+import operator
 import os
 import typing
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from functools import cmp_to_key
+from functools import cmp_to_key, reduce
 from pathlib import Path
 from typing import Optional
 
@@ -80,6 +81,12 @@ class SearchCriteria:
     local_start: datetime | None = None  # local wall-clock time, compared with Image.local_time
     local_end: datetime | None = None
     session_night: date | None = None  # one observing night (local time - 12 h)
+    # One row per group (group_key_sql) instead of one per image: in the grid, MCP search_files
+    # and plate solving only. Every other consumer ignores it and works on all matching images.
+    one_per_group: bool = False
+    # Only the images of these groups: each a dict of GROUP_KEY values (see group_of), as a
+    # grouped row's drill-in or its expansion into its members sets them.
+    groups: list[dict] = field(default_factory=list)
     reference_file: Optional['File'] = None
     header_text: str = ""
     project: 'Project' = None
@@ -535,6 +542,52 @@ def session_night_sql():
     """The session night of an Image row in SQL: 'YYYY-MM-DD' text in the database, a date when
     selected, NULL without a local time. Compare it with ``night.isoformat()``."""
     return fn.date(Image.local_time, SQL("'-12 hours'")).python_value(_night_value)
+
+
+# A group: the frames of one target on one night, as the grid's grouped mode shows them, plate
+# solving picks one frame of (one per group) and the catalog report counts by. Defined here once
+# so they agree. Type, library root and folder keep calibration frames and copies elsewhere
+# apart; filter and exposure (to 0.01 s) split a night as a stacker would. NULLs group together.
+GROUP_KEY = ('image_type', 'root', 'path', 'object_name', 'filter', 'exposure', 'session_night')
+
+
+def group_key_sql() -> list:
+    """The group key over File and Image, in GROUP_KEY order."""
+    return [Image.image_type, File.root, File.path, Image.object_name, Image.filter,
+            fn.ROUND(Image.exposure, 2), session_night_sql()]
+
+
+def group_order_sql() -> list:
+    """The order of a group's frames, its representative first: the earliest date_obs (frames
+    without one last), then the file and the layer."""
+    return [Image.date_obs.is_null(), Image.date_obs, File.rowid, Image.hdu]
+
+
+def group_of(file: 'File') -> Optional[dict]:
+    """The GROUP_KEY values of a search row (a File with its Image), for SearchCriteria.groups.
+    The exposure is kept as stored: the condition rounds both sides in SQL alike."""
+    image = file.__dict__.get('image')
+    if image is None or image.rowid is None:
+        return None
+    # the night as session_night_sql (and local_time.session_night) has it
+    night = (image.local_time - timedelta(hours=12)).date().isoformat() if image.local_time else None
+    return {'image_type': image.image_type, 'root': file.root_id, 'path': file.path,
+            'object_name': image.object_name, 'filter': image.filter, 'exposure': image.exposure,
+            'session_night': night}
+
+
+def group_condition(group: dict):
+    """The images of one group: every key part equal, a NULL one only to NULL."""
+    parts = []
+    for name, column in zip(GROUP_KEY, group_key_sql()):
+        value = group.get(name)
+        if value is None:
+            parts.append(column.is_null())
+        elif name == 'exposure':
+            parts.append(column == fn.ROUND(value, 2))
+        else:
+            parts.append(column == value)
+    return reduce(operator.and_, parts)
 
 
 class Project(Model):

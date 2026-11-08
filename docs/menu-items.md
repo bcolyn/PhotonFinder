@@ -31,6 +31,9 @@ Every frame gets a local time when it is indexed, from the first source its head
 
 The Filter menu provides various filtering options to narrow down search results based on file metadata.
 
+### Group by Night
+- **Group by Night** - Shows one row per group of frames instead of one per image: a group is one target (`OBJECT`) on one observing night, with the same image type, folder, filter and exposure. Each row is the group's earliest frame, with **Frames** (how many it stands for) and **Integration** (their total exposure); the status bar and tab title count files and groups. Double-click a row, or use **Show the frames of this group** on its right-click menu, to open its frames in a new tab. Actions on selected rows (export, add to project, compress, plate solve, analyse, mark as bad) work on all the frames of the selected groups; viewing and the header show the row's frame. The search's other filters still apply: a group counts only the frames they let through. Reports always count every image
+
 ### Metadata Filters
 - **Exposure** - Filter files by exposure time
 - **Coordinates** - Filter files by celestial coordinates (RA/Dec)

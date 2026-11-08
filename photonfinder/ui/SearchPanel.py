@@ -1,3 +1,4 @@
+import copy
 import datetime
 import logging
 import os
@@ -19,11 +20,11 @@ from photonfinder.core import ApplicationContext, Change, library_busy_message
 from photonfinder.filesystem import is_compressible, cached_header
 from photonfinder.local_time import obs_zone, session_night
 from photonfinder.library_query import (
-    COLUMN_INDEX, RESULT_COLUMNS, cell, count_text, diagnosis_counts, distinct_files, distinct_values,
-    image_key, search_row_stat,
+    COLUMN_INDEX, GROUP_COLUMNS, RESULT_COLUMNS, cell, count_text, diagnosis_counts, distinct_files,
+    distinct_values, group_value, image_key, matching_files, search_row_stat,
 )
 from photonfinder.models import SearchCriteria, CORE_MODELS, Image, RootAndPath, File, FitsHeader, Project, \
-    ProjectFile, LibraryRoot
+    ProjectFile, LibraryRoot, group_of
 from .BackgroundLoader import SearchResultsLoader, GenericControlLoader, PlateSolveTask, FileListTask, ImageAnalysisTask
 from .DateRangeDialog import DateRangeDialog
 from .HeaderDialog import HeaderDialog
@@ -155,6 +156,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # insert the toolbar
         self.toolbar = QToolBar()
         self.filter_layout.insertWidget(1, self.toolbar)
+        self.toolbar.addAction(mainWindow.actionGroupByNight)
+        self.toolbar.addSeparator()
         self.toolbar.addAction(mainWindow.actionExposure)
         self.toolbar.addAction(mainWindow.actionCoordinates)
         self.toolbar.addAction(mainWindow.actionDate)
@@ -305,17 +308,48 @@ class SearchPanel(QFrame, Ui_SearchPanel):
     def get_selected_files(self) -> List[File]:
         """The selected rows of the data grid: one File per image, so a file whose layers are
         both selected comes twice, each with its own Image. Actions on files take
-        get_selected_distinct_files."""
-        selected_indexes = self.dataView.selectionModel().selectedRows()
-        selected_files = []
+        get_selected_distinct_files. In grouped mode a row stands for its group, so this is
+        every image of the selected groups (that the search lets through)."""
+        rows = self.get_selected_rows()
+        if not self.search_criteria.one_per_group or not rows:
+            return rows
+        return self._group_members(rows)
 
-        for index in selected_indexes:
-            # Get the Image object from the model
+    def get_selected_rows(self) -> List[File]:
+        """The selected rows as shown: in grouped mode, the groups' representatives."""
+        selected_files = []
+        for index in self.dataView.selectionModel().selectedRows():
             file = self.get_file_at_row(index.row())
             if file:
                 selected_files.append(file)
-
         return selected_files
+
+    def _group_criteria(self, rows: List[File]) -> SearchCriteria:
+        """The current search narrowed to the groups of these grouped rows, one row per image."""
+        criteria = copy.deepcopy(self.search_criteria)
+        criteria.one_per_group = False
+        criteria.groups = [group for group in map(group_of, rows) if group is not None]
+        return criteria
+
+    def _group_members(self, rows: List[File]) -> List[File]:
+        with self.context.database.bind_ctx(CORE_MODELS):
+            return matching_files(self._group_criteria(rows), require_image=True)
+
+    def set_grouped(self, grouped: bool):
+        """One row per group (target, night, filter, exposure, folder) or one per image."""
+        if self.search_criteria.one_per_group == grouped:
+            return
+        self.search_criteria.one_per_group = grouped
+        self.update_search_criteria()
+
+    def open_group(self, row: File):
+        """Drill into a grouped row: its frames in a new tab, which keeps the group as a filter."""
+        self.mainWindow.new_search_tab(self._group_criteria([row]))
+
+    def _show_group_columns(self):
+        grouped = self.search_criteria.one_per_group
+        for key in GROUP_COLUMNS:
+            self.dataView.setColumnHidden(COLUMN_INDEX[key], not grouped)
 
     def get_selected_distinct_files(self) -> List[File]:
         """The files of the selected rows, each once: what export, move, compress, plate solving
@@ -323,6 +357,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         return distinct_files(self.get_selected_files())
 
     def _counts_text(self) -> str:
+        if self.search_criteria.one_per_group:
+            return f"{self.total_result_files} files in {self.total_files} groups"
         return count_text(self.total_files, self.total_result_files)
 
     def _update_title(self):
@@ -337,7 +373,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             return
 
         self.context.status_reporter.update_status("Searching...", bulk=True)
-
+        self._show_group_columns()
         self.search_results_loader.search(self.search_criteria)
 
     def refresh_combo_options(self):
@@ -386,6 +422,15 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def on_data_selection_changed(self, selected, deselected):
         """Handle selection changes in the data grid."""
+        if self.search_criteria.one_per_group:
+            rows = self.get_selected_rows()
+            if rows:
+                frames = sum(group_value(row, 'group_frames') or 1 for row in rows)
+                groups = f"{len(rows)} group" + ("s" if len(rows) != 1 else "")
+                self.context.status_reporter.update_status(
+                    f"{frames} frames in {groups} out of {self._counts_text()} selected", bulk=True)
+            self.mainWindow.enable_actions_for_current_tab()
+            return
         selected = self.get_selected_files()
         if selected:
             selection = count_text(len(selected), len(distinct_files(selected)))
@@ -567,6 +612,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
         # Create context menu
         menu = QMenu(self)
+        if self.search_criteria.one_per_group and selected_file is not None and group_of(selected_file):
+            frames = group_value(selected_file, 'group_frames')
+            menu.addAction(f"Show the {frames} frames of this group").triggered.connect(
+                partial(self.open_group, selected_file))
+            menu.addSeparator()
         view_action = menu.addAction("View")
         open_action = menu.addAction("Open File")
         show_location_action = menu.addAction("Show location")
@@ -686,7 +736,9 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.analyse_images()
         elif action == mark_bad_action:
             file = self.get_file_at_row(index.row())
-            if file:
+            if file and self.search_criteria.one_per_group and group_of(file) is not None:
+                self.mark_group_as_bad(file)
+            elif file:
                 self.mark_file_as_bad(file, index.row())
         elif action in project_actions:
             project = action.data()
@@ -766,7 +818,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         *row* is a row of the (sorted) view, not of the underlying data model.
         *dialog_parent* lets the image viewer show the prompt over itself.
         Returns False if the user declined or the rename failed."""
-        import fnmatch
         with self.context.database.bind_ctx(CORE_MODELS):
             layers = Image.select().where(Image.file == file).count()
         whole_file = f"\n\nThis removes the whole file, with all {layers} of its image layers." if layers > 1 else ""
@@ -777,14 +828,55 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             QMessageBox.StandardButton.Yes)  # Del, Enter keeps culling in the viewer quick
         if answer != QMessageBox.StandardButton.Yes:
             return False
-        new_name = "BAD_" + file.name
-        old_path = file.full_filename()
-        new_path = os.path.join(os.path.dirname(old_path), new_name)
         try:
-            os.rename(old_path, new_path)
+            self._rename_as_bad(file)
         except OSError as e:
             QMessageBox.warning(self, "Mark as Bad", f"Could not rename file:\n{e}")
             return False
+        self._warn_if_bad_files_would_return("BAD_" + file.name)
+        # Every row of the file goes: one per image layer.
+        rows = self._source_rows_of(file)
+        for source_row in reversed(rows):
+            self.data_model.removeRow(source_row)
+        self.total_files -= len(rows)
+        self.total_result_files -= 1
+        self._update_title()
+        return True
+
+    def mark_group_as_bad(self, row: File) -> bool:
+        """After confirmation, mark every file of a grouped row's group as bad (see
+        mark_file_as_bad), then search again."""
+        files = distinct_files(self._group_members([row]))
+        answer = QMessageBox.question(
+            self, "Mark as Bad",
+            f"Rename the {len(files)} files of this group to BAD_<name> and remove them from the library?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return False
+        failed = []
+        for file in files:
+            try:
+                self._rename_as_bad(file)
+            except OSError as e:
+                failed.append(f"{file.name}: {e}")
+        if failed:
+            QMessageBox.warning(self, "Mark as Bad", "Could not rename:\n" + "\n".join(failed[:10]))
+        if len(failed) < len(files):
+            self._warn_if_bad_files_would_return("BAD_" + files[0].name)
+        self.refresh_data_grid()
+        return not failed
+
+    def _rename_as_bad(self, file: File):
+        """Rename the file to BAD_<name> and remove it from the library. Raises OSError when the
+        rename fails, leaving it as it was."""
+        old_path = file.full_filename()
+        os.rename(old_path, os.path.join(os.path.dirname(old_path), "BAD_" + file.name))
+        with self.context.database.bind_ctx(CORE_MODELS):
+            file.delete_instance()
+
+    def _warn_if_bad_files_would_return(self, new_name: str):
+        """A renamed file the bad-file patterns don't match is imported again by the next scan."""
+        import fnmatch
         patterns = self.context.settings.get_bad_file_patterns().split("|")
         if not any(fnmatch.fnmatch(new_name.lower(), p) for p in patterns):
             QMessageBox.warning(
@@ -794,16 +886,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 f"does not match this name. The file will be re-imported on the next library scan.\n\n"
                 f"Go to Settings and add a pattern that matches 'bad*' to prevent this."
             )
-        with self.context.database.bind_ctx(CORE_MODELS):
-            file.delete_instance()
-        # Every row of the file goes: one per image layer.
-        rows = self._source_rows_of(file)
-        for source_row in reversed(rows):
-            self.data_model.removeRow(source_row)
-        self.total_files -= len(rows)
-        self.total_result_files -= 1
-        self._update_title()
-        return True
 
     def _source_rows_of(self, file: File) -> list[int]:
         """The source-model rows of a file, one per image of it in the results."""
@@ -822,7 +904,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             _set_cells(self.data_model, source_row, coord_ra=ra, coord_dec=dec, solved="False")
 
     def on_item_double_clicked(self, index):
-        """Handle double-click on an item in the data view."""
+        """Handle double-click on an item in the data view: a grouped row opens its frames."""
+        if self.search_criteria.one_per_group:
+            row = self.get_file_at_row(index.row())
+            if row is not None and group_of(row) is not None:
+                self.open_group(row)
+                return
         if self.context.settings.get_use_internal_viewer():
             self.view_file(index)
         else:
@@ -1295,7 +1382,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.filesystemTreeView.selectionModel().clearSelection()
 
     def apply_search_criteria(self, criteria: SearchCriteria):
-        import copy
         self.search_criteria = copy.deepcopy(criteria)
         self.update_in_progress = True
         # Wait for the list of library roots, not for any root's folders: those load per root

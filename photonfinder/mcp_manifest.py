@@ -543,6 +543,69 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                               'night".',
                                                                                                'title': 'Session '
                                                                                                         'Night'},
+                                                                             'one_per_group': {'anyOf': [{'type': 'boolean'},
+                                                                                                         {'type': 'null'}],
+                                                                                               'default': None,
+                                                                                               'description': 'One '
+                                                                                                              'result '
+                                                                                                              'per '
+                                                                                                              'group '
+                                                                                                              'instead '
+                                                                                                              'of '
+                                                                                                              'one '
+                                                                                                              'per '
+                                                                                                              'image: '
+                                                                                                              'a '
+                                                                                                              'group '
+                                                                                                              'is '
+                                                                                                              'the '
+                                                                                                              'frames '
+                                                                                                              'of '
+                                                                                                              'one '
+                                                                                                              'target '
+                                                                                                              'on '
+                                                                                                              'one '
+                                                                                                              'observing '
+                                                                                                              'night '
+                                                                                                              'with '
+                                                                                                              'the '
+                                                                                                              'same '
+                                                                                                              'image '
+                                                                                                              'type, '
+                                                                                                              'folder, '
+                                                                                                              'filter '
+                                                                                                              'and '
+                                                                                                              'exposure. '
+                                                                                                              'Each '
+                                                                                                              'result '
+                                                                                                              'is '
+                                                                                                              'the '
+                                                                                                              "group's "
+                                                                                                              'earliest '
+                                                                                                              'frame '
+                                                                                                              'and '
+                                                                                                              'carries '
+                                                                                                              '`frames` '
+                                                                                                              '(how '
+                                                                                                              'many '
+                                                                                                              'images '
+                                                                                                              'it '
+                                                                                                              'stands '
+                                                                                                              'for) '
+                                                                                                              'and '
+                                                                                                              '`integration_seconds`. '
+                                                                                                              'Only '
+                                                                                                              '`search_files` '
+                                                                                                              'groups; '
+                                                                                                              'the '
+                                                                                                              'reports '
+                                                                                                              'always '
+                                                                                                              'count '
+                                                                                                              'every '
+                                                                                                              'image.',
+                                                                                               'title': 'One '
+                                                                                                        'Per '
+                                                                                                        'Group'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
@@ -857,7 +920,9 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'elongation',
                                                                                                                    'diagnosis',
                                                                                                                    'layer',
-                                                                                                                   'session_night'],
+                                                                                                                   'session_night',
+                                                                                                                   'frames',
+                                                                                                                   'integration'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,
@@ -1466,6 +1531,69 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                               'night".',
                                                                                                'title': 'Session '
                                                                                                         'Night'},
+                                                                             'one_per_group': {'anyOf': [{'type': 'boolean'},
+                                                                                                         {'type': 'null'}],
+                                                                                               'default': None,
+                                                                                               'description': 'One '
+                                                                                                              'result '
+                                                                                                              'per '
+                                                                                                              'group '
+                                                                                                              'instead '
+                                                                                                              'of '
+                                                                                                              'one '
+                                                                                                              'per '
+                                                                                                              'image: '
+                                                                                                              'a '
+                                                                                                              'group '
+                                                                                                              'is '
+                                                                                                              'the '
+                                                                                                              'frames '
+                                                                                                              'of '
+                                                                                                              'one '
+                                                                                                              'target '
+                                                                                                              'on '
+                                                                                                              'one '
+                                                                                                              'observing '
+                                                                                                              'night '
+                                                                                                              'with '
+                                                                                                              'the '
+                                                                                                              'same '
+                                                                                                              'image '
+                                                                                                              'type, '
+                                                                                                              'folder, '
+                                                                                                              'filter '
+                                                                                                              'and '
+                                                                                                              'exposure. '
+                                                                                                              'Each '
+                                                                                                              'result '
+                                                                                                              'is '
+                                                                                                              'the '
+                                                                                                              "group's "
+                                                                                                              'earliest '
+                                                                                                              'frame '
+                                                                                                              'and '
+                                                                                                              'carries '
+                                                                                                              '`frames` '
+                                                                                                              '(how '
+                                                                                                              'many '
+                                                                                                              'images '
+                                                                                                              'it '
+                                                                                                              'stands '
+                                                                                                              'for) '
+                                                                                                              'and '
+                                                                                                              '`integration_seconds`. '
+                                                                                                              'Only '
+                                                                                                              '`search_files` '
+                                                                                                              'groups; '
+                                                                                                              'the '
+                                                                                                              'reports '
+                                                                                                              'always '
+                                                                                                              'count '
+                                                                                                              'every '
+                                                                                                              'image.',
+                                                                                               'title': 'One '
+                                                                                                        'Per '
+                                                                                                        'Group'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
@@ -1780,7 +1908,9 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'elongation',
                                                                                                                    'diagnosis',
                                                                                                                    'layer',
-                                                                                                                   'session_night'],
+                                                                                                                   'session_night',
+                                                                                                                   'frames',
+                                                                                                                   'integration'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,
@@ -2426,6 +2556,69 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                               'night".',
                                                                                                'title': 'Session '
                                                                                                         'Night'},
+                                                                             'one_per_group': {'anyOf': [{'type': 'boolean'},
+                                                                                                         {'type': 'null'}],
+                                                                                               'default': None,
+                                                                                               'description': 'One '
+                                                                                                              'result '
+                                                                                                              'per '
+                                                                                                              'group '
+                                                                                                              'instead '
+                                                                                                              'of '
+                                                                                                              'one '
+                                                                                                              'per '
+                                                                                                              'image: '
+                                                                                                              'a '
+                                                                                                              'group '
+                                                                                                              'is '
+                                                                                                              'the '
+                                                                                                              'frames '
+                                                                                                              'of '
+                                                                                                              'one '
+                                                                                                              'target '
+                                                                                                              'on '
+                                                                                                              'one '
+                                                                                                              'observing '
+                                                                                                              'night '
+                                                                                                              'with '
+                                                                                                              'the '
+                                                                                                              'same '
+                                                                                                              'image '
+                                                                                                              'type, '
+                                                                                                              'folder, '
+                                                                                                              'filter '
+                                                                                                              'and '
+                                                                                                              'exposure. '
+                                                                                                              'Each '
+                                                                                                              'result '
+                                                                                                              'is '
+                                                                                                              'the '
+                                                                                                              "group's "
+                                                                                                              'earliest '
+                                                                                                              'frame '
+                                                                                                              'and '
+                                                                                                              'carries '
+                                                                                                              '`frames` '
+                                                                                                              '(how '
+                                                                                                              'many '
+                                                                                                              'images '
+                                                                                                              'it '
+                                                                                                              'stands '
+                                                                                                              'for) '
+                                                                                                              'and '
+                                                                                                              '`integration_seconds`. '
+                                                                                                              'Only '
+                                                                                                              '`search_files` '
+                                                                                                              'groups; '
+                                                                                                              'the '
+                                                                                                              'reports '
+                                                                                                              'always '
+                                                                                                              'count '
+                                                                                                              'every '
+                                                                                                              'image.',
+                                                                                               'title': 'One '
+                                                                                                        'Per '
+                                                                                                        'Group'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
@@ -2740,7 +2933,9 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'elongation',
                                                                                                                    'diagnosis',
                                                                                                                    'layer',
-                                                                                                                   'session_night'],
+                                                                                                                   'session_night',
+                                                                                                                   'frames',
+                                                                                                                   'integration'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,
@@ -3382,6 +3577,69 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                               'night".',
                                                                                                'title': 'Session '
                                                                                                         'Night'},
+                                                                             'one_per_group': {'anyOf': [{'type': 'boolean'},
+                                                                                                         {'type': 'null'}],
+                                                                                               'default': None,
+                                                                                               'description': 'One '
+                                                                                                              'result '
+                                                                                                              'per '
+                                                                                                              'group '
+                                                                                                              'instead '
+                                                                                                              'of '
+                                                                                                              'one '
+                                                                                                              'per '
+                                                                                                              'image: '
+                                                                                                              'a '
+                                                                                                              'group '
+                                                                                                              'is '
+                                                                                                              'the '
+                                                                                                              'frames '
+                                                                                                              'of '
+                                                                                                              'one '
+                                                                                                              'target '
+                                                                                                              'on '
+                                                                                                              'one '
+                                                                                                              'observing '
+                                                                                                              'night '
+                                                                                                              'with '
+                                                                                                              'the '
+                                                                                                              'same '
+                                                                                                              'image '
+                                                                                                              'type, '
+                                                                                                              'folder, '
+                                                                                                              'filter '
+                                                                                                              'and '
+                                                                                                              'exposure. '
+                                                                                                              'Each '
+                                                                                                              'result '
+                                                                                                              'is '
+                                                                                                              'the '
+                                                                                                              "group's "
+                                                                                                              'earliest '
+                                                                                                              'frame '
+                                                                                                              'and '
+                                                                                                              'carries '
+                                                                                                              '`frames` '
+                                                                                                              '(how '
+                                                                                                              'many '
+                                                                                                              'images '
+                                                                                                              'it '
+                                                                                                              'stands '
+                                                                                                              'for) '
+                                                                                                              'and '
+                                                                                                              '`integration_seconds`. '
+                                                                                                              'Only '
+                                                                                                              '`search_files` '
+                                                                                                              'groups; '
+                                                                                                              'the '
+                                                                                                              'reports '
+                                                                                                              'always '
+                                                                                                              'count '
+                                                                                                              'every '
+                                                                                                              'image.',
+                                                                                               'title': 'One '
+                                                                                                        'Per '
+                                                                                                        'Group'},
                                                                              'header_text': {'anyOf': [{'type': 'string'},
                                                                                                        {'type': 'null'}],
                                                                                              'default': None,
@@ -3696,7 +3954,9 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                                                                                                                    'elongation',
                                                                                                                    'diagnosis',
                                                                                                                    'layer',
-                                                                                                                   'session_night'],
+                                                                                                                   'session_night',
+                                                                                                                   'frames',
+                                                                                                                   'integration'],
                                                                                                           'type': 'string'},
                                                                                                          {'type': 'null'}],
                                                                                                'default': None,

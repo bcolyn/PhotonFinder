@@ -70,6 +70,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionCoordinates.setIcon(create_colored_svg_icon(":/res/crosshair.svg", size, text_color))
         self.actionDate.setIcon(create_colored_svg_icon(":/res/calendar3.svg", size, text_color))
         self.actionNight.setIcon(create_colored_svg_icon(":/res/moon.svg", size, text_color))
+        self.actionGroupByNight.setIcon(create_colored_svg_icon(":/res/box-seam.svg", size, text_color))
         self.actionTelescope.setIcon(create_colored_svg_icon(":/res/telescope-icon-original.svg", size, text_color))
         self.actionBinning.setIcon(create_colored_svg_icon(":/res/border-outer.svg", size, text_color))
         self.actionGain.setIcon(create_colored_svg_icon(":/res/exposure.svg", size, text_color))
@@ -165,6 +166,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             lambda: self.get_current_search_panel().set_project_filter(NO_PROJECT))
         for action, entry in self._filter_actions().items():
             action.triggered.connect(partial(self._edit_filter, entry))
+        self.actionGroupByNight.triggered.connect(lambda checked: self.get_current_search_panel().set_grouped(checked))
         self.menuSearch_Details.aboutToShow.connect(self.populate_search_details)
         self.menuProject_Details.aboutToShow.connect(self.populate_project_details)
         self.menu_File.setToolTipsVisible(True)
@@ -797,6 +799,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         for action, entry in self._filter_actions().items():
             action.setChecked(entry in current_panel.advanced_options)  # no effect on the uncheckable ones
+        self.actionGroupByNight.setChecked(current_panel.search_criteria.one_per_group)
 
     def add_selection_to_project(self, project: Project):
         edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)

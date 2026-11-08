@@ -16,7 +16,7 @@ import dataclasses
 from datetime import datetime
 from typing import Callable, NamedTuple
 
-from peewee import JOIN, chunked, fn
+from peewee import JOIN, SQL, Select, Value, Window, chunked, fn
 
 from photonfinder import filter_catalogue
 from photonfinder.formatting import _format_date, _format_dec, _format_file_size, _format_ra, _format_timestamp
@@ -24,7 +24,7 @@ from photonfinder.local_time import session_night
 from photonfinder.models import (
     DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_SEPARATOR, DIAGNOSIS_VALUES, PROJECT_NAME_SEP, File, FileWCS, FitsHeader, Image, ImageStats,
     same_image,
-    LibraryRoot, Project, ProjectFile, SearchCriteria, session_night_sql,
+    LibraryRoot, Project, ProjectFile, SearchCriteria, group_key_sql, group_order_sql, session_night_sql,
 )
 
 # The order of files when the criteria ask for no sort.
@@ -113,6 +113,28 @@ def _night(row):
     return session_night(image.local_time) if image is not None else None
 
 
+def _format_duration(seconds: float) -> str:
+    seconds = round(seconds)
+    hours, rest = divmod(seconds, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    return f"{minutes}m {secs:02d}s" if minutes else f"{secs}s"
+
+
+def group_value(row, name: str):
+    """What a grouped row stands for ('group_frames', 'group_integration'); None otherwise.
+    Peewee keeps the grouping CTE's columns on the join's `grouping`, a dict."""
+    grouping = getattr(row, 'grouping', None)
+    return grouping.get(name) if isinstance(grouping, dict) else getattr(grouping, name, None)
+
+
+# In grouped mode (SearchCriteria.one_per_group) a row is a group's representative, and these
+# say what it stands for; otherwise they are NULL. _result_query puts the real columns in.
+_GROUP_FRAMES = Value(None).alias('group_frames')
+_GROUP_INTEGRATION = Value(None).alias('group_integration')
+
+
 def _number_text(digits):
     return lambda value: f"{value:.{digits}f}"
 
@@ -167,7 +189,12 @@ RESULT_COLUMNS = (
     # grid shows Night after Observation Date (SearchPanel moves it there).
     ResultColumn("layer", "Layer", Image.extname, _image_value('extname')),
     ResultColumn("session_night", "Night", session_night_sql().alias('session_night'), _night),
+    ResultColumn("frames", "Frames", _GROUP_FRAMES, lambda row: group_value(row, 'group_frames')),
+    ResultColumn("integration", "Integration", _GROUP_INTEGRATION,
+                 lambda row: group_value(row, 'group_integration'), text=_format_duration),
 )
+# Shown only in grouped mode.
+GROUP_COLUMNS = ("frames", "integration")
 COLUMN_INDEX = {column.key: i for i, column in enumerate(RESULT_COLUMNS)}
 
 # Named sort targets for SearchCriteria.sorting_field: every result column, by key.
@@ -206,7 +233,9 @@ def search_files(criteria: SearchCriteria, page: int = 0, page_size: int = 100) 
 
 def count_files(criteria: SearchCriteria) -> int:
     """How many search rows match the criteria: one per image, a file without an Image row
-    counting once. See count_distinct_files for the files."""
+    counting once; in grouped mode, one per group. See count_distinct_files for the files."""
+    if criteria.one_per_group:
+        return _result_query(criteria)[0].count()
     return _files_query(criteria).count()
 
 
@@ -352,6 +381,9 @@ def serialize_search_row(row: File) -> dict:
         "root": {"rowid": row.root.rowid, "name": row.root.name, "path": row.root.path},
         "has_wcs": bool(getattr(row, "has_wcs", False)),
     }
+    if group_value(row, "group_frames") is not None:  # grouped mode: what the row stands for
+        result["frames"] = group_value(row, "group_frames")
+        result["integration_seconds"] = group_value(row, "group_integration")
 
     image = getattr(row, "image", None)
     result["hdu"] = image.hdu if image is not None and image.rowid is not None else None
@@ -387,6 +419,10 @@ def _result_query(criteria: SearchCriteria):
     """The unordered search-result query, and its selected fields in RESULT_COLUMNS order
     (what SearchCriteria.sorting_index refers to)."""
     fields = [column.field for column in RESULT_COLUMNS]
+    groups = _representatives(criteria) if criteria.one_per_group else None
+    if groups is not None:
+        fields[COLUMN_INDEX["frames"]] = groups.c.frames.alias('group_frames')
+        fields[COLUMN_INDEX["integration"]] = groups.c.integration.alias('group_integration')
     query = (File
              .select(*(fields + [File, Image, LibraryRoot]))
              .join_from(File, LibraryRoot)
@@ -396,17 +432,43 @@ def _result_query(criteria: SearchCriteria):
              .join_from(File, _PROJECT_NAMES, JOIN.LEFT_OUTER,
                         on=(File.rowid == _PROJECT_NAMES.c.file_id))
              )
+    if groups is not None:
+        # Each group's representative; a file without an Image row has no group, so no row.
+        query = (query.with_cte(groups)
+                 .join_from(File, groups, JOIN.INNER, on=(Image.rowid == groups.c.image_id), attr='grouping'))
     return _where_criteria(query, criteria), fields
+
+
+def _representatives(criteria: SearchCriteria):
+    """Each group's representative (the first by group_order_sql), with the group's frame count
+    and summed exposure. A window over the matching images, so a group counts only the frames
+    the criteria let through. One sort: ROW_NUMBER ranks the frames, and COUNT and SUM take the
+    whole group through an explicit frame (with ORDER BY, their default frame would make them
+    running totals)."""
+    ranked = Window(partition_by=group_key_sql(), order_by=group_order_sql(), alias='ranked')
+    whole = Window(partition_by=group_key_sql(), order_by=group_order_sql(), alias='whole',
+                   start=Window.preceding(), end=Window.following())
+    framed = (select_matching(criteria, Image.rowid.alias('image_id'),
+                              fn.ROW_NUMBER().over(ranked).alias('rank'),
+                              fn.COUNT(SQL('*')).over(whole).alias('frames'),
+                              fn.SUM(Image.exposure).over(whole).alias('integration'),
+                              require_image=True)
+              .window(ranked, whole)
+              .alias('framed'))
+    # Materialized: computed once, as SQLite could otherwise run it again per joined row.
+    return (Select([framed], [framed.c.image_id, framed.c.frames, framed.c.integration])
+            .where(framed.c.rank == 1)
+            .cte('groups', materialized=True))
 
 
 def _ordering(criteria: SearchCriteria, fields: list) -> list:
     """ORDER BY terms: the named sorting_field, else the sorting_index column, else DEFAULT_ORDER."""
     if criteria.sorting_field is not None:
-        sort_field = SORTABLE_FIELDS.get(criteria.sorting_field)
-        if sort_field is None:
+        if criteria.sorting_field not in SORTABLE_FIELDS:
             raise ValueError(
                 f"Unknown sorting_field '{criteria.sorting_field}'. "
                 f"Valid fields: {', '.join(sorted(SORTABLE_FIELDS))}.")
+        sort_field = fields[COLUMN_INDEX[criteria.sorting_field]]  # the query's own (grouped) column
     elif criteria.sorting_index is not None:
         sort_field = fields[criteria.sorting_index]
     else:
