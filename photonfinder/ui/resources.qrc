@@ -20,6 +20,7 @@
     <file>res/border-outer.svg</file>
     <file>res/stars.svg</file>
     <file>res/table.svg</file>
+    <file>res/box-seam.svg</file>
     <file alias="icon.png">../../icon.png</file>
   </qresource>
 </RCC>
