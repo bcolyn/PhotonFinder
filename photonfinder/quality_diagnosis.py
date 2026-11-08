@@ -254,7 +254,8 @@ def load_scope(context: ApplicationContext, criteria: SearchCriteria,
                          Image.camera, Image.telescope, Image.date_obs, ImageStats.rowid, ImageStats.fwhm_median,
                          ImageStats.elongation_median, ImageStats.background_median, ImageStats.star_count,
                          ImageStats.background_rms)
-                 .join(ImageStats, JOIN.LEFT_OUTER, on=(ImageStats.file == Image.file))
+                 .join(ImageStats, JOIN.LEFT_OUTER,
+                       on=(ImageStats.file == Image.file) & (ImageStats.hdu == Image.hdu))
                  .where(fn.UPPER(Image.image_type) == "LIGHT"))
         rows = list(query.tuples())
 

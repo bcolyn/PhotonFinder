@@ -297,7 +297,10 @@ def reindex_library(status_reporter, settings) -> None:
                 stored_record = getattr(file, 'filewcs', None)
                 stored = plate_solution.decode(stored_record.wcs) if stored_record else None
                 settings.add_known_fits_keywords(header.keys())
-                rows.append((file, *index_header(file, header, stored, status_reporter)))
+                image, embedded = index_header(file, header, stored, status_reporter)
+                if image is not None:
+                    image.hdu = header_record.hdu  # each header row indexes its own image
+                rows.append((file, image, embedded))
             except Exception as e:
                 # Its current row stays, as nothing better came out of this header.
                 log(ERROR, f"Error processing header of {file.name}: {e}", exc_info=True)

@@ -446,9 +446,19 @@ class File(Model):
         return [file for file in selected_files if file.rowid not in already_linked_ids_set]
 
 
+def _hdu_field():
+    """Which image in the file a row is about: the FITS HDU number, or the image's position in
+    an XISF file (see image_hdus). 0 for the primary HDU / first image. The SQL default lets rows
+    written without it, as by the schema migration, mean the first image."""
+    return IntegerField(default=0, constraints=[SQL('DEFAULT 0')])
+
+
 class Image(Model):
+    """One image in a file. A file holds one or more: one per image HDU (FITS) or <Image> (XISF)."""
     rowid = RowIDField()
-    file = ForeignKeyField(File, on_delete='CASCADE', index=True, unique=True)
+    file = ForeignKeyField(File, on_delete='CASCADE', index=False)  # indexed by (file, hdu)
+    hdu = _hdu_field()
+    extname = CharField(null=True)  # EXTNAME, or the XISF image id; NULL for the first image
     image_type = CharField(null=True, index=True)
     camera = CharField(null=True, index=True)
     filter = CharField(null=True, index=True)
@@ -475,6 +485,7 @@ class Image(Model):
 
     class Meta:
         database = None
+        indexes = ((('file', 'hdu'), True),)
 
     def get_sky_coord(self) -> SkyCoord | None:
         return SkyCoord(self.coord_ra, self.coord_dec, unit=u.deg,
@@ -652,8 +663,19 @@ class FitsHeader(Model):
     This is a cache of the header information from FITS files.
     """
     rowid = RowIDField()
-    file = ForeignKeyField(File, on_delete='CASCADE', unique=True, backref='header')
-    header = BlobField(null=False)  # Caches the raw header as bytes
+    file = ForeignKeyField(File, on_delete='CASCADE', index=False, backref='header')
+    hdu = _hdu_field()
+    header = BlobField(null=False)  # Caches the raw header as bytes; an extension's own, not merged
+
+    class Meta:
+        indexes = ((('file', 'hdu'), True),)
+
+
+def same_image(model):
+    """Join condition for a per-image table (FitsHeader, ImageStats) in a query over File that
+    outer-joins Image: the row for the same (file, hdu). A file without an Image row matches
+    its hdu 0 row."""
+    return (model.file == File.rowid) & (model.hdu == fn.COALESCE(Image.hdu, 0))
 
 
 class FileWCS(Model):
@@ -664,7 +686,8 @@ class FileWCS(Model):
 
 class ImageStats(Model):
     rowid = RowIDField()
-    file = ForeignKeyField(File, on_delete='CASCADE', unique=True, backref='imagestats')
+    file = ForeignKeyField(File, on_delete='CASCADE', index=False, backref='imagestats')
+    hdu = _hdu_field()
     background_median = FloatField(null=True)
     background_rms = FloatField(null=True)
     star_count = IntegerField(null=True)
@@ -675,6 +698,7 @@ class ImageStats(Model):
 
     class Meta:
         database = None
+        indexes = ((('file', 'hdu'), True),)
 
 
 class CustomCatalogEntry(Model):

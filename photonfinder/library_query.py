@@ -22,6 +22,7 @@ from photonfinder import filter_catalogue
 from photonfinder.formatting import _format_date, _format_dec, _format_file_size, _format_ra, _format_timestamp, _utc_to_local
 from photonfinder.models import (
     DIAGNOSIS_NOT_ANALYSED, DIAGNOSIS_SEPARATOR, DIAGNOSIS_VALUES, PROJECT_NAME_SEP, File, FileWCS, FitsHeader, Image, ImageStats,
+    same_image,
     LibraryRoot, Project, ProjectFile, SearchCriteria,
 )
 
@@ -225,9 +226,12 @@ def select_matching(criteria: SearchCriteria, *columns, require_image: bool = Fa
     query = (File.select(*columns)
              .join_from(File, LibraryRoot)
              .join_from(File, Image, JOIN.INNER if require_image else JOIN.LEFT_OUTER))
-    for model, wanted in ((FitsHeader, with_header), (FileWCS, with_solution), (ImageStats, with_stats)):
-        if wanted:
-            query = query.join_from(File, model, JOIN.LEFT_OUTER)
+    if with_header:
+        query = query.join_from(File, FitsHeader, JOIN.LEFT_OUTER, on=same_image(FitsHeader), attr='fitsheader')
+    if with_solution:
+        query = query.join_from(File, FileWCS, JOIN.LEFT_OUTER)
+    if with_stats:
+        query = query.join_from(File, ImageStats, JOIN.LEFT_OUTER, on=same_image(ImageStats), attr='imagestats')
     if solved_only:
         query = query.where(File.rowid.in_(FileWCS.select(FileWCS.file)))
     return _where_criteria(query, criteria, exclude)
@@ -316,7 +320,7 @@ def _result_query(criteria: SearchCriteria):
              .join_from(File, LibraryRoot)
              .join_from(File, Image, JOIN.LEFT_OUTER)
              .join_from(File, FileWCS, JOIN.LEFT_OUTER)
-             .join_from(File, ImageStats, JOIN.LEFT_OUTER)
+             .join_from(File, ImageStats, JOIN.LEFT_OUTER, on=same_image(ImageStats), attr='imagestats')
              .join_from(File, _PROJECT_NAMES, JOIN.LEFT_OUTER,
                         on=(File.rowid == _PROJECT_NAMES.c.file_id))
              )

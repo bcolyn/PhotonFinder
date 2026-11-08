@@ -399,7 +399,8 @@ class LibraryDatabase(SqliteDatabase):  # pylint: disable=abstract-method  # SQL
 
 class ApplicationContext:
 
-    CURRENT_DB_VERSION = 1
+    # 2: an image is (file, hdu) - Image, FitsHeader and ImageStats have an hdu column
+    CURRENT_DB_VERSION = 2
 
     @staticmethod
     def create_in_app_data(app_data_path: str, settings) -> 'ApplicationContext':
@@ -450,12 +451,15 @@ class ApplicationContext:
         register_udfs(self.database)
 
         logging.info("Database opened")
+        if self.database:
+            from .models import CORE_MODELS
+            # Bound before the version check: a migration rebuilds tables from the models.
+            self.database.bind(CORE_MODELS, bind_refs=False, bind_backrefs=False)
         self._check_database_version()
 
         self.settings.set_last_database_path(str(self.database_path))
         if self.database:
             from .models import CATALOG_MODELS, CORE_MODELS
-            self.database.bind(CORE_MODELS, bind_refs=False, bind_backrefs=False)
             for model in CORE_MODELS:
                 model.create_table()
             self._migrate_image_dimensions()
@@ -565,11 +569,42 @@ class ApplicationContext:
         This method should be implemented to handle specific migration steps.
         """
         logging.info(f"Running migration from version {from_version} to {to_version}")
-        # if from_version < 1:
-        #     self._migrate_to_version_1()
-        # if from_version < 2:
-        #     self._migrate_to_version_2()
-        # etc.
+        if from_version < 2:
+            self._migrate_to_per_image_rows()
+
+    def _migrate_to_per_image_rows(self) -> None:
+        """Version 2: a file holds one or more images, so Image, FitsHeader and ImageStats get
+        an `hdu` column, and their unique key moves from `file` to (file, hdu). Existing rows
+        are the file's first image, hdu 0.
+
+        SQLite can't drop a UNIQUE in place, so each table is rebuilt, all in one transaction.
+        A table that is missing (a new library) or already has `hdu` is left alone."""
+        from .models import FitsHeader, Image, ImageStats
+        with self.database.atomic():
+            for model in (Image, FitsHeader, ImageStats):
+                self._rebuild_with_hdu(model)
+
+    def _rebuild_with_hdu(self, model) -> None:
+        table = model._meta.table_name
+        columns = [row[1] for row in self.database.execute_sql(f'PRAGMA table_info("{table}")')]
+        if not columns or 'hdu' in columns:
+            return
+        old = f'{table}_before_hdu'
+        logging.info(f"Rebuilding table {table} with an hdu column")
+        self.database.execute_sql(f'ALTER TABLE "{table}" RENAME TO "{old}"')
+        # The old indexes keep their names after the rename; drop them so the new table's
+        # indexes (same names, from the model) can be created.
+        indexes = [row[0] for row in self.database.execute_sql(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL", (old,))]
+        for index in indexes:
+            self.database.execute_sql(f'DROP INDEX "{index}"')
+        model.create_table(safe=False)
+        new_columns = {row[1] for row in self.database.execute_sql(f'PRAGMA table_info("{table}")')}
+        # PRAGMA table_info leaves out generated columns (image.coord_scale), which is right:
+        # they can't be copied, and _migrate_image_dimensions adds coord_scale back.
+        copied = ', '.join(f'"{c}"' for c in columns if c in new_columns)
+        self.database.execute_sql(f'INSERT INTO "{table}" ({copied}) SELECT {copied} FROM "{old}"')
+        self.database.execute_sql(f'DROP TABLE "{old}"')
 
 
 class _SynchronizedQSettings:
