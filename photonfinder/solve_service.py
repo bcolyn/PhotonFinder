@@ -62,6 +62,7 @@ def solve_file(file: File, solver: SolverBase, backup_solver: SolverBase = None,
     captured in ``SolveOutcome.error``.
     """
     cancelled = cancelled or (lambda: False)
+    image = image_of(file)
     primary_name = solvers.label_of(solver)
     backup_name = solvers.label_of(backup_solver) if backup_solver else None
     try:
@@ -70,7 +71,7 @@ def solve_file(file: File, solver: SolverBase, backup_solver: SolverBase = None,
         try:
             with solver:
                 solution: Header = solver.solve(
-                    Path(file.full_filename()), file.image, hint,
+                    Path(file.full_filename()), image, hint,
                     output_callback=output_callback, file_wcs=file_wcs, cancelled=cancelled,
                 )
             used_solver = solver
@@ -83,7 +84,7 @@ def solve_file(file: File, solver: SolverBase, backup_solver: SolverBase = None,
                 output_callback(f"  → {primary_name} failed ({primary_error}), trying {backup_name}…")
             with backup_solver:
                 solution = backup_solver.solve(
-                    Path(file.full_filename()), file.image, hint,
+                    Path(file.full_filename()), image, hint,
                     output_callback=output_callback, file_wcs=file_wcs, cancelled=cancelled,
                 )
             used_solver = backup_solver
@@ -124,6 +125,14 @@ def solve_file(file: File, solver: SolverBase, backup_solver: SolverBase = None,
     except Exception as e:
         logger.error("Error solving file %s: %s", file.full_filename(), e, exc_info=True)
         return SolveOutcome(success=False, error=str(e))
+
+
+def image_of(file: File) -> Optional[Image]:
+    """The Image a search row carries (as `file.image`), else the file's first image -- the
+    one a plate solve solves. Files picked outside a search, e.g. the image viewer's, carry
+    none."""
+    image = file.__dict__.get('image')
+    return image if isinstance(image, Image) else Image.first_of(file)
 
 
 # --- the library lock --------------------------------------------------------------------------
@@ -299,7 +308,7 @@ class SolveRun:
 
     def run(self, files: Iterable[File]) -> Iterator[tuple[File, SolveOutcome]]:
         """Each file with its outcome, in order; stops before the next file once cancelled.
-        The files need their Image loaded (as `file.image`) for the camera-scale retries."""
+        A file without its Image loaded (as `file.image`) uses its first image."""
         remaining = iter(files)
         while not self.cancelled():  # asked before the next file is even taken
             file = next(remaining, None)
@@ -309,8 +318,8 @@ class SolveRun:
 
     def solve(self, file: File) -> SolveOutcome:
         file_wcs = FileWCS.get_or_none(FileWCS.file == file)
-        image = file.__dict__.get('image')
-        camera = image.camera if isinstance(image, Image) else None
+        image = image_of(file)
+        camera = image.camera if image is not None else None
         hints = self._hints_for(camera)
         outcome = None
         for i, hint in enumerate(hints):

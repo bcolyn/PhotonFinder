@@ -288,6 +288,17 @@ class TestSolveRun:
         assert [h.scale if h else None for h in solver.hints] == [None, 1.0, 2.0]
         assert '  → 1.00"/px failed, trying next cached scale…' in lines
 
+    def test_a_file_without_its_image_loaded_solves_its_first_image(self, files):
+        """The image viewer's file is a bare File, not a search row: it has no `image`."""
+        bare = File.get_by_id(files[0].rowid)
+        solver = SolvesAtScale(2.0)
+        scales = solve_service.CameraScales({"ASI2600": [2.0]})
+
+        outcome = solve_service.SolveRun(solver, camera_scales=scales).solve(bare)
+
+        assert outcome.success
+        assert [h.scale if h else None for h in solver.hints] == [None, 2.0]
+
     def test_the_hinted_scale_is_not_tried_twice(self, files):
         solver = SolvesAtScale()
         hint = solve_service.SolverHint(scale=1.0)
