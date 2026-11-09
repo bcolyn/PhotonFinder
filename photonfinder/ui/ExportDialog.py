@@ -75,9 +75,25 @@ def _template_image(file: File) -> Optional[Image]:
     return image
 
 
-def template_filename(file: File, template: string.Template, settings: Settings,
-                      decompress=False, export_xisf_as_fits=False,
-                      sess_date=None) -> str:
+def template_output_root(file: File, ref: Optional[File], root: str, settings: Settings,
+                         decompress=False, export_xisf_as_fits=False,
+                         sess_date=None, shared=False) -> str:
+    """The root output folder for one file, with the same variables as the pattern filled in.
+    With a reference file, the reference's values fill it, as they choose the pattern's folder.
+    A shared calibration frame gets 'shared' for the folders that hold ${sess_date}, as in
+    the pattern."""
+    if '$' not in root:
+        return root
+    if shared:
+        root = _make_shared_template_str(root)
+    source, source_sess_date = (ref, None) if ref is not None else (file, sess_date)
+    values = _template_values(source, settings, decompress, export_xisf_as_fits, source_sess_date)
+    return string.Template(root).safe_substitute(values)
+
+
+def _template_values(file: File, settings: Settings, decompress=False, export_xisf_as_fits=False,
+                     sess_date=None) -> dict:
+    """The variables a pattern or root folder can use, for one file, made path-safe."""
     image = _template_image(file)
     file_name = file.name
 
@@ -120,12 +136,19 @@ def template_filename(file: File, template: string.Template, settings: Settings,
 
     # Values like "Sh2-129: Flying Bat" or an ISO timestamp would otherwise produce
     # invalid Windows paths or unintended sub-folders.
-    mapping = {k: v if k in _PATH_VARIABLES else _sanitize_path_component(v)
-               for k, v in mapping.items()}
+    return {k: v if k in _PATH_VARIABLES else _sanitize_path_component(v)
+            for k, v in mapping.items()}
+
+
+def template_filename(file: File, template: string.Template, settings: Settings,
+                      decompress=False, export_xisf_as_fits=False,
+                      sess_date=None) -> str:
+    mapping = _template_values(file, settings, decompress, export_xisf_as_fits, sess_date)
+    image = _template_image(file)
 
     result = template.safe_substitute(mapping)
     if not result:
-        result = file_name
+        result = mapping['filename']
     if image and image.image_type == 'LIGHT':
         settings.set_last_light_path(Path(result).parent.as_posix())
     return result
@@ -171,6 +194,9 @@ def _wcs_target_hdus(hdul: fits.HDUList) -> list:
 
 def resolve_output_path(output_root: str, output_filename: str) -> str:
     """Join a templated relative filename onto the export root, refusing to escape it."""
+    if not os.path.isabs(output_root):
+        # A root whose variables filled in to a relative path would land in the working directory.
+        raise ValueError(f"Export root {output_root!r} is not an absolute path")
     root = os.path.abspath(output_root)
     # A pattern starting with a separator would otherwise make os.path.join discard the root.
     full = os.path.abspath(os.path.join(root, output_filename.lstrip('/\\')))
@@ -257,7 +283,10 @@ class ExportWorker(BackgroundLoaderBase):
         output_filename = template_filename_with_ref(file, ref_file, active_pattern,
                                                      self.context.settings, self.decompress, self.export_xisf_as_fits,
                                                      sess_date=sess_date)
-        output_file_path = resolve_output_path(self.output_path, output_filename)
+        output_root = template_output_root(file, ref_file, self.output_path, self.context.settings,
+                                           self.decompress, self.export_xisf_as_fits,
+                                           sess_date=sess_date, shared=is_shared)
+        output_file_path = resolve_output_path(output_root, output_filename)
 
         key = os.path.normcase(output_file_path)
         previous = self._written.get(key)
@@ -525,6 +554,7 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         self.buttonBox.accepted.connect(self.export_files)
         self.dryRunButton.clicked.connect(self.dry_run)
         self.patternComboBox.editTextChanged.connect(self.update_preview)
+        self.outputPathEdit.textChanged.connect(self.update_preview)
         self.useRefCheckBox.stateChanged.connect(self.update_preview)
         self.useMasterCheckBox.stateChanged.connect(self._on_use_master_changed)
         self.sharedSessionCheckBox.stateChanged.connect(self._on_shared_changed)
@@ -825,8 +855,11 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             output_filename = template_filename_with_ref(
                 entry.file, ref_file, active_tpl, self.context.settings,
                 decompress, export_xisf_as_fits, sess_date=entry.session_date)
+            output_root = template_output_root(
+                entry.file, ref_file, output_path, self.context.settings,
+                decompress, export_xisf_as_fits, sess_date=entry.session_date, shared=is_shared)
             try:
-                dest_path = resolve_output_path(output_path, output_filename)
+                dest_path = resolve_output_path(output_root, output_filename)
             except ValueError as e:
                 dest_path = f"ERROR: {e}"
             lines.append(f"{source_path}  →  {dest_path}")
@@ -902,7 +935,17 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         if not self.first_file:
             return
         ref = self.search_criteria.reference_file if self.useRefCheckBox.isChecked() else None
+        decompress = self.decompressCheckBox.isChecked()
+        export_xisf_as_fits = self.exportXisfAsFitsCheckBox.isChecked()
         filename = template_filename_with_ref(self.first_file, ref, tpl, self.context.settings,
-                                              self.decompressCheckBox.isChecked(),
-                                              self.exportXisfAsFitsCheckBox.isChecked())
+                                              decompress, export_xisf_as_fits)
+        root = self.outputPathEdit.text().strip()
+        if root:
+            # The whole path, so variables in the root folder show what they fill in to.
+            root = template_output_root(self.first_file, ref, root, self.context.settings,
+                                        decompress, export_xisf_as_fits)
+            try:
+                filename = resolve_output_path(root, filename)
+            except ValueError:
+                pass
         self.outputPreview.setText(filename)

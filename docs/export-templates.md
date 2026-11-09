@@ -57,6 +57,19 @@ Place calibration files next to the light frames they belong to:
 ${last_light_path}/${filename}
 ```
 
+## Variables in the root output folder
+
+The **Root Output Folder** takes the same variables as the pattern, for example
+`D:/Processing/${object_name}`. The folder must still start with an absolute path (a drive or a
+network share). Values are made path-safe, so a variable cannot add folders or step out of the root.
+The output preview shows the full path of the first file. A few things to know:
+
+- With **Use reference file** ticked, the reference file fills in the root folder too, as it does
+  for the pattern's folders.
+- For shared calibration frames, folder names in the root that hold `${sess_date}` become `shared`,
+  as in the pattern.
+- **Browse…** replaces the whole text, variables included, with the folder you pick.
+
 ## Shared calibration folder
 
 When you export light frames, the export dialog finds calibration frames (flats, darks, bias,

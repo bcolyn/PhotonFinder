@@ -11,6 +11,7 @@ from photonfinder.ui.ExportDialog import (
     ExportWorker,
     _make_shared_template_str,
     resolve_output_path,
+    template_output_root,
 )
 from .multi_image_files import write_multi_hdu_fits, write_two_image_xisf
 from .sample_models import *
@@ -196,6 +197,35 @@ class TestResolveOutputPath:
         with pytest.raises(ValueError):
             resolve_output_path(str(tmp_path), "../outside.fits")
 
+    def test_relative_root_is_rejected(self):
+        with pytest.raises(ValueError):
+            resolve_output_path("Test Object/out", "b.fits")
+
+
+class TestTemplateOutputRoot:
+    def test_variables_are_filled_in(self, light1, settings):
+        assert template_output_root(light1, None, "D:/proc/$object_name/$filter", settings) \
+            == "D:/proc/Test Object/Test Filter"
+
+    def test_values_cannot_add_folders(self, light1, settings):
+        light1.image.object_name = "M31/../.."
+        assert template_output_root(light1, None, "D:/proc/$object_name", settings) == "D:/proc/M31_.._"
+
+    def test_root_without_variables_is_untouched(self, light1, settings):
+        assert template_output_root(light1, None, "\\\\nas\\D$\\proc", settings) == "\\\\nas\\D$\\proc"
+
+    def test_reference_file_fills_the_root(self, dark1, light1, settings):
+        assert template_output_root(dark1, light1, "D:/proc/$image_type", settings) == "D:/proc/LIGHT"
+
+    def test_shared_frame_gets_shared_for_sess_date(self, dark1, settings):
+        root = template_output_root(dark1, None, "D:/proc/${sess_date}", settings,
+                                    sess_date=date(2024, 3, 12), shared=True)
+        assert root == "D:/proc/shared"
+
+    def test_sess_date_comes_from_the_session(self, dark1, settings):
+        root = template_output_root(dark1, None, "D:/proc/${sess_date}", settings, sess_date=date(2024, 3, 12))
+        assert root == "D:/proc/2024-03-12"
+
 
 class TestExportWorkerWrites:
     @pytest.fixture
@@ -249,6 +279,14 @@ class TestExportWorkerWrites:
             worker._process_entry(ExportEntry(f, None), 0)
 
         assert list((tmp_path / "out").iterdir()) == []
+
+    def test_variables_in_root_are_filled_in_per_file(self, worker, tmp_path):
+        f = self._source(tmp_path, 1, "night1", b"data")
+        worker.output_path = str(tmp_path / "out" / "$filename_no_ext")
+
+        worker._process_entry(ExportEntry(f, None), 0)
+
+        assert (tmp_path / "out" / "light" / "light.fits").read_bytes() == b"data"
 
     def test_existing_file_from_earlier_export_is_kept(self, worker, tmp_path):
         f = self._source(tmp_path, 1, "night1", b"new")
