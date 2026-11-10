@@ -205,6 +205,8 @@ def test_catalog_report_finds_coverage(solved_sample):
 
     row = next(r for r in result["results"] if r["catalog_id"] == "224")
     assert row["file_count"] == 1
+    assert row["ra"] == pytest.approx(10.68, abs=0.1)
+    assert row["dec"] == pytest.approx(41.27, abs=0.1)
     assert row["files"][0]["rowid"] is not None
     assert row["files"][0]["full_path"].endswith("m31.fits")
     assert row["files_truncated"] is False

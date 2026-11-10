@@ -5,6 +5,7 @@ server do, so the aggregates are covered without a widget or an event loop in si
 """
 from datetime import datetime
 
+import pytest
 from astropy.io.fits import Header
 
 from photonfinder import reports
@@ -92,6 +93,15 @@ def test_catalog_report_matches_a_solved_image(solved_sample):
     matched = next(iter(result.matches.values()))
     assert matched[0].file_name == "m31.fits"
     assert matched[0].file_id is not None
+
+
+def test_catalog_report_entries_carry_coordinates(solved_sample):
+    ctx, _ = solved_sample
+    result = reports.catalog_report(ctx, "NGC", SearchCriteria(), only_matching=True)
+
+    m31 = next(e for e in result.entries if e.catalog_id == "224")
+    assert m31.ra == pytest.approx(10.68, abs=0.1)
+    assert m31.dec == pytest.approx(41.27, abs=0.1)
 
 
 def test_catalog_report_progress_callback_is_called(solved_sample):

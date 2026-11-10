@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QMainWindow, QTreeWidgetItem, QMenu, QHeaderView,
 
 from photonfinder import custom_catalog, reports
 from photonfinder.core import ApplicationContext, library_busy_message
+from photonfinder.formatting import _format_dec, _format_ra
 from photonfinder.custom_catalog import CatalogImportError
 from photonfinder.models import SearchCriteria, CatalogEntry, RootAndPath
 from photonfinder.ui.BackgroundLoader import BackgroundLoaderBase
@@ -18,7 +19,8 @@ from photonfinder.ui.generated.CatalogReportWindow_ui import Ui_CatalogReportWin
 _GREEN = QBrush(QColor(0, 160, 0))
 _GRAY = QBrush(QColor(128, 128, 128))
 
-HEADERS = ["ID / Path / File", "Mag", "Size (')", "Images"]
+HEADERS = ["ID / Path / File", "RA", "Dec", "Mag", "Size (')", "Images"]
+_IMAGES_COL = HEADERS.index("Images")
 
 
 class CatalogReportLoader(BackgroundLoaderBase):
@@ -243,16 +245,16 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
 
             parent = QTreeWidgetItem(self.treeWidget)
             parent.setText(0, entry.catalog_id)
-            parent.setText(1, f"{entry.magnitude:.1f}" if entry.magnitude else "")
-            parent.setText(2, f"{entry.size:.1f}" if entry.size else "")
-            count_text = str(len(matches)) if has_matches else ""
-            parent.setText(3, count_text)
+            parent.setText(1, _format_ra(entry.ra))
+            parent.setText(2, _format_dec(entry.dec))
+            parent.setText(3, f"{entry.magnitude:.1f}" if entry.magnitude else "")
+            parent.setText(4, f"{entry.size:.1f}" if entry.size else "")
+            parent.setText(_IMAGES_COL, str(len(matches)) if has_matches else "")
             if has_matches:
-                parent.setForeground(3, _GREEN)
+                parent.setForeground(_IMAGES_COL, _GREEN)
             else:
-                parent.setForeground(0, _GRAY)
-                parent.setForeground(1, _GRAY)
-                parent.setForeground(2, _GRAY)
+                for col in range(_IMAGES_COL):
+                    parent.setForeground(col, _GRAY)
 
             folders: dict[tuple, list] = {}
             for match in matches:
@@ -333,10 +335,10 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
         try:
             with open(file_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f, dialect=dialect)
-                writer.writerow(["CatalogName", "CatalogId", "FilePath"])
+                writer.writerow(["CatalogName", "CatalogId", "RA", "Dec", "FilePath"])
                 for entry in self._catalog_entries:
                     for _obj_name, filepath, *_ in self._matches_map.get(entry.rowid, []):
-                        writer.writerow([catalog, entry.catalog_id, filepath])
+                        writer.writerow([catalog, entry.catalog_id, entry.ra, entry.dec, filepath])
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed to save report: {e}")
 

@@ -149,6 +149,8 @@ class CatalogReportEntry:
     catalog_id: str
     magnitude: Optional[float]
     size: Optional[float]
+    ra: Optional[float] = None    # degrees
+    dec: Optional[float] = None   # degrees
 
 
 @dataclass(frozen=True)
@@ -170,14 +172,15 @@ def _in_json(column, values) -> Expression:
 def _catalog_entries(catalog: str, limit: Optional[int], offset: int,
                      rowids: Optional[list] = None) -> list:
     query = (CatalogEntry.select(CatalogEntry.rowid, CatalogEntry.catalog_id,
-                                 CatalogEntry.magnitude, CatalogEntry.size)
+                                 CatalogEntry.magnitude, CatalogEntry.size,
+                                 CatalogEntry.ra, CatalogEntry.dec)
              .order_by(CatalogEntry.catalog_id.cast('INTEGER'), CatalogEntry.catalog_id))
     query = query.where(_in_json(CatalogEntry.rowid, rowids)) if rowids is not None \
         else query.where(CatalogEntry.catalog == catalog)
     if limit is not None:
         query = query.limit(limit).offset(offset)
     return [CatalogReportEntry(rowid=r.rowid, catalog_id=r.catalog_id,
-                               magnitude=r.magnitude, size=r.size)
+                               magnitude=r.magnitude, size=r.size, ra=r.ra, dec=r.dec)
             for r in query.namedtuples()]
 
 

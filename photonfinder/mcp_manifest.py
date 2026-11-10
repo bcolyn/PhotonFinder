@@ -2115,8 +2115,9 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            '\n'
                            'Returns `{catalog, only_matching, format, results, page, page_size, '
                            'total, has_more,\n'
-                           "images_considered, objects_matched}`. Each result's `files` entries "
-                           'carry a `rowid`\n'
+                           "images_considered, objects_matched}`. Each result carries the object's "
+                           '`ra` and `dec`\n'
+                           'in degrees; its `files` entries carry a `rowid`\n'
                            'usable with `get_file_details`, capped at `max_files` with a '
                            '`files_truncated` flag;\n'
                            'set `include_files=false`, or `format="csv"`, for a pure coverage '

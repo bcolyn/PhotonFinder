@@ -182,7 +182,7 @@ def _rows_to_csv(rows: list[dict], columns: list[str]) -> str:
 OUTPUT_FORMATS = ("json", "csv")
 _TARGET_CSV_COLUMNS = ["object_name", "filter", "telescope", "camera",
                        "total_exposure_seconds", "file_count", "nights", "last_date_obs"]
-_CATALOG_CSV_COLUMNS = ["catalog_id", "magnitude", "size", "file_count"]
+_CATALOG_CSV_COLUMNS = ["catalog_id", "ra", "dec", "magnitude", "size", "file_count"]
 
 
 def _format_error(output_format: str) -> Optional[dict]:
@@ -501,6 +501,8 @@ def query_catalog_report(context: ApplicationContext, catalog: str,
         matches = result.matches.get(entry.rowid, [])
         row = {
             "catalog_id": entry.catalog_id,
+            "ra": entry.ra,
+            "dec": entry.dec,
             "magnitude": entry.magnitude,
             "size": entry.size,
             "file_count": len(matches),
@@ -988,7 +990,8 @@ def build_mcp(context: ApplicationContext):
         paging through ~785k rows; you almost never want it.
 
         Returns `{catalog, only_matching, format, results, page, page_size, total, has_more,
-        images_considered, objects_matched}`. Each result's `files` entries carry a `rowid`
+        images_considered, objects_matched}`. Each result carries the object's `ra` and `dec`
+        in degrees; its `files` entries carry a `rowid`
         usable with `get_file_details`, capped at `max_files` with a `files_truncated` flag;
         set `include_files=false`, or `format="csv"`, for a pure coverage list.
         """
