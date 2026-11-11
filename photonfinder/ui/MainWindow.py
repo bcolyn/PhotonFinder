@@ -6,7 +6,7 @@ from typing import List
 
 from PySide6.QtCore import Qt, QByteArray, QThread, Signal, QObject, QSize, QEvent
 from PySide6.QtGui import QIcon, QPalette, QAction, QDragEnterEvent, QDropEvent
-from PySide6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QTabWidget,
+from PySide6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QMainWindow, QMenu, QMessageBox, QTabWidget,
                                QToolButton, QWidget)
 
 from photonfinder import filter_catalogue, library_query
@@ -91,8 +91,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.menuView.insertAction(self.actionThumbnails, toolbar_action)
         self.menuView.insertSeparator(self.actionThumbnails)
 
-        # Toolbar > Columns: the presets and the column list of View > Search Details, in a dropdown
-        self.actionColumns = QAction(create_colored_svg_icon(":/res/columns.svg", size, text_color), "Columns", self)
+        # View > Sort By, also on the toolbar: the sort of the table header, for the tiles too
+        sort_icon = create_colored_svg_icon(":/res/sort.svg", size, text_color)
+        self.menuSortBy = QMenu("Sort By", self)
+        self.menuSortBy.setIcon(sort_icon)
+        self.menuSortBy.aboutToShow.connect(self.populate_sort_by)
+        view_actions = self.menuView.actions()
+        self.menuView.insertMenu(view_actions[view_actions.index(self.actionGroupSimilarFrames) + 1], self.menuSortBy)
+        self.actionSortBy = QAction(sort_icon, "Sort By", self)
+        self.actionSortBy.setToolTip("Sort the results by a column, in the tiles as in the table")
+        self.actionSortBy.setMenu(self.menuSortBy)
+        self.toolBar.addAction(self.actionSortBy)
+        self.toolBar.widgetForAction(self.actionSortBy).setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+
+        # Toolbar > Columns: the presets and the column list of View > Search Columns, in a dropdown
+        columns_icon = create_colored_svg_icon(":/res/columns.svg", size, text_color)
+        self.menuSearch_Details.setIcon(columns_icon)
+        self.actionColumns = QAction(columns_icon, "Columns", self)
         self.actionColumns.setToolTip("Choose the table's columns: a preset or column by column")
         self.actionColumns.setMenu(self.menuSearch_Details)
         self.toolBar.addAction(self.actionColumns)
@@ -926,6 +941,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.actionThumbnails.setChecked(False)
             return
         panel.set_thumbnail_mode(checked)
+
+    def populate_sort_by(self):
+        self.menuSortBy.clear()
+        current_tab = self.get_current_search_panel()
+        if current_tab is None:  # no tab open: nothing to sort
+            self.menuSortBy.addAction("No search tab open").setEnabled(False)
+            return
+        current_tab.build_sort_menu(self.menuSortBy)
 
     def populate_search_details(self):
         self.menuSearch_Details.clear()

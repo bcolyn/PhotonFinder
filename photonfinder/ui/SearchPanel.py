@@ -11,7 +11,7 @@ from typing import Collection, List, Optional
 
 from PySide6.QtCore import (QByteArray, QEvent, QItemSelectionModel, QMimeData, QModelIndex,
                             QSortFilterProxyModel, QUrl, Qt, Signal)
-from PySide6.QtGui import QBrush, QDesktopServices, QKeySequence, QPalette, QStandardItem, QStandardItemModel
+from PySide6.QtGui import QActionGroup, QBrush, QDesktopServices, QKeySequence, QPalette, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame, QInputDialog, QMenu,
                                QMessageBox, QPushButton, QSizePolicy, QStackedWidget, QToolBar, QWidget)
 
@@ -53,6 +53,20 @@ ROWID_ROLE = Qt.UserRole
 SORT_ROLE = Qt.UserRole + 1
 
 FILE_DRAG_MIME = "application/x-photonfinder-file-ids"
+
+
+_EPOCH = datetime.datetime(1970, 1, 1)
+
+
+def _qt_sort_value(value):
+    """A sort value the proxy model can compare. Qt holds a Python datetime or date as an
+    opaque object, which it can't order (a sort by it leaves the rows in no order), so those
+    become numbers: a (naive) datetime its seconds since 1970, a date its day number."""
+    if isinstance(value, datetime.datetime):
+        return (value.replace(tzinfo=None) - _EPOCH).total_seconds()
+    if isinstance(value, datetime.date):
+        return value.toordinal()
+    return value
 
 
 class _FileDragProxyModel(QSortFilterProxyModel):
@@ -527,11 +541,53 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             # step 3: if we're sorting the same column and we're already desc reset sorting
             self.search_criteria.sorting_index = None
             self.search_criteria.sorting_desc = False
+        self._apply_sort()
 
+    def set_sort(self, column: int | None, desc: bool = False):
+        """Sort the results by a column (its logical index in RESULT_COLUMNS), or not at all with
+        None, as the table header does: the table and the tiles share the order."""
+        self.search_criteria.sorting_index = column
+        self.search_criteria.sorting_desc = desc if column is not None else False
+        self._apply_sort()
+
+    def _apply_sort(self):
         if self.has_more_results:  # not all data is loaded, we need to let the database do the sorting
             self.refresh_data_grid()
         else:
             self.update_sort_indicator()
+
+    def build_sort_menu(self, menu: QMenu):
+        """The Sort By menu: no sort or one of the columns (in the table's order; Frames and
+        Integration only when grouped, as the table shows them), then the direction."""
+        index, desc = self.search_criteria.sorting_index, self.search_criteria.sorting_desc
+        columns = QActionGroup(menu)
+        none = columns.addAction("None")
+        none.setCheckable(True)
+        none.setChecked(index is None)
+        none.triggered.connect(lambda _checked=False: self.set_sort(None))
+        menu.addAction(none)
+        header = self.dataView.horizontalHeader()
+        grouped = self.search_criteria.one_per_group
+        for visual in range(header.count()):
+            logical = header.logicalIndex(visual)
+            if RESULT_COLUMNS[logical].key in GROUP_COLUMNS and not grouped:
+                continue
+            action = columns.addAction(RESULT_COLUMNS[logical].label)
+            action.setCheckable(True)
+            action.setChecked(index == logical)
+            # A new column keeps the direction chosen; starting from no sort, it ascends, as a header click.
+            action.triggered.connect(lambda _checked=False, c=logical, d=desc if index is not None else False:
+                                    self.set_sort(c, d))
+            menu.addAction(action)
+        menu.addSeparator()
+        directions = QActionGroup(menu)
+        for text, descending in (("Ascending", False), ("Descending", True)):
+            action = directions.addAction(text)
+            action.setCheckable(True)
+            action.setChecked(index is not None and desc == descending)
+            action.setEnabled(index is not None)
+            action.triggered.connect(lambda _checked=False, d=descending: self.set_sort(index, d))
+            menu.addAction(action)
 
     def update_sort_indicator(self):
         self.dataView.horizontalHeader().sortIndicatorChanged.disconnect(self.on_sort_requested)
@@ -568,7 +624,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 text, sort_value = cell(column, column.value(file))
                 item = QStandardItem(text)
                 if sort_value is not None:
-                    item.setData(sort_value, SORT_ROLE)
+                    item.setData(_qt_sort_value(sort_value), SORT_ROLE)
                 if column.tooltip is not None:
                     item.setToolTip(column.tooltip(file))
                 items.append(item)
@@ -687,6 +743,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         view = self.active_view()
         index = view.indexAt(position)
         if not index.isValid():
+            if view is self.thumbnailView:  # the tiles have no header: their sort is on the menu
+                menu = QMenu(self)
+                self.build_sort_menu(menu.addMenu("Sort By"))
+                menu.exec(view.viewport().mapToGlobal(position))
             return
 
         selected_file = self.get_file_at_row(index.row())
@@ -790,6 +850,10 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                         a = select_project_submenu.addAction(proj.name)
                         a.setData(proj)
                         select_project_actions.append(a)
+
+        if view is self.thumbnailView:
+            menu.addSeparator()
+            self.build_sort_menu(menu.addMenu("Sort By"))
 
         # Show the menu and get the selected action
         action = menu.exec(view.viewport().mapToGlobal(position))
@@ -1713,4 +1777,4 @@ def _set_cells(model, source_row: int, **values):
         text, sort_value = cell(RESULT_COLUMNS[COLUMN_INDEX[key]], value)
         index = model.index(source_row, COLUMN_INDEX[key])
         model.setData(index, text, Qt.DisplayRole)
-        model.setData(index, sort_value, SORT_ROLE)
+        model.setData(index, _qt_sort_value(sort_value), SORT_ROLE)

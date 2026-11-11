@@ -23,6 +23,7 @@
     <file>res/box-seam.svg</file>
     <file>res/grid.svg</file>
     <file>res/columns.svg</file>
+    <file>res/sort.svg</file>
     <file alias="icon.png">../../icon.png</file>
   </qresource>
 </RCC>

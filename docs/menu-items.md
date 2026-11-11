@@ -137,13 +137,19 @@ with no `id`, `ra` or `dec` column, or with no usable row at all, is not importe
 ### Group Session Frames
 - **Group Session Frames** (also on the toolbar) - Shows one row per group of similar frames instead of one per image: a group is one target (`OBJECT`) on one observing night, with the same image type, folder, filter and exposure. Each row is the group's earliest frame, with **Frames** (how many it stands for) and **Integration** (their total exposure); the status bar and tab title count files and groups. Double-click a row, or use **Show the frames of this group** on its right-click menu, to open its frames in a new tab. Actions on selected rows (export, add to project, compress, plate solve, analyse, mark as bad) work on all the frames of the selected groups; viewing and the header show the row's frame. The search's other filters still apply: a group counts only the frames they let through. Reports always count every image
 
-### Search Details
-- **Search Details** - Chooses which columns the table shows (also on the right-click menu of the table's header, and as **Columns** on the toolbar). Built-in presets: **Standard** (the default of a new tab: file name, type, filter, exposure, gain, offset, binning, set temp, camera, telescope, object, observation date, path, projects) and **Full** (every column), and a set of columns per task:
+### Sort By
+- **Sort By** (also on the toolbar, and on the right-click menu of the thumbnails) - Sorts the results by a column, ascending or descending, or not at all (**None**): the same sort as clicking a column header in the table, so the table, the thumbnails and the header's sort arrow always agree. Every column is offered, in the table's order; **Frames** and **Integration** only with Group Session Frames on. Choosing another column keeps the direction. Each tab keeps its own sort
+
+### Search Columns
+- **Search Columns** - Chooses which columns the table shows (also on the right-click menu of the table's header, and as **Columns** on the toolbar). Built-in presets: **Standard** (the default of a new tab: file name, type, filter, exposure, gain, offset, binning, set temp, camera, telescope, object, observation date, path, projects) and **Full** (every column), and a set of columns per task:
   - **File management** - file name, path, size, modified, type, night, projects, layer
   - **Quality assessment** - file name, object, filter, exposure, observation date, and the image analysis columns (Bg Median, Bg RMS, Stars, FWHM, Elongation, Diagnosis)
   - **Astrometry** - file name, object, RA, DEC, solved, telescope, camera
   - **Acquisition** - file name, type, filter, exposure, gain, offset, binning, set temp, camera, telescope, object, observation date, night: what calibration matching compares
 - **Save as Preset...** keeps the current choice of columns under a name of your own, listed below the built-in ones; **Manage Presets...** removes them
+
+### Project Columns
+- **Project Columns** - Chooses which columns the Projects window lists; available while the Projects window is open
 
 ## Help Menu
 

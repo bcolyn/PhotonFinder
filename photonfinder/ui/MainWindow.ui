@@ -171,7 +171,7 @@
     </property>
     <widget class="QMenu" name="menuSearch_Details">
      <property name="title">
-      <string>Search Details</string>
+      <string>Search Columns</string>
      </property>
      <addaction name="actionLoading"/>
     </widget>
@@ -180,7 +180,7 @@
       <bool>false</bool>
      </property>
      <property name="title">
-      <string>Project List Details</string>
+      <string>Project Columns</string>
      </property>
      <addaction name="actionLoading_2"/>
     </widget>
