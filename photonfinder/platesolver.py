@@ -889,8 +889,8 @@ class SASproSolver(SolverBase):
         return ra, dec, scale
 
     def _run(self, pixels: Path, wcs_file: Path, seed_args: list[str],
-             cancelled: typing.Callable[[], bool]) -> tuple[int, str]:
-        """Run one solve; its exit code and everything it printed."""
+             cancelled: typing.Callable[[], bool], name: str) -> tuple[int, str]:
+        """Run one solve of *pixels*, the image named *name*; its exit code and everything it printed."""
         cmd = [*self._command(), "solve", "-i", str(pixels), "--solver", "gaia",
                "--wcs-path", str(wcs_file), "--json", *seed_args]
         transcript = pixels.with_suffix(".log")
@@ -907,9 +907,9 @@ class SASproSolver(SolverBase):
             stopped = _wait_or_kill(proc, self._timeout, cancelled)
         output = transcript.read_text(encoding="utf-8", errors="replace")
         if stopped == "cancelled":
-            raise SolverCancelled(f"SASpro stopped on {pixels.name}")
+            raise SolverCancelled(f"SASpro stopped on {name}")
         if stopped == "timeout":
-            raise SolverFailure(f"SASpro timed out after {self._timeout}s on {pixels.name}", output.splitlines())
+            raise SolverFailure(f"SASpro timed out after {self._timeout}s on {name}", output.splitlines())
         return proc.returncode, output
 
     def solve(self, image_path: Path, image=None, hint: SolverHint = None,
@@ -933,7 +933,8 @@ class SASproSolver(SolverBase):
                 header = hdul[0].header.copy()
                 data = hdul[0].data
             height, width = data.shape
-            pixels = temp_image.with_name(temp_image.stem + "_pixels.fits")
+            # A fixed ASCII name: SASpro can't read a path with a character outside cp1252.
+            pixels = Path(self.tmp_dir) / "image_pixels.fits"
             fits.PrimaryHDU(data).writeto(pixels, overwrite=True)
 
             ra, dec, scale = self._seed(header, image, hint)
@@ -950,7 +951,7 @@ class SASproSolver(SolverBase):
             if args is not seed_args and output_callback:
                 output_callback(f"SASpro: seeded solve failed ({error}), solving blind")
             wcs_file.unlink(missing_ok=True)
-            returncode, output = self._run(pixels, wcs_file, args, cancelled)
+            returncode, output = self._run(pixels, wcs_file, args, cancelled, image_path.name)
             result = _parse_saspro_result(output)
             if "fallback reader" in output:
                 raise SolverFailure(f"SASpro misread {image_path.name} (its fallback image reader), "

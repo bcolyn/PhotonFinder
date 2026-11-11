@@ -151,6 +151,18 @@ def test_a_failed_seeded_solve_is_retried_blind(tmp_path):
     assert any("seeded solve failed (match quality too low), solving blind" in line for line in lines)
 
 
+def test_saspro_reads_an_ascii_name_whatever_the_original_is_called(tmp_path):
+    """SASpro can't read a path with a character outside cp1252 ('charmap' codec error)."""
+    solver = StandInSASpro(tmp_path, [_failed("blind solve found no match")])
+    frame = _frame(tmp_path).rename(tmp_path / "M31 ✓.fits")
+
+    with pytest.raises(SolverFailure, match="could not solve M31 ✓.fits"):
+        _solve(solver, frame)
+
+    image = _option(solver.runs[0]["args"], "-i")
+    assert image.isascii() and _option(solver.runs[0]["args"], "--wcs-path").isascii()
+
+
 def test_a_blind_failure_reports_saspros_reason_and_log(tmp_path):
     solver = StandInSASpro(tmp_path, [_failed("blind solve found no match")])
 
@@ -232,8 +244,9 @@ _M106_SOLUTION = Path(__file__).parent / "data-small" / "M106_2020-03-17T024357_
                          ids=["blind", "seeded"])
 def test_saspro_solves_the_m106_frame_like_astap_did(tmp_path, hint):
     """This frame's header makes SASpro's FITS reader fall back and read it upside down, which
-    passing only the pixels avoids: every corner matches the stored ASTAP solution."""
-    frame = tmp_path / "m106.fits"
+    passing only the pixels avoids: every corner matches the stored ASTAP solution. Its name has
+    a character outside cp1252, which SASpro can't read in a path."""
+    frame = tmp_path / "m106 ✓.fits"
     frame.write_bytes(lzma.decompress(_M106.read_bytes()))
 
     solution = _solve(SASproSolver(), frame, hint=hint)
