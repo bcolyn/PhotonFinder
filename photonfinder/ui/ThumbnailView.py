@@ -9,7 +9,7 @@ read, which is not tried again this session.
 import logging
 import threading
 from collections import OrderedDict
-from typing import Callable, Hashable
+from collections.abc import Callable, Hashable
 
 from PySide6.QtCore import (QEvent, QObject, QPersistentModelIndex, QRect, QRunnable, QSize, Qt, QThreadPool,
                             QTimer, Signal, Slot)
