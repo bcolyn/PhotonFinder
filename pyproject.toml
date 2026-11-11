@@ -8,8 +8,7 @@ authors = [
 ]
 license = "GPL-3.0-or-later"
 
-# Not 3.14 yet: pytest-qt 4.5.0 does not support it and crashes the test process.
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 
 # Ranges here, exact versions in uv.lock. An exact pin needs a reason next to it.
 dependencies = [

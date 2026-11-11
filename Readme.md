@@ -46,7 +46,7 @@ A versatile desktop application for managing and organizing astronomical image f
 
 ## 📋 Requirements
 
-- Python 3.12+
+- Python 3.14+
 - PySide6 (Qt for Python)
 - SQLite
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
