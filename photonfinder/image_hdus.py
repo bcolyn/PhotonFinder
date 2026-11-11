@@ -27,6 +27,8 @@ from typing import Optional
 import numpy as np
 from astropy.io.fits import Card, Header
 
+from photonfinder import pictures
+
 logger = logging.getLogger(__name__)
 
 FITS_BLOCK = 2880
@@ -302,8 +304,11 @@ def scan_xisf(path) -> Optional[HduScan]:
 def load_hdu(path: str | Path, hdu: Optional[int] = None) -> tuple[np.ndarray, dict]:
     """Pixels and header of one image; *hdu* None is the first image. Not cached: callers go
     through `image_processing.load_image_data`. A FITS extension's header is merged with the
-    primary's; an XISF header has each keyword's first value, as text."""
+    primary's; an XISF header has each keyword's first value, as text. A JPEG or PNG picture
+    is its decoded pixels (`pictures.load_picture`) with an empty header."""
     from photonfinder.filesystem import Importer
+    if pictures.is_picture_name(str(path)):
+        return _load_picture(path, hdu), {}
     if Importer.is_xisf_by_name(str(path)):
         data, keywords = _read_xisf(str(path), hdu)
         return data, {key: entries[0].get('value', '') for key, entries in keywords.items() if entries}
@@ -315,10 +320,18 @@ def read_hdu(path: str | Path, hdu: Optional[int] = None) -> tuple[np.ndarray, H
     """Pixels and header of one image as `load_hdu` gives them, the header as an astropy Header,
     for writing the image out again (plate solver input). Not cached."""
     from photonfinder.filesystem import Importer, header_from_xisf_dict
+    if pictures.is_picture_name(str(path)):
+        return _load_picture(path, hdu), Header()
     if Importer.is_xisf_by_name(str(path)):
         data, keywords = _read_xisf(str(path), hdu)
         return data, header_from_xisf_dict(keywords)
     return _read_fits(str(path), hdu)
+
+
+def _load_picture(path, hdu: Optional[int]) -> np.ndarray:
+    if hdu not in (None, 0):
+        raise ValueError(f"A picture holds one image; there is no image {hdu} in {Path(path).name}")
+    return pictures.load_picture(path)
 
 
 def _is_image_hdu(hdu) -> bool:

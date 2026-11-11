@@ -299,9 +299,12 @@ def is_flat_type(image_type: str | None) -> bool:
 def should_stretch(data: np.ndarray, image_type: str | None = None) -> bool:
     """Whether to auto-stretch an image, shared by the viewer and the thumbnails.
 
-    A flat is always stretched, to show its vignetting and dust donuts: its high, smooth
-    background makes `is_linear` take it for an already stretched image. Anything else is
-    stretched when it looks linear."""
+    A picture (JPEG or PNG) never is: it is shown as it is. A flat always is, to show its
+    vignetting and dust donuts: its high, smooth background makes `is_linear` take it for an
+    already stretched image. Anything else is stretched when it looks linear."""
+    from photonfinder.pictures import PICTURE_TYPE
+    if image_type == PICTURE_TYPE:
+        return False
     return is_flat_type(image_type) or is_linear(data)
 
 

@@ -3,7 +3,8 @@ Thumbnails of the images in the library, for the tile view of the search results
 
 A thumbnail goes through the image viewer's pipeline (`image_processing`): load, normalise to
 uint16, debayer a Bayer-pattern image, auto-stretch it when it looks linear or is a flat
-(`image_processing.should_stretch`), then shrink it. It uses fixed defaults rather than the viewer's
+(`image_processing.should_stretch`), then shrink it. A JPEG or PNG picture is decoded by
+`pictures.load_picture` and never stretched. It uses fixed defaults rather than the viewer's
 per-image controls: dust donuts and amp glow are worth seeing when browsing.
 
 Thumbnails are cached as small JPEG files in a folder of the app-data directory (so a
@@ -18,6 +19,8 @@ import os
 from pathlib import Path
 
 import numpy as np
+
+from photonfinder import pictures
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,8 @@ def render_thumbnail(path: str | Path, hdu: int | None = None, size: int = THUMB
     )
 
     path = str(path)
+    if pictures.is_picture_name(path):
+        image_type = pictures.PICTURE_TYPE  # shown as it is, whatever the caller passed
     # Not load_image_data: that would push every browsed image into the viewer's RAM cache.
     cached = image_cache.get(path, hdu)
     data, header = cached if cached is not None else load_hdu(path, hdu)

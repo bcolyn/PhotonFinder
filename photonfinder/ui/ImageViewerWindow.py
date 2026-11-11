@@ -359,6 +359,9 @@ class ImageViewerWindow(QMainWindow):
         self._header: dict = {}
         self._image_type: str = 'mono'
         self._is_fits: bool = True
+        # A JPEG or PNG picture is shown as it is: never stretched or debayered, whatever the
+        # controls say. They are disabled while it is shown, and keep their state for the next.
+        self._is_picture: bool = False
         self._display_src: np.ndarray | None = None  # post-debayer uint16, for hover
         self._display_buffer: np.ndarray | None = None  # keeps buffer alive for QImage
         self._fitted = False
@@ -782,6 +785,7 @@ class ImageViewerWindow(QMainWindow):
         from photonfinder.filesystem import Importer
         self._filename = filename
         self._is_fits = Importer.is_fits_by_name(filename)
+        self._is_picture = Importer.is_picture_by_name(filename)
         self._preserve_view = preserve_view
         if not preserve_view:
             self._fitted = False
@@ -1497,11 +1501,13 @@ class ImageViewerWindow(QMainWindow):
             if idx >= 0:
                 self._pattern_combo.setCurrentIndex(idx)
 
-        self._debayer_check.setEnabled(self._image_type != 'rgb')
-        self._pattern_combo.setEnabled(self._image_type != 'rgb')
+        self._debayer_check.setEnabled(self._image_type != 'rgb' and not self._is_picture)
+        self._pattern_combo.setEnabled(self._image_type != 'rgb' and not self._is_picture)
+        for w in (self._stretch_check, self._bg_spin, self._sigma_spin, self._linked_check):
+            w.setEnabled(not self._is_picture)
 
         # Only update auto-stretch detection when stretch is not locked and not navigating
-        if not self._lock_stretch_check.isChecked() and not self._preserve_view:
+        if not self._lock_stretch_check.isChecked() and not self._preserve_view and not self._is_picture:
             self._stretch_check.setChecked(should_stretch(self._raw_uint16, self._library_image_type()))
 
         for w in (self._debayer_check, self._pattern_combo, self._stretch_check):
@@ -1561,7 +1567,7 @@ class ImageViewerWindow(QMainWindow):
             return
 
         self._pending_process = False
-        debayer_on = self._debayer_check.isChecked() and self._image_type != 'rgb'
+        debayer_on = self._debayer_check.isChecked() and self._image_type != 'rgb' and not self._is_picture
         pattern = self._pattern_combo.currentText() if debayer_on else None
 
         worker = ProcessWorker(
@@ -1569,7 +1575,7 @@ class ImageViewerWindow(QMainWindow):
             img_type=self._image_type,
             debayer_on=debayer_on,
             pattern=pattern,
-            stretch_on=self._stretch_check.isChecked(),
+            stretch_on=self._stretch_check.isChecked() and not self._is_picture,
             target_bg=self._bg_spin.value(),
             clip_sigma=self._sigma_spin.value(),
             linked=self._linked_check.isChecked(),
