@@ -35,7 +35,7 @@ def test_deletes_cascade(database):
 
 def test_model_str():
     root = LibraryRoot(name="dummy", path=r'C:\TEMP')
-    assert str(root) == "LibraryRoot(name=dummy, path=C:\\TEMP)"
+    assert str(root) == "LibraryRoot(include_pictures=False, name=dummy, path=C:\\TEMP)"
 
 
 def test_model_eq():

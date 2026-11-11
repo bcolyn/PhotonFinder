@@ -10,7 +10,7 @@ from typing import Optional
 
 import astropy.units as u
 from astropy.coordinates import SkyCoord
-from peewee import (JOIN, SQL, BlobField, CharField, DateTimeField, DoubleField, FloatField,
+from peewee import (JOIN, SQL, BlobField, BooleanField, CharField, DateTimeField, DoubleField, FloatField,
                     ForeignKeyField, IntegerField, Model, TextField, fn)
 from playhouse.sqlite_ext import RowIDField
 
@@ -382,6 +382,9 @@ class LibraryRoot(Model):
     # Free-form note describing what lives in this root. Surfaced in the GUI and to MCP
     # clients, which use it to pick the right root without scanning it.
     description = TextField(null=True)
+    # Whether a scan imports the JPEG and PNG pictures in this root (see photonfinder.pictures).
+    # Off by default; switching it off removes the root's pictures at the next scan.
+    include_pictures = BooleanField(default=False, constraints=[SQL('DEFAULT 0')])
 
     class Meta:
         # This will be set dynamically when the database connection is provided
@@ -400,6 +403,12 @@ class LibraryRoot(Model):
         """
         path = Path(path_str)
         return path.exists() and path.is_dir()
+
+    def picture_count(self) -> int:
+        """How many picture files (by name) the library has under this root."""
+        from photonfinder.pictures import PICTURE_EXTENSIONS
+        is_picture = reduce(operator.or_, (fn.LOWER(File.name).endswith(ext) for ext in PICTURE_EXTENSIONS))
+        return File.select().where((File.root == self) & is_picture).count()
 
     @staticmethod
     def find_for_file(fs_item: str) -> Optional['LibraryRoot']:

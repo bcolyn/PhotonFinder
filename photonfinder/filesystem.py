@@ -16,7 +16,7 @@ from fs.base import FS
 from fs.info import Info
 from peewee import JOIN
 
-from photonfinder import image_hdus, local_time, plate_solution
+from photonfinder import image_hdus, local_time, pictures, plate_solution
 from photonfinder.core import StatusReporter, compress, decompress
 from photonfinder.fits_handlers import normalize_fits_header
 from photonfinder.models import File, LibraryRoot, FitsHeader, Image, norm_db_path, FileWCS, ImageStats
@@ -200,7 +200,18 @@ def _store_file_index(file: File, scan: image_hdus.HduScan, status_reporter, set
         settings.add_known_fits_keywords(header.keys())
 
 
+def _store_picture_index(file: File, status_reporter) -> None:
+    """A picture's one Image row: its size and type, nothing else (see photonfinder.pictures)."""
+    if status_reporter:
+        status_reporter.update_status(f"Reading picture size for {file.name}...", bulk=True)
+    width, height = pictures.picture_size(file.full_filename())
+    Image.create(file=file, hdu=0, image_type=pictures.PICTURE_TYPE, width=width, height=height)
+
+
 def _handle_file_metadata(file, status_reporter, settings):
+    if Importer.is_picture_by_name(file.name):
+        _store_picture_index(file, status_reporter)
+        return
     scan = _read_file_headers(file, status_reporter)
     if scan is not None:
         _store_file_index(file, scan, status_reporter, settings)
@@ -449,18 +460,19 @@ def decode_header_blob(blob: bytes) -> Header:
 
 def check_missing_header_cache(status_reporter, settings, cancelled=lambda: False):
     """
-    Process any FITS files that don't have a corresponding header entry.
-    Also creates Image objects from the FITS headers using the appropriate handler.
+    Process any files that were never indexed: no cached header and no Image row. A FITS or XISF
+    file gets both when indexed; a picture only its Image row, so a picture with one is done.
+    A file that can't be read gets neither and is tried again on the next scan.
     """
     if status_reporter:
-        status_reporter.update_status("Checking for FITS files without header cache entries...")
+        status_reporter.update_status("Checking for files without header cache entries...")
 
-    # Find all files that don't have a corresponding FitsHeader entry
-    # Use a LEFT OUTER JOIN to find files without headers
     missing_header_files = (File
                             .select(File)
                             .join(FitsHeader, JOIN.LEFT_OUTER, on=(File.rowid == FitsHeader.file))
-                            .where(FitsHeader.rowid.is_null()))
+                            .switch(File)
+                            .join(Image, JOIN.LEFT_OUTER, on=(File.rowid == Image.file))
+                            .where(FitsHeader.rowid.is_null() & Image.rowid.is_null()))
 
     # Process these files as new files
     for file in missing_header_files:
@@ -663,6 +675,11 @@ class Importer:
         return filename.lower().endswith(".xisf")
 
     @staticmethod
+    def is_picture_by_name(filename: str) -> bool:
+        """A JPEG or PNG picture, imported only from a root with include_pictures set."""
+        return pictures.is_picture_name(filename)
+
+    @staticmethod
     def is_fits(f: Info) -> bool:
         return Importer.is_fits_by_name(f.name)
 
@@ -675,8 +692,13 @@ class Importer:
         filename = f.name
         return is_compressed(filename)
 
-    def _file_filter(self, x: Info):
-        return (Importer.is_fits(x) or Importer.is_xisf(x)) and not self.marked_bad(x)
+    def _file_filter(self, x: Info, root: LibraryRoot):
+        """Whether a file belongs in the library: FITS and XISF always, pictures when the root
+        includes them. A file that doesn't, but has a row, is removed by the scan."""
+        if self.marked_bad(x):
+            return False
+        return (Importer.is_fits(x) or Importer.is_xisf(x)
+                or (bool(root.include_pictures) and Importer.is_picture_by_name(x.name)))
 
     def _dir_filter(self, x: Info):
         return not self.marked_bad(x)
@@ -684,6 +706,10 @@ class Importer:
     def import_roots(self, roots: typing.Sequence[LibraryRoot] = None) -> typing.Iterable[ChangeList]:
         if not roots:
             roots = list(LibraryRoot.select().execute())
+        else:
+            # Read again: the caller's rows may be older than an edit of the root's settings.
+            roots = list(LibraryRoot.select().where(LibraryRoot.rowid.in_([root.rowid for root in roots]))
+                         .order_by(LibraryRoot.name))
         log(INFO, "Scanning for new/changed files in libraries...")
         for root in roots:
             self.status.update_status(f"importing library root: {root.name}")
@@ -725,7 +751,7 @@ class Importer:
                         self.status.update_status(f"Skipping directory: {root.name}/{current_dir}/{entry.name}",
                                                   bulk=False)
                 if entry.is_file:
-                    if self._file_filter(entry):
+                    if self._file_filter(entry, root):
                         name = self._import_file(entry, current_dir, root, result, names_on_disk)
                         filtered_files.add(name)
                     else:
@@ -808,6 +834,9 @@ class Importer:
                 root_changes = self.import_files_from(root_fs, root, rel_path)
                 changes.merge(root_changes)
             elif file_info.is_file:
+                if not self._file_filter(file_info, root):
+                    self.status.update_status(f"Skipping {file}: not a file this library imports")
+                    continue
                 rel_path_parent = str(Path(rel_path).parent)
                 names_on_disk = {e.name for e in root_fs.scandir(rel_path_parent) if e.is_file}
                 self._import_file(file_info, rel_path_parent, root, changes, names_on_disk)

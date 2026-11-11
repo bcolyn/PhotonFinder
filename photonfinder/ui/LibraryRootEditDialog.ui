@@ -67,6 +67,23 @@
        </property>
       </widget>
      </item>
+     <item row="3" column="0">
+      <widget class="QLabel" name="picturesLabel">
+       <property name="text">
+        <string>Pictures:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="1">
+      <widget class="QCheckBox" name="includePicturesCheckBox">
+       <property name="toolTip">
+        <string>Also import JPEG and PNG pictures (processed results, reference shots). They are listed by name, folder and size only: no EXIF, no date.</string>
+       </property>
+       <property name="text">
+        <string>Include pictures</string>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item>

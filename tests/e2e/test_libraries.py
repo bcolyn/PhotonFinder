@@ -259,3 +259,45 @@ def test_scan_does_not_start_while_compression_holds_the_library(sandbox, app, m
     # the finished scan released the lock
     assert other_window.acquire(blocking=False)
     other_window.release()
+
+
+def test_pictures_are_imported_once_ticked_and_removed_once_unticked(sandbox, app, modals, boundary, libraries,
+                                                                     tmp_path):
+    import cv2
+    import numpy as np
+    root = tmp_path / "results"
+    root.mkdir()
+    light = next(p for p in libraries.files if p.name.endswith(".fits"))
+    shutil.copy(light, root / light.name)
+    cv2.imwrite(str(root / "M27 final.jpg"), np.full((30, 40, 3), 90, np.uint8))
+    cv2.imwrite(str(root / "M27 annotated.png"), np.full((30, 40), 120, np.uint8))
+    add_libraries(sandbox, modals, boundary, {"results": root}, scan=True)
+    [first] = sandbox.grid().rows()
+    assert first["File name"] == light.name
+
+    def edit_results(dialog: LibraryRootDialog):
+        select_root(dialog, "results")
+        dialog.editButton.click()
+
+    def set_pictures(on: bool):
+        def tick(edit: LibraryRootEditDialog):
+            assert edit.includePicturesCheckBox.isChecked() != on
+            assert ".jpg, .jpeg, .png" in edit.includePicturesCheckBox.text()
+            edit.includePicturesCheckBox.setChecked(on)
+        return tick
+
+    boundary.answer("question", YES)  # "Scan libraries now?"
+    with modals.handle(LibraryRootDialog, edit_results), modals.handle(LibraryRootEditDialog, set_pictures(True)):
+        app.action_Manage_Libraries.trigger()
+    wait_for_scan(sandbox)
+
+    rows = {row["File name"]: row["Type"] for row in sandbox.grid().rows()}
+    assert rows == {light.name: first["Type"], "M27 final.jpg": "PICTURE", "M27 annotated.png": "PICTURE"}
+
+    boundary.answer("question", YES)  # "This library has 2 pictures... Switch pictures off?"
+    boundary.answer("question", YES)  # "Scan libraries now?"
+    with modals.handle(LibraryRootDialog, edit_results), modals.handle(LibraryRootEditDialog, set_pictures(False)):
+        app.action_Manage_Libraries.trigger()
+    wait_for_scan(sandbox)
+
+    assert sandbox.grid().column("File name") == [light.name]

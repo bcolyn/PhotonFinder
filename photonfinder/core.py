@@ -469,6 +469,7 @@ class ApplicationContext:
                 model.create_table()
             self._migrate_image_dimensions()
             self._migrate_library_root_description()
+            self._migrate_library_root_include_pictures()
             self._migrate_image_stats_diagnosis()
             from .models import SESSION_NIGHT_INDEX_SQL
             self.database.execute_sql(SESSION_NIGHT_INDEX_SQL)
@@ -503,6 +504,14 @@ class ApplicationContext:
     def _migrate_library_root_description(self) -> None:
         try:
             self.database.execute_sql('ALTER TABLE libraryroot ADD COLUMN description TEXT')
+        except Exception:
+            pass  # column already exists
+
+    def _migrate_library_root_include_pictures(self) -> None:
+        """LibraryRoot gets include_pictures, off for every existing root."""
+        try:
+            self.database.execute_sql(
+                'ALTER TABLE libraryroot ADD COLUMN include_pictures INTEGER NOT NULL DEFAULT 0')
         except Exception:
             pass  # column already exists
 

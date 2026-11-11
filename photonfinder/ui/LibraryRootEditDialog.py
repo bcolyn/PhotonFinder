@@ -5,6 +5,7 @@ from typing import Optional
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
 
+from photonfinder import pictures
 from photonfinder.core import library_busy_message
 from photonfinder.models import LibraryRoot, norm_db_path
 from photonfinder.ui.generated.LibraryRootEditDialog_ui import Ui_LibraryRootEditDialog
@@ -24,6 +25,7 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
         self.library_root = library_root
         self.write_lock = write_lock
         self.is_new = library_root is None
+        self.includePicturesCheckBox.setText(f"Include pictures ({pictures.extensions_text()})")
 
         # Set up the dialog based on whether we're creating or editing
         if self.is_new:
@@ -33,6 +35,23 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
             self.nameLineEdit.setText(library_root.name)
             self.pathLineEdit.setText(library_root.path)
             self.descriptionTextEdit.setPlainText(library_root.description or "")
+            self.includePicturesCheckBox.setChecked(bool(library_root.include_pictures))
+
+    def _confirm_pictures_removed(self) -> bool:
+        """Switching pictures off removes the root's pictures at the next scan, with their project
+        links and plate solutions. True to go ahead: nothing to lose, or the user agrees."""
+        if self.is_new or not self.library_root.include_pictures or self.includePicturesCheckBox.isChecked():
+            return True
+        count = self.library_root.picture_count()
+        if count == 0:
+            return True
+        answer = QMessageBox.question(
+            self, "Remove Pictures",
+            f"This library has {count} picture{'s' if count != 1 else ''}. The next scan removes "
+            f"{'them' if count != 1 else 'it'} from the library, with any project links and plate "
+            f"solutions. The files on disk are not touched.\n\nSwitch pictures off?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        return answer == QMessageBox.StandardButton.Yes
 
     @Slot()
     def browse_directory(self):
@@ -61,6 +80,7 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
         name = self.nameLineEdit.text().strip()
         path = norm_db_path(self.pathLineEdit.text().strip())
         description = self.descriptionTextEdit.toPlainText().strip() or None
+        include_pictures = self.includePicturesCheckBox.isChecked()
 
         # Validate input
         if not name:
@@ -92,7 +112,8 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
                     return
 
                 # Create new library root
-                LibraryRoot.create(name=name, path=path, description=description)
+                LibraryRoot.create(name=name, path=path, description=description,
+                                   include_pictures=include_pictures)
                 logging.info(f"Created library root: {name} at {path}")
             else:
                 # For existing library roots, check if the duplicate is a different record
@@ -105,6 +126,9 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
                             QMessageBox.warning(self, "Validation Error", f"A library root with the path '{path}' already exists.")
                             return
 
+                if not self._confirm_pictures_removed():
+                    return
+
                 # Update existing library root
                 if self.write_lock is not None and not self.write_lock.acquire(blocking=False,
                                                                                 holder="Library root change"):
@@ -115,6 +139,7 @@ class LibraryRootEditDialog(QDialog, Ui_LibraryRootEditDialog):
                     self.library_root.name = name
                     self.library_root.path = path
                     self.library_root.description = description
+                    self.library_root.include_pictures = include_pictures
                     self.library_root.save()
                 finally:
                     if self.write_lock is not None:
