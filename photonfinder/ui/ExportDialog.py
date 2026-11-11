@@ -77,18 +77,25 @@ def _template_image(file: File) -> Optional[Image]:
 
 def template_output_root(file: File, ref: Optional[File], root: str, settings: Settings,
                          decompress=False, export_xisf_as_fits=False,
-                         sess_date=None, shared=False) -> str:
-    """The root output folder for one file, with the same variables as the pattern filled in.
-    With a reference file, the reference's values fill it, as they choose the pattern's folder.
-    A shared calibration frame gets 'shared' for the folders that hold ${sess_date}, as in
-    the pattern."""
+                         sess_date=None) -> str:
+    """The root output folder, with the same variables as the pattern filled in, from one file.
+    With a reference file, the reference's values fill it, as they choose the pattern's folder."""
     if '$' not in root:
         return root
-    if shared:
-        root = _make_shared_template_str(root)
     source, source_sess_date = (ref, None) if ref is not None else (file, sess_date)
     values = _template_values(source, settings, decompress, export_xisf_as_fits, source_sess_date)
     return string.Template(root).safe_substitute(values)
+
+
+def export_output_root(entries, ref: Optional[File], root: str, settings: Settings,
+                       decompress=False, export_xisf_as_fits=False) -> str:
+    """The root output folder of a whole export: evaluated once, from the first entry (the first
+    light, or the reference file), and the root of every group and file in it."""
+    if not entries:
+        return root
+    first = entries[0]
+    return template_output_root(first.file, ref, root, settings, decompress, export_xisf_as_fits,
+                                sess_date=first.session_date)
 
 
 def _template_values(file: File, settings: Settings, decompress=False, export_xisf_as_fits=False,
@@ -219,6 +226,7 @@ class ExportWorker(BackgroundLoaderBase):
         self.entries: list[ExportEntry] = []
         self.search_criteria = None
         self.output_path = ""
+        self.output_root = ""
         self.decompress = False
         self.pattern = None
         self.cancelled = False
@@ -243,6 +251,9 @@ class ExportWorker(BackgroundLoaderBase):
         self.entries = entries
         self.output_path = output_path
         self.decompress = decompress
+        self.output_root = export_output_root(
+            entries, search_criteria.reference_file if search_criteria else None,
+            output_path, self.context.settings, decompress, export_xisf_as_fits)
         self.pattern = string.Template(pattern)
         self.cancelled = False
         self.total_files = total_files
@@ -283,10 +294,7 @@ class ExportWorker(BackgroundLoaderBase):
         output_filename = template_filename_with_ref(file, ref_file, active_pattern,
                                                      self.context.settings, self.decompress, self.export_xisf_as_fits,
                                                      sess_date=sess_date)
-        output_root = template_output_root(file, ref_file, self.output_path, self.context.settings,
-                                           self.decompress, self.export_xisf_as_fits,
-                                           sess_date=sess_date, shared=is_shared)
-        output_file_path = resolve_output_path(output_root, output_filename)
+        output_file_path = resolve_output_path(self.output_root, output_filename)
 
         key = os.path.normcase(output_file_path)
         previous = self._written.get(key)
@@ -847,6 +855,8 @@ class ExportDialog(QDialog, Ui_ExportDialog):
         shared_file_ids = self.plan.shared_file_ids()
         all_entries = self.plan.entries()
 
+        output_root = export_output_root(all_entries, ref_file, output_path, self.context.settings,
+                                         decompress, export_xisf_as_fits)
         lines = []
         for entry in all_entries:
             source_path = entry.file.full_filename()
@@ -855,9 +865,6 @@ class ExportDialog(QDialog, Ui_ExportDialog):
             output_filename = template_filename_with_ref(
                 entry.file, ref_file, active_tpl, self.context.settings,
                 decompress, export_xisf_as_fits, sess_date=entry.session_date)
-            output_root = template_output_root(
-                entry.file, ref_file, output_path, self.context.settings,
-                decompress, export_xisf_as_fits, sess_date=entry.session_date, shared=is_shared)
             try:
                 dest_path = resolve_output_path(output_root, output_filename)
             except ValueError as e:

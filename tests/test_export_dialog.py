@@ -12,6 +12,7 @@ from photonfinder.ui.ExportDialog import (
     _make_shared_template_str,
     resolve_output_path,
     template_output_root,
+    export_output_root,
 )
 from .multi_image_files import write_multi_hdu_fits, write_two_image_xisf
 from .sample_models import *
@@ -217,10 +218,13 @@ class TestTemplateOutputRoot:
     def test_reference_file_fills_the_root(self, dark1, light1, settings):
         assert template_output_root(dark1, light1, "D:/proc/$image_type", settings) == "D:/proc/LIGHT"
 
-    def test_shared_frame_gets_shared_for_sess_date(self, dark1, settings):
-        root = template_output_root(dark1, None, "D:/proc/${sess_date}", settings,
-                                    sess_date=date(2024, 3, 12), shared=True)
-        assert root == "D:/proc/shared"
+    def test_export_root_is_evaluated_once_from_the_first_entry(self, light1, dark1, settings):
+        entries = [ExportEntry(light1, date(2024, 3, 12)), ExportEntry(dark1, date(2024, 3, 13))]
+        root = export_output_root(entries, None, "D:/proc/$object_name/${sess_date}", settings)
+        assert root == "D:/proc/Test Object/2024-03-12"
+
+    def test_export_root_without_entries_is_untouched(self, settings):
+        assert export_output_root([], None, "D:/proc/$object_name", settings) == "D:/proc/$object_name"
 
     def test_sess_date_comes_from_the_session(self, dark1, settings):
         root = template_output_root(dark1, None, "D:/proc/${sess_date}", settings, sess_date=date(2024, 3, 12))
@@ -231,7 +235,7 @@ class TestExportWorkerWrites:
     @pytest.fixture
     def worker(self, app_context, tmp_path):
         worker = ExportWorker(app_context)
-        worker.output_path = str(tmp_path / "out")
+        worker.output_root = str(tmp_path / "out")
         worker.pattern = string.Template("$filename")
         worker.total_files = 10
         return worker
@@ -279,14 +283,6 @@ class TestExportWorkerWrites:
             worker._process_entry(ExportEntry(f, None), 0)
 
         assert list((tmp_path / "out").iterdir()) == []
-
-    def test_variables_in_root_are_filled_in_per_file(self, worker, tmp_path):
-        f = self._source(tmp_path, 1, "night1", b"data")
-        worker.output_path = str(tmp_path / "out" / "$filename_no_ext")
-
-        worker._process_entry(ExportEntry(f, None), 0)
-
-        assert (tmp_path / "out" / "light" / "light.fits").read_bytes() == b"data"
 
     def test_existing_file_from_earlier_export_is_kept(self, worker, tmp_path):
         f = self._source(tmp_path, 1, "night1", b"new")
