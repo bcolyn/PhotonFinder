@@ -689,6 +689,10 @@ class Settings:
         ("obs_timezone", "obs_timezone", "", str),
         ("annotation_mag_limit", "annotation_mag_limit", 19.0, float),
         ("quality_diagnosis_settings", "quality_diagnosis_settings", "", str),
+        # QMainWindow.saveGeometry()/saveState() as base64: a str reads back the same from
+        # the registry and from an INI file.
+        ("main_window_geometry", "main_window_geometry", "", str),
+        ("main_window_state", "main_window_state", "", str),
     ]
 
     def __init__(self, organization_name="AstroFileManager", application_name="AstroFileManager",

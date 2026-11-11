@@ -4,7 +4,7 @@ from copy import deepcopy
 from functools import partial
 from typing import List
 
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize, QEvent
+from PySide6.QtCore import Qt, QByteArray, QThread, Signal, QObject, QSize, QEvent
 from PySide6.QtGui import QIcon, QPalette, QAction, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QTabWidget,
                                QToolButton, QWidget)
@@ -101,6 +101,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.local_times = LocalTimeWorker(context)
         self._local_times_wanted = False  # started while the library was busy: retried when it's free
         self.connect_signals()
+        self.restore_window_layout()
         self.restore_session()
         self.setAcceptDrops(True)
         self.update_local_times()
@@ -187,6 +188,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.save_session()
             except Exception as e:
                 logging.error(f"Could not save the session: {e}", exc_info=True)
+            try:
+                self.save_window_layout()
+            except Exception as e:
+                logging.error(f"Could not save the window layout: {e}", exc_info=True)
             self._stop_scan()
             if not self.local_times.cancel_and_wait():
                 logging.error("Computing local times did not stop in time")
@@ -229,6 +234,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self._start_scan(lambda: LibraryScanWorker(self.context, file_paths))
         else:
             event.ignore()
+
+    def save_window_layout(self):
+        """Remember the window's size, position and maximized state, and the toolbar and dock."""
+        settings = self.context.settings
+        settings.set_main_window_geometry(self.saveGeometry().toBase64().data().decode("ascii"))
+        settings.set_main_window_state(self.saveState().toBase64().data().decode("ascii"))
+
+    def restore_window_layout(self):
+        """Put the window back as it was closed. Qt keeps a restored geometry on a visible screen."""
+        settings = self.context.settings
+        geometry = settings.get_main_window_geometry()
+        if geometry:
+            self.restoreGeometry(QByteArray.fromBase64(geometry.encode("ascii")))
+        state = settings.get_main_window_state()
+        if state:
+            self.restoreState(QByteArray.fromBase64(state.encode("ascii")))
 
     def restore_session(self):
         try:
