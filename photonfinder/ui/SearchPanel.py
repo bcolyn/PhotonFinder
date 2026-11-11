@@ -647,8 +647,13 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         return [self.library_tree_model.getItem(idx) for idx in indexes]
 
     def on_tree_context_menu(self, position):
+        global_pos = self.filesystemTreeView.viewport().mapToGlobal(position)
         index = self.filesystemTreeView.indexAt(position)
         if not index.isValid():
+            # Empty space: the selection was not clicked on, so offer only what needs none
+            menu = QMenu(self)
+            menu.addAction(self.mainWindow.action_Manage_Libraries)
+            menu.exec(global_pos)
             return
 
         root_and_paths = self.get_selected_roots_and_paths()
@@ -665,7 +670,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             menu.setToolTipsVisible(True)
             menu.addAction(self.mainWindow.action_Scan_Libraries)
 
-        action = menu.exec(self.filesystemTreeView.viewport().mapToGlobal(position))
+        if not menu.isEmpty():
+            menu.addSeparator()
+        menu.addAction(self.mainWindow.action_Manage_Libraries)
+
+        action = menu.exec(global_pos)
         if action is None:
             return
         if create_project_action is not None and action == create_project_action:
