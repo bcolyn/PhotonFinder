@@ -21,7 +21,7 @@ The File menu contains options for managing tabs, databases, libraries, and appl
 - **Manage Libraries** - Opens the library management dialog to add, edit, or remove library root directories. Each root can carry an optional description of what it holds; it shows as a tooltip in the library tree and is exposed to MCP agents
 
 ### Application Settings
-- **Settings** - Opens the application settings dialog. Under **Observatory**, the timezone is used for the local time of frames whose header has neither `DATE-LOC` nor site coordinates; it is set to the computer's timezone on first start, and changing it updates those frames in the background
+- **Settings** - Opens the application settings dialog. Under **Observatory**, the timezone is used for the local time of frames whose header has neither `DATE-LOC` nor site coordinates; it is set to the computer's timezone on first start, and changing it updates those frames in the background. The **Thumbnails** tab shows how much the thumbnail cache holds, and **Clear thumbnail cache** deletes it at once (no need to press OK); thumbnails are made again as you browse
 
 ### Local time and observing nights
 Every frame gets a local time when it is indexed, from the first source its header has: `DATE-LOC` (the local time the capture software recorded), else `DATE-OBS` in the time zone of the observatory (`SITELAT`/`SITELONG` or `OBSGEO-B`/`OBSGEO-L`), else `DATE-OBS` in the timezone set under Settings. The grid's **Observation Date** column shows that local time (hover for UTC). The **Night** column shows the observing night: the local time minus 12 hours, as a date, so frames from before and after midnight share one night. Calibration matching, quality diagnosis and the export path tokens use the same night. After upgrading, existing frames get their local time in the background; until then their date shows in UTC.
@@ -128,6 +128,15 @@ Rows that can't be read (an unreadable coordinate, a missing id, or an id that a
 twice) are skipped, and the import tells you which lines were skipped and why. A file
 with no `id`, `ra` or `dec` column, or with no usable row at all, is not imported.
 
+## View Menu
+
+### Thumbnails
+- **Thumbnails** (Ctrl+Shift+T, also on the tab's toolbar) - Shows the search results as thumbnail tiles instead of the table, and back. The tiles are the table's rows (one per image, so a file with several layers has a tile for each), in the same order and with the same selection: selecting, the right-click menu, double-click to view, and dragging files onto a project all work as in the table. Each tile is captioned with the file name, shortened in the middle when it doesn't fit; hover over a tile for the full name and the main details. Each tab remembers whether it shows the table or the thumbnails, and a new tab starts out like the current one. With no tab to copy (the first start, after closing the last tab, or after opening another library) the new tab shows thumbnails
+- Thumbnails are made in the background as you scroll, only for the tiles in view, so the first visit to a folder fills in gradually; tiles show a placeholder until theirs is ready, and a warning sign for a file that can't be read. Linear images, calibration frames among them, get an automatic stretch; an image that looks already stretched (processed) is shown as it is, as the viewer does. Thumbnails are kept in a `thumbs` folder of the application data folder and reused until the file changes; clear it from the **Thumbnails** tab of **Settings**, which also removes the thumbnails of files that have since changed or moved
+
+### Search Details
+- **Search Details** - Chooses which columns the table shows
+
 ## Help Menu
 
 The Help menu provides access to application information and logging.
@@ -151,5 +160,6 @@ Many menu items support keyboard shortcuts (indicated by the & symbol in the men
 - **Filter**: Alt+I  
 - **Tools**: Alt+T
 - **Help**: Alt+H
+- **Thumbnails / table**: Ctrl+Shift+T
 
 Individual menu items may also have specific keyboard shortcuts assigned.

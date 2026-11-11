@@ -25,6 +25,7 @@ from .ProjectEditDialog import ProjectEditDialog
 from .ProjectsWindow import ProjectsWindow
 from .SearchPanel import SearchPanel
 from .SettingsDialog import SettingsDialog
+from .ThumbnailView import ThumbnailLoader
 from .common import create_colored_svg_icon, _BUILTIN_PRESETS
 from .generated.MainWindow_ui import Ui_MainWindow
 import photonfinder.ui.generated.resources_rc  # pylint: disable=unused-import  # registers the Qt resources
@@ -48,6 +49,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.scan_worker = None  # Initialize scan_worker attribute
         self.projects_window = None
         self.image_viewer: ImageViewerWindow | None = None
+        self.thumbnails = ThumbnailLoader(context.thumbnail_dir, self)  # shared by the tabs' tile views
 
         self.menuProject_Details.removeAction(self.actionLoading_2)
         self.menuSearch_Details.removeAction(self.actionLoading)
@@ -71,6 +73,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionDate.setIcon(create_colored_svg_icon(":/res/calendar3.svg", size, text_color))
         self.actionNight.setIcon(create_colored_svg_icon(":/res/moon.svg", size, text_color))
         self.actionGroupSimilarFrames.setIcon(create_colored_svg_icon(":/res/box-seam.svg", size, text_color))
+        self.actionThumbnails.setIcon(create_colored_svg_icon(":/res/grid.svg", size, text_color))
         self.actionTelescope.setIcon(create_colored_svg_icon(":/res/telescope-icon-original.svg", size, text_color))
         self.actionBinning.setIcon(create_colored_svg_icon(":/res/border-outer.svg", size, text_color))
         self.actionGain.setIcon(create_colored_svg_icon(":/res/exposure.svg", size, text_color))
@@ -167,6 +170,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for action, entry in self._filter_actions().items():
             action.triggered.connect(partial(self._edit_filter, entry))
         self.actionGroupSimilarFrames.triggered.connect(lambda checked: self.get_current_search_panel().set_grouped(checked))
+        self.actionThumbnails.triggered.connect(lambda checked: self.get_current_search_panel().set_thumbnail_mode(checked))
         self.menuSearch_Details.aboutToShow.connect(self.populate_search_details)
         self.menuProject_Details.aboutToShow.connect(self.populate_project_details)
         self.menu_File.setToolTipsVisible(True)
@@ -188,6 +192,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 logging.error("Computing local times did not stop in time")
             if self.mcp_controller is not None:
                 self.mcp_controller.stop()
+            self.thumbnails.shutdown()
         finally:
             event.accept()  # Accept the event to actually close the window
 
@@ -233,7 +238,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             sessions = []
         for session in sessions:
             try:
-                panel = self.new_search_tab(session.criteria, hidden_columns=session.hidden_columns)
+                panel = self.new_search_tab(session.criteria, hidden_columns=session.hidden_columns,
+                                            thumbnails=session.thumbnails)
                 if session.title_is_custom:
                     panel.set_custom_title(session.title)
                 else:
@@ -248,23 +254,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             criteria=panel.search_criteria,
             hidden_columns=panel.visibility_controller.save_visibility(),
             title=panel.title,
-            title_is_custom=panel.title_is_custom
+            title_is_custom=panel.title_is_custom,
+            thumbnails=panel.thumbnail_mode,
         ) for panel in self.get_search_panels()]
         self.session_manager.save_sessions(sessions)
 
-    def new_search_tab(self, search_criteria=None, hidden_columns=None) -> SearchPanel:
+    def new_search_tab(self, search_criteria=None, hidden_columns=None, thumbnails=None) -> SearchPanel:
+        """A new tab; what it doesn't say (columns, table or thumbnails) it takes from the current tab.
+        With no tab open (the first start, the last tab closed, another library opened) it shows
+        thumbnails."""
+        current = self.get_current_search_panel()
         if hidden_columns is None:
-            current = self.get_current_search_panel()
             if current is not None:
                 hidden_columns = current.visibility_controller.save_visibility()
             else:
                 hidden_columns = ",".join(_BUILTIN_PRESETS["Standard"])
+        if thumbnails is None:
+            thumbnails = current.thumbnail_mode if current is not None else True
         panel = SearchPanel(self.context, parent=self.tabWidget, mainWindow=self)
         tab = self.tabWidget.addTab(panel, "Loading")
         if search_criteria:
             panel.apply_search_criteria(search_criteria)
         if hidden_columns:
             panel.visibility_controller.load_visibility(hidden_columns)
+        panel.set_thumbnail_mode(thumbnails)
         self.tabWidget.setCurrentIndex(tab)
         self.tabs_changed.emit(self.get_search_panels())
         return panel
@@ -457,7 +470,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         Open the settings dialog.
         """
         zone = self.context.settings.get_obs_timezone()
-        dialog = SettingsDialog(self.context, parent=self)
+        dialog = SettingsDialog(self.context, parent=self, thumbnails=self.thumbnails)
         if dialog.exec() and self.context.settings.get_obs_timezone() != zone:
             self.local_times.cancel_and_wait()  # restarted in the new zone
             self.update_local_times()
@@ -800,6 +813,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for action, entry in self._filter_actions().items():
             action.setChecked(entry in current_panel.advanced_options)  # no effect on the uncheckable ones
         self.actionGroupSimilarFrames.setChecked(current_panel.search_criteria.one_per_group)
+        self.actionThumbnails.setChecked(current_panel.thumbnail_mode)
 
     def add_selection_to_project(self, project: Project):
         edit_dialog = ProjectEditDialog(self.context, project=project, parent=self)

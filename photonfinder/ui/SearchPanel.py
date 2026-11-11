@@ -13,7 +13,7 @@ from PySide6.QtCore import (QByteArray, QEvent, QItemSelectionModel, QMimeData, 
                             QSortFilterProxyModel, QUrl, Qt, Signal)
 from PySide6.QtGui import QBrush, QDesktopServices, QKeySequence, QPalette, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame, QInputDialog, QMenu,
-                               QMessageBox, QPushButton, QSizePolicy, QToolBar, QWidget)
+                               QMessageBox, QPushButton, QSizePolicy, QStackedWidget, QToolBar, QWidget)
 
 from photonfinder import filter_catalogue, plate_solution
 from photonfinder.core import ApplicationContext, Change, library_busy_message
@@ -33,6 +33,7 @@ from .LibraryTreeModel import LibraryTreeModel, LibraryRootNode, PathNode
 from .MetadataReportDialog import MetadataReportDialog
 from .PlateSolveDialog import PlateSolveDialog
 from .ProgressDialog import ProgressDialog
+from .ThumbnailView import ThumbnailView
 from .common import ensure_header_widths, ColumnVisibilityController
 from .generated.SearchPanel_ui import Ui_SearchPanel
 
@@ -126,6 +127,23 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.dataView.selectionModel().selectionChanged.connect(self.on_data_selection_changed)
         self.dataView.installEventFilter(self)
         self.visibility_controller = ColumnVisibilityController(self.dataView, context=context.settings)
+
+        # The tile view: the same rows and the same selection as the table, shown instead of it.
+        self.thumbnail_mode = False
+        self.thumbnailView = ThumbnailView(mainWindow.thumbnails, self._thumbnail_image, self._thumbnail_tooltip)
+        self.thumbnailView.setModel(self.proxy_model)
+        self.thumbnailView.setSelectionModel(self.dataView.selectionModel())
+        self.thumbnailView.verticalScrollBar().valueChanged.connect(self.on_scroll)
+        self.thumbnailView.doubleClicked.connect(self.on_item_double_clicked)
+        self.thumbnailView.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.thumbnailView.customContextMenuRequested.connect(self.show_context_menu)
+        self.thumbnailView.installEventFilter(self)
+        self.result_views = QStackedWidget()
+        # The splitter sizes its panes by their stretch: the stack takes the table's, or it gets half.
+        self.result_views.setSizePolicy(self.dataView.sizePolicy())
+        self.splitter.replaceWidget(self.splitter.indexOf(self.dataView), self.result_views)
+        self.result_views.addWidget(self.dataView)
+        self.result_views.addWidget(self.thumbnailView)
         self.has_more_results = False
         self.loading_more = False
 
@@ -156,6 +174,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # insert the toolbar
         self.toolbar = QToolBar()
         self.filter_layout.insertWidget(1, self.toolbar)
+        self.toolbar.addAction(mainWindow.actionThumbnails)
         self.toolbar.addAction(mainWindow.actionGroupSimilarFrames)
         self.toolbar.addSeparator()
         self.toolbar.addAction(mainWindow.actionExposure)
@@ -183,7 +202,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
 
     def eventFilter(self, obj, event):
         """Handle CTRL+A to select all rows, loading all data if needed."""
-        if obj == self.dataView and event.type() == QEvent.KeyPress:
+        if obj in (self.dataView, self.thumbnailView) and event.type() == QEvent.KeyPress:
             if event.matches(QKeySequence.SelectAll):
                 self.handle_select_all()
                 return True  # Event handled
@@ -257,6 +276,52 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             return
         self.search_criteria.paths = self.library_tree_model.get_roots_and_paths(indexes)
         self.update_search_criteria()
+
+    def active_view(self) -> QAbstractItemView:
+        """The table, or the tile view when thumbnails are shown."""
+        return self.thumbnailView if self.thumbnail_mode else self.dataView
+
+    def set_thumbnail_mode(self, thumbnails: bool):
+        """Show the results as thumbnail tiles or as the table; the selection stays."""
+        thumbnails = bool(thumbnails)
+        if thumbnails == self.thumbnail_mode and self.result_views.currentWidget() is self.active_view():
+            return
+        self.thumbnail_mode = thumbnails
+        view = self.active_view()
+        self.result_views.setCurrentWidget(view)
+        current = self.dataView.selectionModel().currentIndex()
+        if current.isValid():
+            view.scrollTo(current)
+        if self.mainWindow.get_current_search_panel() is self:
+            self.mainWindow.actionThumbnails.setChecked(thumbnails)
+
+    def _thumbnail_image(self, index):
+        """(cache key, path, hdu) of a tile's image, None for a row that has no file."""
+        file = self.get_file_at_row(index.row())
+        if file is None or self.context.database is None:
+            return None
+        image = file.__dict__.get('image')
+        hdu = image.hdu if isinstance(image, Image) else None
+        with self.context.database.bind_ctx(CORE_MODELS):
+            path = file.full_filename()
+        # The library's mtime and size: a rescanned, changed file is asked for anew.
+        return (path, hdu, file.mtime_millis, file.size), path, hdu
+
+    _TOOLTIP_COLUMNS = ("type", "object_name", "filter", "exposure", "gain", "binning", "temperature", "camera",
+                        "telescope", "date_obs", "frames", "path")
+
+    def _thumbnail_tooltip(self, index) -> str:
+        """A tile's tooltip: the full file name and the row's main columns."""
+        model = self.proxy_model
+        lines = [model.index(index.row(), 0).data() or ""]
+        for key in self._TOOLTIP_COLUMNS:
+            column = COLUMN_INDEX[key]
+            if key == "frames" and not self.search_criteria.one_per_group:
+                continue
+            text = model.index(index.row(), column).data()
+            if text:
+                lines.append(f"{RESULT_COLUMNS[column].label}: {text}")
+        return "\n".join(lines)
 
     def set_title(self, text: str):
         """Set an auto-generated tab title; ignored once the user has set a custom title."""
@@ -528,11 +593,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         self.dataView.resizeColumnsToContents()
         ensure_header_widths(self.dataView)
 
-    def on_scroll(self, value):
+    def on_scroll(self, _value=None):
         """Handle scrolling in the data view for infinite scroll."""
-        # Check if we're at the bottom of the scroll area
-        scrollbar = self.dataView.verticalScrollBar()
-        if (value >= scrollbar.maximum() - 10 and
+        # Check if we're at the bottom of the scroll area; the hidden view's scrollbar doesn't count.
+        scrollbar = self.active_view().verticalScrollBar()
+        if (scrollbar.value() >= scrollbar.maximum() - 10 and
                 self.has_more_results and
                 not self.loading_more):
             self.loading_more = True
@@ -604,7 +669,8 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # TODO: copy-paste?
         # TODO: open associated project?
         # Get the index at the position
-        index = self.dataView.indexAt(position)
+        view = self.active_view()
+        index = view.indexAt(position)
         if not index.isValid():
             return
 
@@ -706,7 +772,7 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                         select_project_actions.append(a)
 
         # Show the menu and get the selected action
-        action = menu.exec(self.dataView.viewport().mapToGlobal(position))
+        action = menu.exec(view.viewport().mapToGlobal(position))
 
         if action == view_action:
             self.view_file(index)

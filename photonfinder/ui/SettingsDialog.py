@@ -7,15 +7,21 @@ from PySide6.QtWidgets import QCompleter, QDialog, QFileDialog, QMessageBox
 
 from photonfinder.core import ApplicationContext, get_default_saspro_path
 from photonfinder.local_time import is_valid_timezone
+from photonfinder.thumbnails import ThumbnailCache
 from photonfinder.ui.generated.SettingsDialog_ui import Ui_SettingsDialog
 
 
 class SettingsDialog(QDialog, Ui_SettingsDialog):
-    def __init__(self, context: ApplicationContext, parent=None):
+    def __init__(self, context: ApplicationContext, parent=None, thumbnails=None):
+        """*thumbnails* is the main window's ThumbnailLoader, so clearing also forgets the
+        thumbnails in memory; without it only the disk cache is cleared."""
         super(SettingsDialog, self).__init__(parent)
         self.setupUi(self)
         self.adjustSize()
         self.context = context
+        self.thumbnails = thumbnails
+        self.clear_thumbnails_button.clicked.connect(self.clear_thumbnail_cache)
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
 
         self.astap_path_edit.setText(self.context.settings.get_astap_path())
         self.astrometry_api_key_edit.setText(self.context.settings.get_astrometry_net_api_key())
@@ -44,6 +50,28 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.astap_browse_button.clicked.connect(self.browse_astap_executable)
         self.solve_field_browse_button.clicked.connect(self.browse_solve_field_executable)
         self.saspro_browse_button.clicked.connect(self.browse_saspro_executable)
+
+    def _thumbnail_cache(self) -> ThumbnailCache:
+        return self.thumbnails.cache if self.thumbnails is not None else ThumbnailCache(self.context.thumbnail_dir)
+
+    def _on_tab_changed(self, index):
+        if self.tab_widget.widget(index) is self.thumbnails_tab:
+            self.show_thumbnail_usage()
+
+    def show_thumbnail_usage(self):
+        """Counted when the tab is opened, not with the dialog: a big cache takes a moment."""
+        count, size = self._thumbnail_cache().usage()
+        self.thumbnails_usage_label.setText(f"The cache holds {count} thumbnails ({size / 1024 ** 2:.1f} MB).")
+        self.clear_thumbnails_button.setEnabled(count > 0 or size > 0)
+
+    def clear_thumbnail_cache(self):
+        """Takes effect at once, not with OK: the cache is no setting."""
+        if self.thumbnails is not None:
+            count, size = self.thumbnails.clear()
+        else:
+            count, size = self._thumbnail_cache().clear()
+        self.thumbnails_usage_label.setText(f"Removed {count} thumbnails ({size / 1024 ** 2:.1f} MB).")
+        self.clear_thumbnails_button.setEnabled(False)
 
     def browse_astap_executable(self):
         if platform.system() == "Windows":

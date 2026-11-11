@@ -518,6 +518,67 @@
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="thumbnails_tab">
+      <attribute name="title">
+       <string>Thumbnails</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="thumbnails_layout">
+       <item>
+        <widget class="QLabel" name="thumbnails_hint_label">
+         <property name="text">
+          <string>Thumbnails are kept on disk and reused until their file changes. Thumbnails of files that changed, moved or left the library stay behind; clearing the cache removes them all, and the thumbnails you browse to are made again.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="thumbnails_usage_label">
+         <property name="text">
+          <string/>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="thumbnails_button_layout">
+         <item>
+          <widget class="QPushButton" name="clear_thumbnails_button">
+           <property name="text">
+            <string>Clear thumbnail cache</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="thumbnails_button_spacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>0</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <spacer name="thumbnails_spacer">
+         <property name="orientation">
+          <enum>Qt::Orientation::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>0</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
     </widget>
    </item>
    <item>

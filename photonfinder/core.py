@@ -411,14 +411,18 @@ class ApplicationContext:
             database_path = Path(app_data_path) / "astroFileManager.db"
             database_path.parent.mkdir(parents=True, exist_ok=True)
         session_file = Path(app_data_path) / "session_v1.json"
-        return ApplicationContext(database_path, settings, str(session_file))
+        return ApplicationContext(database_path, settings, str(session_file),
+                                  thumbnail_dir=Path(app_data_path) / "thumbs")
 
-    def __init__(self, database_path: str | Path, settings, session_file: str | None = None) -> None:
+    def __init__(self, database_path: str | Path, settings, session_file: str | None = None,
+                 thumbnail_dir: str | Path | None = None) -> None:
         self.database_path = database_path
         self.database: SqliteDatabase | None = None
         self.settings = settings
         self.status_reporter: StatusReporter | None = None
         self.session_file = session_file
+        # The thumbnail cache (see photonfinder.thumbnails), next to the session; None caches nothing.
+        self.thumbnail_dir = thumbnail_dir
         self.signal_bus = SignalBus()
         # Single writer for batch jobs that change library files and their rows: library
         # scans, Compress Files, plate solving, image analysis, saving a quality diagnosis,

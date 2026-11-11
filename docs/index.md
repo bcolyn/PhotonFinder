@@ -10,6 +10,7 @@ PhotonFinder (also known as AstroFileManager) is designed to help astronomers an
 
 ### Core Functionality
 - **Tabbed Interface** - Multitasking support with multiple search tabs for efficient workflow
+- **Thumbnail View** - Browse search results as thumbnail tiles instead of a table; thumbnails are made in the background as you scroll
 - **Offline Operations** - Most functions work offline; searches can be performed without original files available (perfect for external media)
 - **Advanced Search & Filtering** - Narrow down searches using multiple criteria including:
   - Cone search around given coordinates

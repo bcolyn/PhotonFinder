@@ -21,6 +21,7 @@
     <file>res/stars.svg</file>
     <file>res/table.svg</file>
     <file>res/box-seam.svg</file>
+    <file>res/grid.svg</file>
     <file alias="icon.png">../../icon.png</file>
   </qresource>
 </RCC>

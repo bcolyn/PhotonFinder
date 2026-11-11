@@ -16,6 +16,7 @@ class Session:
     title: str
     hidden_columns: str
     title_is_custom: bool = False
+    thumbnails: bool = False  # the tab shows thumbnail tiles instead of the table
 
     @staticmethod
     def _serialize(value) -> dict:
