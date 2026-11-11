@@ -253,3 +253,20 @@ def test_xisf_with_compressed_subblocks_loads_every_channel():
     np.testing.assert_array_equal(data[0], np.broadcast_to(ramp, (1024, 1024)))  # x gradient
     np.testing.assert_array_equal(data[2], np.broadcast_to(ramp[:, None], (1024, 1024)))  # y
     assert data[1].min() < 0.01 and data[1].max() == 1.0
+
+
+@pytest.mark.parametrize("image_type", ["FLAT", "MASTER FLAT", "master flat", "MASTERFLAT"])
+def test_a_flat_is_always_stretched(image_type):
+    from photonfinder.image_processing import should_stretch
+    data = (_make_stretched(0.5) * 65535).astype(np.uint16)
+    assert not is_linear(data)
+    assert should_stretch(data, image_type)
+
+
+@pytest.mark.parametrize("image_type", [None, "", "LIGHT", "DARK", "MASTER DARK", "BIAS", "MASTER LIGHT"])
+def test_other_types_are_stretched_when_linear(image_type):
+    from photonfinder.image_processing import should_stretch
+    linear = (_make_linear(0.05) * 65535).astype(np.uint16)
+    stretched = (_make_stretched(0.5) * 65535).astype(np.uint16)
+    assert should_stretch(linear, image_type)
+    assert not should_stretch(stretched, image_type)

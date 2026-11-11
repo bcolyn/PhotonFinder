@@ -2,9 +2,9 @@
 Thumbnails of the images in the library, for the tile view of the search results.
 
 A thumbnail goes through the image viewer's pipeline (`image_processing`): load, normalise to
-uint16, debayer a Bayer-pattern image, then shrink it and auto-stretch it when it looks linear,
-with fixed defaults rather than the viewer's per-image controls. Calibration frames get no
-special treatment: dust donuts and amp glow are worth seeing when browsing.
+uint16, debayer a Bayer-pattern image, auto-stretch it when it looks linear or is a flat
+(`image_processing.should_stretch`), then shrink it. It uses fixed defaults rather than the viewer's
+per-image controls: dust donuts and amp glow are worth seeing when browsing.
 
 Thumbnails are cached as small JPEG files in a folder of the app-data directory (so a
 ``--data-dir`` sandbox keeps its own), named after a hash of the file's path, image (hdu),
@@ -24,9 +24,10 @@ logger = logging.getLogger(__name__)
 THUMBNAIL_SIZE = 200
 """The longest side of a thumbnail, in pixels."""
 JPEG_QUALITY = 85
-RENDER_VERSION = 2
+RENDER_VERSION = 4
 """Part of the cache key: raise it when thumbnails come out differently, so cached ones are
-made again. 2: the stretch is measured on the full image, as in the viewer."""
+made again. 2: the stretch is measured on the full image, as in the viewer. 3: flats are
+always stretched. 4: the full image is stretched, then shrunk (a mono CFA mosaic came out black)."""
 
 # The viewer's AutoSTF defaults, unlinked as the viewer starts.
 _TARGET_BG = 0.25
@@ -40,23 +41,26 @@ def file_stamp(path: str | Path) -> tuple[int, int]:
     return st.st_mtime_ns, st.st_size
 
 
-def cache_key(path: str | Path, hdu: int | None, mtime_ns: int, size: int) -> str:
-    """The cache file name (without extension) of one image of a file as it is now."""
+def cache_key(path: str | Path, hdu: int | None, mtime_ns: int, size: int, image_type: str | None = None) -> str:
+    """The cache file name (without extension) of one image of a file as it is now. The
+    library's image type is part of it, since it decides whether the thumbnail is stretched."""
     text = (f"{os.path.normcase(os.path.abspath(path))}\0{hdu if hdu is not None else ''}\0{mtime_ns}\0{size}"
-            f"\0{RENDER_VERSION}")
+            f"\0{RENDER_VERSION}\0{image_type or ''}")
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
 
 
-def render_thumbnail(path: str | Path, hdu: int | None = None, size: int = THUMBNAIL_SIZE) -> np.ndarray:
+def render_thumbnail(path: str | Path, hdu: int | None = None, size: int = THUMBNAIL_SIZE,
+                     image_type: str | None = None) -> np.ndarray:
     """The thumbnail of one image of a file: (H, W) uint8 mono or (H, W, 3) uint8 RGB, its
-    longest side at most *size*, rows in the order the viewer shows them.
+    longest side at most *size*, rows in the order the viewer shows them. *image_type* is the
+    library's (`Image.image_type`): a flat is always stretched, as in the viewer.
 
     Raises whatever reading the file raises (a missing, unreadable or corrupt file)."""
     import cv2
     from photonfinder.image_hdus import load_hdu
     from photonfinder.image_processing import (
         image_cache, normalize_to_uint16, detect_image_type, detect_bayer_pattern, debayer_opencv,
-        is_linear, compute_stretch_params, stretch_uint16_to_uint8, uint16_to_uint8,
+        should_stretch, stretch_uint16_to_uint8, uint16_to_uint8,
     )
 
     path = str(path)
@@ -74,29 +78,27 @@ def render_thumbnail(path: str | Path, hdu: int | None = None, size: int = THUMB
     elif data.ndim == 3 and data.shape[0] != 3:
         data = data[0]  # neither mono nor RGB: show the first plane
 
-    # As in the viewer: only what is_linear takes for linear data is stretched, so a processed
-    # image isn't stretched again. The stretch is measured on the full image, as the viewer
-    # does, and applied to the shrunk one: shrinking averages the noise away, which narrows the
-    # background spread the black point is clipped by, so a stretch measured on the thumbnail
-    # comes out harsher than the viewer's, the more so the bigger the image.
-    params = compute_stretch_params(data, _TARGET_BG, _CLIP_SIGMA, _LINKED) if is_linear(data) else None
-    data = _shrink(data, size, cv2)
-    if params is None:
-        return uint16_to_uint8(data)
-    return stretch_uint16_to_uint8(data, _TARGET_BG, _CLIP_SIGMA, _LINKED, locked_params=params)
+    # As in the viewer: only a flat, or what is_linear takes for linear data, is stretched, so a
+    # processed image isn't stretched again. The full image is stretched, as the viewer shows it,
+    # and the 8-bit result shrunk. Shrinking first would change the pixel values the stretch is
+    # measured on or applied to: it averages the noise away, which narrows the background spread
+    # the black point is clipped by, and it averages a mosaic (a CFA image with no Bayer pattern
+    # in its header, shown as mono) to below the black point its green pixels set.
+    if should_stretch(data, image_type):
+        pixels = stretch_uint16_to_uint8(data, _TARGET_BG, _CLIP_SIGMA, _LINKED)
+    else:
+        pixels = uint16_to_uint8(data)
+    return _shrink(pixels, size, cv2)
 
 
-def _shrink(data: np.ndarray, size: int, cv2) -> np.ndarray:
-    """Area-average (H, W) or (3, H, W) uint16 data down so its longest side is at most *size*."""
-    h, w = data.shape[-2:]
+def _shrink(pixels: np.ndarray, size: int, cv2) -> np.ndarray:
+    """Area-average (H, W) or (H, W, 3) uint8 pixels down so the longest side is at most *size*."""
+    h, w = pixels.shape[:2]
     scale = size / max(h, w)
     if scale >= 1.0:
-        return data
+        return pixels
     new_size = (max(1, round(w * scale)), max(1, round(h * scale)))
-    if data.ndim == 2:
-        return cv2.resize(data, new_size, interpolation=cv2.INTER_AREA)
-    planes = [cv2.resize(np.ascontiguousarray(plane), new_size, interpolation=cv2.INTER_AREA) for plane in data]
-    return np.stack(planes, axis=0)
+    return cv2.resize(pixels, new_size, interpolation=cv2.INTER_AREA)
 
 
 def encode_jpeg(pixels: np.ndarray) -> bytes:
@@ -184,14 +186,14 @@ class ThumbnailCache:
         logger.info("Cleared the thumbnail cache: %d thumbnails, %.1f MB", count, size / 1024 ** 2)
         return count, size
 
-    def thumbnail(self, path: str | Path, hdu: int | None = None) -> bytes:
+    def thumbnail(self, path: str | Path, hdu: int | None = None, image_type: str | None = None) -> bytes:
         """JPEG bytes of the thumbnail of one image of a file, from the cache or rendered and
         cached. Raises when the file can't be read; nothing is cached then."""
         stamp = file_stamp(path)  # before reading: a file that changes meanwhile isn't cached as the old one
-        key = cache_key(path, hdu, *stamp)
+        key = cache_key(path, hdu, *stamp, image_type=image_type)
         cached = self.get(key)
         if cached is not None:
             return cached
-        jpeg = encode_jpeg(render_thumbnail(path, hdu))
+        jpeg = encode_jpeg(render_thumbnail(path, hdu, image_type=image_type))
         self.put(key, jpeg)
         return jpeg

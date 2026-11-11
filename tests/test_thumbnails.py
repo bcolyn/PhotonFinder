@@ -37,6 +37,26 @@ def test_a_bayer_light_is_debayered_shrunk_and_stretched(global_test_data_dir):
     assert 20 < np.median(pixels) < 200
 
 
+MASTER_FLAT = "masterFlat_BIN-1_5496x3672_FILTER-LP_CFA_SESS-2020-04-11.xisf"
+
+
+def test_a_master_flat_is_stretched_by_its_library_type(global_test_data_dir):
+    """is_linear takes a flat's high, smooth background for a stretched image; the library's
+    type says it's a flat, which is always stretched, so its vignetting shows."""
+    from photonfinder.image_hdus import load_hdu
+    from photonfinder.image_processing import is_linear, normalize_to_uint16
+    path = global_test_data_dir / MASTER_FLAT
+    data, header = load_hdu(str(path), None)
+    assert not is_linear(normalize_to_uint16(data, header))
+
+    plain = render_thumbnail(path)
+    flat = render_thumbnail(path, image_type="MASTER FLAT")
+
+    assert plain.shape == flat.shape
+    # Stretched: the spread across the field (vignetting) is widened.
+    assert np.ptp(flat.astype(float).mean(axis=-1)) > np.ptp(plain.astype(float).mean(axis=-1)) * 2
+
+
 def test_an_xisf_image(tmp_path):
     pixels = render_thumbnail(SMALL / "rev2.xisf")
     assert pixels.dtype == np.uint8 and max(pixels.shape[:2]) <= THUMBNAIL_SIZE
@@ -84,7 +104,7 @@ def test_the_key_tells_path_hdu_mtime_and_size_apart():
     assert base == cache_key("C:/a/b.fits", None, 1, 2)
     assert len({base, cache_key("C:/a/c.fits", None, 1, 2), cache_key("C:/a/b.fits", 0, 1, 2),
                 cache_key("C:/a/b.fits", 1, 1, 2), cache_key("C:/a/b.fits", None, 3, 2),
-                cache_key("C:/a/b.fits", None, 1, 4)}) == 6
+                cache_key("C:/a/b.fits", None, 1, 4), cache_key("C:/a/b.fits", None, 1, 2, "FLAT")}) == 7
 
 
 def test_no_folder_caches_nothing(m106):
@@ -190,3 +210,25 @@ def test_a_linear_thumbnail_looks_like_the_viewer_shrunk(global_test_data_dir):
 
     expected = cv2.resize(viewer, (thumbnail.shape[1], thumbnail.shape[0]), interpolation=cv2.INTER_AREA)
     assert np.abs(thumbnail.astype(float) - expected).mean() < 6
+
+
+def test_a_mosaic_with_no_bayer_pattern_is_not_black(tmp_path):
+    """A CFA master flat whose header names no Bayer pattern is shown as mono, mosaic and all.
+    Its stretch's black point sits just under the green pixels; shrinking before stretching
+    averaged each 2x2 cell to below it, and the thumbnail came out black."""
+    from astropy.io import fits
+    rng = np.random.default_rng(1)
+    h, w = 600, 900
+    data = np.empty((h, w), dtype=np.float32)
+    data[0::2, 0::2] = 9400   # R
+    data[0::2, 1::2] = 21900  # G
+    data[1::2, 0::2] = 21900  # G
+    data[1::2, 1::2] = 20800  # B
+    data = (data + rng.normal(0, 60, (h, w))) / 65535
+    path = tmp_path / "mf.fits"
+    fits.PrimaryHDU(data.astype(np.float32)).writeto(path)
+
+    pixels = render_thumbnail(path, image_type="MASTER FLAT")
+
+    assert pixels.ndim == 2 and max(pixels.shape) == THUMBNAIL_SIZE
+    assert np.median(pixels) > 20

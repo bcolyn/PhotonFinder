@@ -285,6 +285,26 @@ def is_linear(data: np.ndarray) -> bool:
     return bf_s < _BRIGHT_FRACTION_CUTOFF
 
 
+def is_flat_type(image_type: str | None) -> bool:
+    """Whether a library image type (`Image.image_type`) is a FLAT or a MASTER FLAT. A dark
+    flat is stored as a DARK, so it is not one."""
+    if not image_type:
+        return False
+    image_type = image_type.strip().upper()
+    if image_type.startswith("MASTER"):
+        image_type = image_type[len("MASTER"):].strip()
+    return image_type.startswith("FLAT")
+
+
+def should_stretch(data: np.ndarray, image_type: str | None = None) -> bool:
+    """Whether to auto-stretch an image, shared by the viewer and the thumbnails.
+
+    A flat is always stretched, to show its vignetting and dust donuts: its high, smooth
+    background makes `is_linear` take it for an already stretched image. Anything else is
+    stretched when it looks linear."""
+    return is_flat_type(image_type) or is_linear(data)
+
+
 # ---------------------------------------------------------------------------
 # Debayering
 # ---------------------------------------------------------------------------

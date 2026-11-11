@@ -71,7 +71,7 @@ def test_visible_tiles_get_thumbnails_cached_in_the_sandbox(sandbox, app, grid):
                if view.visualRect(view.model().index(row, 0)).intersects(view.viewport().rect())]
     assert visible
     images = [panel._thumbnail_image(view.model().index(row, 0)) for row in visible]  # pylint: disable=protected-access
-    for key, _, _ in images:
+    for key, _, _, _ in images:
         pixmap = app.thumbnails.pixmap(key)
         assert pixmap is not None and pixmap is not ThumbnailLoader.FAILED
         assert max(pixmap.width(), pixmap.height()) <= 200
@@ -91,8 +91,8 @@ def test_a_multi_layer_file_has_a_tile_per_image(sandbox, app, modals, boundary,
 
     model = panel.thumbnailView.model()
     images = [panel._thumbnail_image(model.index(row, 0)) for row in range(model.rowCount())]  # pylint: disable=protected-access
-    assert sorted(hdu for _, _, hdu in images) == [0, 1]
-    assert all(app.thumbnails.pixmap(key) not in (None, ThumbnailLoader.FAILED) for key, _, _ in images)
+    assert sorted(hdu for _, _, hdu, _ in images) == [0, 1]
+    assert all(app.thumbnails.pixmap(key) not in (None, ThumbnailLoader.FAILED) for key, _, _, _ in images)
 
     panel.thumbnailView.selectionModel().select(
         model.index(1, 0), QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows)

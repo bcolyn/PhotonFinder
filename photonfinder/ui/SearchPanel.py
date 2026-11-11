@@ -296,16 +296,18 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             self.mainWindow.actionThumbnails.setChecked(thumbnails)
 
     def _thumbnail_image(self, index):
-        """(cache key, path, hdu) of a tile's image, None for a row that has no file."""
+        """(cache key, path, hdu, image type) of a tile's image, None for a row that has no file."""
         file = self.get_file_at_row(index.row())
         if file is None or self.context.database is None:
             return None
         image = file.__dict__.get('image')
         hdu = image.hdu if isinstance(image, Image) else None
+        image_type = image.image_type if isinstance(image, Image) else None
         with self.context.database.bind_ctx(CORE_MODELS):
             path = file.full_filename()
-        # The library's mtime and size: a rescanned, changed file is asked for anew.
-        return (path, hdu, file.mtime_millis, file.size), path, hdu
+        # The library's mtime and size: a rescanned, changed file is asked for anew. The type
+        # decides the stretch, so a retyped image is too.
+        return (path, hdu, file.mtime_millis, file.size, image_type), path, hdu, image_type
 
     _TOOLTIP_COLUMNS = ("type", "object_name", "filter", "exposure", "gain", "binning", "temperature", "camera",
                         "telescope", "date_obs", "frames", "path")

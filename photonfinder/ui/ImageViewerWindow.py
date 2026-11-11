@@ -736,6 +736,20 @@ class ImageViewerWindow(QMainWindow):
             return hdu
         return self._layers[0][0] if self._layers else None
 
+    def _library_image_type(self) -> str | None:
+        """The library's type (`Image.image_type`) of the image shown, None when unknown."""
+        file = self._current_file
+        if file is None:
+            return None
+        from photonfinder.models import CORE_MODELS, Image
+        if self._context is not None and self._context.database is not None:
+            hdu = self._current_hdu if self._current_hdu is not None else 0
+            with self._context.database.bind_ctx(CORE_MODELS):
+                return (Image.select(Image.image_type).where((Image.file == file) & (Image.hdu == hdu))
+                        .scalar())
+        image = file.__dict__.get('image')
+        return image.image_type if isinstance(image, Image) else None
+
     def _show_layers(self):
         """The layer combo lists the file's images, on the one shown; hidden for one image."""
         self._layer_combo.blockSignals(True)
@@ -1451,7 +1465,7 @@ class ImageViewerWindow(QMainWindow):
 
     def _on_raw_loaded(self, raw_data: np.ndarray, header: dict, is_fits: bool):
         from photonfinder.image_processing import (
-            normalize_to_uint16, detect_image_type, detect_bayer_pattern, is_linear,
+            normalize_to_uint16, detect_image_type, detect_bayer_pattern, should_stretch,
         )
 
         self._header = header
@@ -1488,7 +1502,7 @@ class ImageViewerWindow(QMainWindow):
 
         # Only update auto-stretch detection when stretch is not locked and not navigating
         if not self._lock_stretch_check.isChecked() and not self._preserve_view:
-            self._stretch_check.setChecked(is_linear(self._raw_uint16))
+            self._stretch_check.setChecked(should_stretch(self._raw_uint16, self._library_image_type()))
 
         for w in (self._debayer_check, self._pattern_combo, self._stretch_check):
             w.blockSignals(False)

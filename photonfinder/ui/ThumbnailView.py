@@ -44,7 +44,7 @@ class ThumbnailLoader(QObject):
         self.pool = QThreadPool(self)
         self.pool.setMaxThreadCount(WORKERS)
         self._lock = threading.Lock()
-        self._pending: OrderedDict[Hashable, tuple[str, int | None, object]] = OrderedDict()
+        self._pending: OrderedDict[Hashable, tuple[str, int | None, str | None, object]] = OrderedDict()
         self._in_flight: set = set()
         self._workers = 0
         self._pixmaps: OrderedDict[Hashable, QPixmap] = OrderedDict()
@@ -60,14 +60,15 @@ class ThumbnailLoader(QObject):
             self._pixmaps.move_to_end(key)
         return pixmap
 
-    def request(self, key, path: str, hdu: int | None, token=None):
-        """Queue the thumbnail of one image. *token* is handed to `retain`'s test."""
+    def request(self, key, path: str, hdu: int | None, token=None, image_type: str | None = None):
+        """Queue the thumbnail of one image. *token* is handed to `retain`'s test; *image_type*
+        is the library's, which decides the stretch (see `image_processing.should_stretch`)."""
         if key in self._failed or key in self._pixmaps:
             return
         with self._lock:
             if key in self._in_flight or key in self._pending:
                 return
-            self._pending[key] = (path, hdu, token)
+            self._pending[key] = (path, hdu, image_type, token)
             start = self._workers < WORKERS
             if start:
                 self._workers += 1
@@ -77,7 +78,7 @@ class ThumbnailLoader(QObject):
     def retain(self, keep: Callable[[object], bool]):
         """Drop the queued requests whose token *keep* rejects: tiles no longer in view."""
         with self._lock:
-            for key in [key for key, (_, _, token) in self._pending.items() if not keep(token)]:
+            for key in [key for key, (_, _, _, token) in self._pending.items() if not keep(token)]:
                 del self._pending[key]
 
     def clear(self) -> tuple[int, int]:
@@ -108,14 +109,14 @@ class ThumbnailLoader(QObject):
             if not self._pending:
                 self._workers -= 1
                 return None
-            key, (path, hdu, _) = self._pending.popitem(last=False)
+            key, (path, hdu, image_type, _) = self._pending.popitem(last=False)
             self._in_flight.add(key)
-            return key, path, hdu
+            return key, path, hdu, image_type
 
-    def _make(self, key, path, hdu):
+    def _make(self, key, path, hdu, image_type=None):
         image = None
         try:
-            jpeg = self.cache.thumbnail(path, hdu)
+            jpeg = self.cache.thumbnail(path, hdu, image_type)
             image = QImage.fromData(jpeg)
             if image.isNull():
                 image = None
@@ -215,7 +216,7 @@ class ThumbnailDelegate(QStyledItemDelegate):
 
 class ThumbnailView(QListView):
     """Tiles over a search panel's model. *image_of(index)* gives a tile's
-    (key, path, hdu), or None; *tooltip_of(index)* its tooltip text."""
+    (key, path, hdu, image_type), or None; *tooltip_of(index)* its tooltip text."""
 
     def __init__(self, loader: ThumbnailLoader, image_of: Callable, tooltip_of: Callable, parent=None):
         super().__init__(parent)
@@ -254,11 +255,11 @@ class ThumbnailView(QListView):
         image = self.image_of(index)
         if image is None:
             return ThumbnailLoader.FAILED
-        key, path, hdu = image
+        key, path, hdu, image_type = image
         self._keys_shown.add(key)
         pixmap = self.loader.pixmap(key)
         if pixmap is None:
-            self.loader.request(key, path, hdu, QPersistentModelIndex(index))
+            self.loader.request(key, path, hdu, QPersistentModelIndex(index), image_type)
         return pixmap
 
     def tooltip_for(self, index) -> str:
