@@ -21,6 +21,7 @@ PhotonFinder (also known as AstroFileManager) is designed to help astronomers an
 ### File Format Support
 - **Compressed FITS Files** - Full support for gzip, bzip2, and xz compressed FITS files for space saving
 - **XISF Files** - Supports XISF files with FITS keywords (as produced by PixInsight, N.I.N.A.)
+- **JPEG and PNG Pictures** - Optionally lists the processed results and reference shots kept next to your data, per library root; they can be viewed, plate-solved and added to projects ([details](pictures.md))
 - **Multiple Formats** - Handles various astronomical files produced by SGP, N.I.N.A., APT (AstroPhotography Tool) and more.
 
 ### Advanced Tools
@@ -61,6 +62,7 @@ PhotonFinder (also known as AstroFileManager) is designed to help astronomers an
 
 - [Installation Guide](installation.md) - How to install and set up PhotonFinder
 - [Menu Items Reference](menu-items.md) - Complete guide to all menu options and features
+- [JPEG and PNG Pictures](pictures.md) - Including pictures in a library, and what PhotonFinder does with them
 - [Plate Solving with solve-field on WSL](solve-field-wsl.md) - Install an offline plate solver in Ubuntu on WSL and use it from PhotonFinder
 - [Plate Solving with Seti Astro Suite Pro](saspro-solver.md) - Use SASpro's offline Gaia solver from PhotonFinder
 - [AI Agent Access (MCP)](mcp.md) - Connect Claude Code or another MCP client to your library

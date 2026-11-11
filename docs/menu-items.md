@@ -18,7 +18,7 @@ The File menu contains options for managing tabs, databases, libraries, and appl
 
 ### Library Management
 - **Scan Libraries** - Scans all configured library roots to update the database with new or changed files
-- **Manage Libraries** - Opens the library management dialog to add, edit, or remove library root directories. Each root can carry an optional description of what it holds; it shows as a tooltip in the library tree and is exposed to MCP agents
+- **Manage Libraries** - Opens the library management dialog to add, edit, or remove library root directories. Each root can carry an optional description of what it holds; it shows as a tooltip in the library tree and is exposed to MCP agents. Tick **Include pictures** to also list the root's JPEG and PNG pictures (see [JPEG and PNG Pictures](pictures.md)); unticking it removes them at the next scan
 
 ### Application Settings
 - **Settings** - Opens the application settings dialog. Under **Observatory**, the timezone is used for the local time of frames whose header has neither `DATE-LOC` nor site coordinates; it is set to the computer's timezone on first start, and changing it updates those frames in the background. The **Thumbnails** tab shows how much the thumbnail cache holds, and **Clear thumbnail cache** deletes it at once (no need to press OK); thumbnails are made again as you browse
