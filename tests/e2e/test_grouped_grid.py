@@ -1,4 +1,4 @@
-"""Group Similar Frames on a grid holding all three synthetic libraries: one row per group with its
+"""Group Session Frames on a grid holding all three synthetic libraries: one row per group with its
 frame count, a selected row standing for its frames, the drill-in, and the mode surviving a
 restart."""
 from collections import Counter

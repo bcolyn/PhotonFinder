@@ -35,7 +35,7 @@ The picture's own pixels are shown exactly as stored. An EXIF rotation, as phone
 Select one or more pictures and use **Plate Solve** as for any frame. Every solver reads JPEG and PNG directly: ASTAP, solve-field on WSL, Seti Astro Suite Pro, and Astrometry.net online, which receives the picture itself as the upload.
 
 - Pictures are solved **blind**: a picture carries no position or scale, and the dialog's hints aren't used for it.
-- Each picture is **solved on its own**. With **Group Similar Frames**, every picture is a group of one, as one plate solution fits one picture only.
+- Each picture is **solved on its own**. With **Group Session Frames**, every picture is a group of one, as one plate solution fits one picture only.
 - Nothing is written next to your picture: the solvers' working files stay in a temporary folder.
 - Once solved, the picture shows in sky searches and the viewer can **annotate** it with catalog objects.
 

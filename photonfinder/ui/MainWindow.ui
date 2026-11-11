@@ -98,8 +98,6 @@
     <property name="title">
      <string>F&amp;ilter</string>
     </property>
-    <addaction name="actionGroupSimilarFrames"/>
-    <addaction name="separator"/>
     <addaction name="actionExposure"/>
     <addaction name="actionCoordinates"/>
     <addaction name="actionDate"/>
@@ -187,6 +185,7 @@
      <addaction name="actionLoading_2"/>
     </widget>
     <addaction name="actionThumbnails"/>
+    <addaction name="actionGroupSimilarFrames"/>
     <addaction name="separator"/>
     <addaction name="menuSearch_Details"/>
     <addaction name="menuProject_Details"/>
@@ -202,7 +201,7 @@
   <widget class="QStatusBar" name="statusbar"/>
   <widget class="QToolBar" name="toolBar">
    <property name="windowTitle">
-    <string>toolBar</string>
+    <string>Toolbar</string>
    </property>
    <property name="toolButtonStyle">
     <enum>Qt::ToolButtonStyle::ToolButtonTextUnderIcon</enum>
@@ -221,6 +220,9 @@
    <addaction name="separator"/>
    <addaction name="action_Export_Data"/>
    <addaction name="actionCatalog_Report"/>
+   <addaction name="separator"/>
+   <addaction name="actionThumbnails"/>
+   <addaction name="actionGroupSimilarFrames"/>
   </widget>
   <widget class="QDockWidget" name="dockWidget">
    <property name="enabled">
@@ -337,7 +339,7 @@
      <normaloff>:/res/box-seam.svg</normaloff>:/res/box-seam.svg</iconset>
    </property>
    <property name="text">
-    <string>Group Similar Frames</string>
+    <string>Group Session Frames</string>
    </property>
    <property name="toolTip">
     <string>One row per group of similar frames: the same target, observing night, image type, folder, filter and exposure, with how many frames it stands for. Double-click a row to see its frames</string>

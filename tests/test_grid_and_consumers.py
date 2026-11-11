@@ -213,6 +213,28 @@ class TestColumnLayouts:
         visibility.load_visibility(saved)
         assert self._hidden(view) == ["Size"]
 
+    def test_a_perspective_shows_its_columns_only(self, qtbot):
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QStandardItemModel
+        from PySide6.QtWidgets import QTableView
+        from photonfinder.library_query import RESULT_COLUMNS
+        from photonfinder.ui.common import ColumnVisibilityController, _BUILTIN_PRESETS
+        labels = [column.label for column in RESULT_COLUMNS]
+        model = QStandardItemModel(0, len(labels))
+        model.setHorizontalHeaderLabels(labels)
+        view = QTableView()
+        view.setModel(model)
+        qtbot.addWidget(view)
+        visibility = ColumnVisibilityController(view)
+
+        visibility.load_visibility(",".join(_BUILTIN_PRESETS["Astrometry"]))
+        shown = [model.headerData(c, Qt.Orientation.Horizontal) for c in range(len(labels))
+                 if not view.isColumnHidden(c)]
+        assert shown == ["File name", "Camera", "Telescope", "Object", "RA", "DEC", "Solved",
+                         "Frames", "Integration"]
+        visibility.load_visibility(",".join(_BUILTIN_PRESETS["File management"]))
+        assert not view.isColumnHidden(labels.index("Layer"))
+
     def test_presets(self, controller):
         from photonfinder.ui.common import _BUILTIN_PRESETS
         view, visibility = controller

@@ -86,6 +86,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionImageQuality.setIcon(create_colored_svg_icon(":/res/bar-chart-line-fill.svg", size, text_color))
         self.action_filter_no_project.setIcon(create_colored_svg_icon(":/res/stack.svg", size, text_color, add_slash=True))
 
+        # View > Toolbar: the toolbar's own toggle, so a toolbar hidden from its right-click menu can come back
+        toolbar_action = self.toolBar.toggleViewAction()
+        self.menuView.insertAction(self.actionThumbnails, toolbar_action)
+        self.menuView.insertSeparator(self.actionThumbnails)
+
+        # Toolbar > Columns: the presets and the column list of View > Search Details, in a dropdown
+        self.actionColumns = QAction(create_colored_svg_icon(":/res/columns.svg", size, text_color), "Columns", self)
+        self.actionColumns.setToolTip("Choose the table's columns: a preset or column by column")
+        self.actionColumns.setMenu(self.menuSearch_Details)
+        self.toolBar.addAction(self.actionColumns)
+        self.toolBar.widgetForAction(self.actionColumns).setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+
         # hide the dock initially
         self.dockWidget.hide()
         self._plate_solve_fits_selection = True  # the selected frame is one that can be solved
@@ -171,8 +183,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             lambda: self.get_current_search_panel().set_project_filter(NO_PROJECT))
         for action, entry in self._filter_actions().items():
             action.triggered.connect(partial(self._edit_filter, entry))
-        self.actionGroupSimilarFrames.triggered.connect(lambda checked: self.get_current_search_panel().set_grouped(checked))
-        self.actionThumbnails.triggered.connect(lambda checked: self.get_current_search_panel().set_thumbnail_mode(checked))
+        self.actionGroupSimilarFrames.triggered.connect(self._set_grouped)
+        self.actionThumbnails.triggered.connect(self._set_thumbnail_mode)
         self.menuSearch_Details.aboutToShow.connect(self.populate_search_details)
         self.menuProject_Details.aboutToShow.connect(self.populate_project_details)
         self.menu_File.setToolTipsVisible(True)
@@ -901,9 +913,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                 f.image and (coord := f.image.get_sky_coord()) is not None), None)
         self.menuAddToNearbyProject.setEnabled(has_selection and selection_coord is not None)
 
+    def _set_grouped(self, checked: bool):
+        panel = self.get_current_search_panel()
+        if panel is None:  # the toolbar button is there with no tab open
+            self.actionGroupSimilarFrames.setChecked(False)
+            return
+        panel.set_grouped(checked)
+
+    def _set_thumbnail_mode(self, checked: bool):
+        panel = self.get_current_search_panel()
+        if panel is None:
+            self.actionThumbnails.setChecked(False)
+            return
+        panel.set_thumbnail_mode(checked)
+
     def populate_search_details(self):
         self.menuSearch_Details.clear()
         current_tab = self.get_current_search_panel()
+        if current_tab is None:  # no tab open: nothing to choose columns for
+            self.menuSearch_Details.addAction("No search tab open").setEnabled(False)
+            return
         current_tab.visibility_controller.build_menu(self.menuSearch_Details)
 
     def populate_project_details(self):

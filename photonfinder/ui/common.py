@@ -4,6 +4,7 @@ from PySide6.QtSvg import QSvgRenderer
 from photonfinder.formatting import (  # pylint: disable=unused-import  # re-exported for the GUI
     _format_date, _format_dec, _format_file_size, _format_ra, _format_timestamp,
 )
+from photonfinder.library_query import RESULT_COLUMNS
 from PySide6.QtWidgets import QStyle, QTableView, QMenu, QInputDialog, QMessageBox, QDialog, QVBoxLayout, QListWidget, QPushButton, QDialogButtonBox, QHBoxLayout
 
 
@@ -60,13 +61,37 @@ _OPT_IN_COLUMNS = {"Layer"}
 # stands for. Presets and saved layouts leave them alone, and the column menu doesn't list them.
 _MODE_COLUMNS = {"Frames", "Integration"}
 
-# Hidden columns per preset; the opt-in columns are hidden unless listed as "+<label>".
+# The labels a layout can show or hide: every column but the mode columns.
+_LAYOUT_LABELS = tuple(column.label for column in RESULT_COLUMNS if column.label not in _MODE_COLUMNS)
+
+
+def _showing_only(*labels: str) -> set[str]:
+    """The hidden-column tokens of a layout that shows `labels` (and the mode columns) only."""
+    unknown = set(labels) - set(_LAYOUT_LABELS)
+    assert not unknown, f"unknown column labels: {unknown}"
+    return ({label for label in _LAYOUT_LABELS if label not in labels}
+            | {f"+{label}" for label in labels if label in _OPT_IN_COLUMNS})
+
+
+# Hidden columns per preset, each given by the columns it shows; the opt-in columns are hidden
+# unless listed as "+<label>". Standard (the default of a new tab) and Full are sized by how much
+# they show; the others ("perspectives") show the columns for one task.
 _BUILTIN_PRESETS = {
-    "Essentials": {"Gain", "Offset", "Binning", "Set Temp", "Camera", "Telescope",
-                   "Size", "Modified", "RA", "DEC", "Solved", "Path",
-                   "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation"},
-    "Standard": {"Size", "Modified", "RA", "DEC", "Solved"},
-    "Full": {f"+{label}" for label in _OPT_IN_COLUMNS},
+    "Standard": _showing_only(
+        "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
+        "Camera", "Telescope", "Object", "Observation Date", "Path", "Projects"),
+    "Full": _showing_only(*_LAYOUT_LABELS),
+    "File management": _showing_only(
+        "File name", "Path", "Size", "Modified", "Type", "Night",
+        "Projects", "Layer"),
+    "Quality assessment": _showing_only(
+        "File name", "Object", "Filter", "Exposure", "Observation Date",
+        "Bg Median", "Bg RMS", "Stars", "FWHM", "Elongation", "Diagnosis"),
+    "Astrometry": _showing_only(
+        "File name", "Object", "RA", "DEC", "Solved", "Telescope", "Camera"),
+    "Acquisition": _showing_only(
+        "File name", "Type", "Filter", "Exposure", "Gain", "Offset", "Binning", "Set Temp",
+        "Camera", "Telescope", "Object", "Observation Date", "Night"),
 }
 
 

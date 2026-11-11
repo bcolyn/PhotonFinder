@@ -175,9 +175,6 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         # insert the toolbar
         self.toolbar = QToolBar()
         self.filter_layout.insertWidget(1, self.toolbar)
-        self.toolbar.addAction(mainWindow.actionThumbnails)
-        self.toolbar.addAction(mainWindow.actionGroupSimilarFrames)
-        self.toolbar.addSeparator()
         self.toolbar.addAction(mainWindow.actionExposure)
         self.toolbar.addAction(mainWindow.actionCoordinates)
         self.toolbar.addAction(mainWindow.actionDate)

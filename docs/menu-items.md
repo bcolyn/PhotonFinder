@@ -31,9 +31,6 @@ Every frame gets a local time when it is indexed, from the first source its head
 
 The Filter menu provides various filtering options to narrow down search results based on file metadata.
 
-### Group Similar Frames
-- **Group Similar Frames** - Shows one row per group of similar frames instead of one per image: a group is one target (`OBJECT`) on one observing night, with the same image type, folder, filter and exposure. Each row is the group's earliest frame, with **Frames** (how many it stands for) and **Integration** (their total exposure); the status bar and tab title count files and groups. Double-click a row, or use **Show the frames of this group** on its right-click menu, to open its frames in a new tab. Actions on selected rows (export, add to project, compress, plate solve, analyse, mark as bad) work on all the frames of the selected groups; viewing and the header show the row's frame. The search's other filters still apply: a group counts only the frames they let through. Reports always count every image
-
 ### Metadata Filters
 - **Exposure** - Filter files by exposure time
 - **Coordinates** - Filter files by celestial coordinates (RA/Dec)
@@ -80,7 +77,7 @@ The Report menu provides various reporting and analysis tools.
 
 ### Aggregate Reports
 - **Target Report** - Total integration time and number of observing nights per target, grouped by filter, telescope and camera
-- **Catalog Report** - Which catalog objects your plate-solved images cover. Each object is listed with its RA, Dec, magnitude and size, and **Save…** writes the RA and Dec (in degrees) along with each covering file. A solved frame also covers the other frames of its group (the same target on the same night, with the same image type, folder, filter and exposure, as Group Similar Frames shows them), so solving one frame per group is enough: the others are listed in grey italics, with a tooltip naming the solved frame. Besides the built-in catalogs you can use your own, see [Custom catalogs](#custom-catalogs)
+- **Catalog Report** - Which catalog objects your plate-solved images cover. Each object is listed with its RA, Dec, magnitude and size, and **Save…** writes the RA and Dec (in degrees) along with each covering file. A solved frame also covers the other frames of its group (the same target on the same night, with the same image type, folder, filter and exposure, as Group Session Frames shows them), so solving one frame per group is enough: the others are listed in grey italics, with a tooltip naming the solved frame. Besides the built-in catalogs you can use your own, see [Custom catalogs](#custom-catalogs)
 
 ### External Integration
 - **Telescopius Target List** - Compares one of your Telescopius observing lists with the current search and shows which targets have already been imaged. Requires a Telescopius API key (Settings > Telescopius)
@@ -130,12 +127,23 @@ with no `id`, `ra` or `dec` column, or with no usable row at all, is not importe
 
 ## View Menu
 
+### Toolbar
+- **Toolbar** - Shows or hides the main window's toolbar (also on the toolbar's right-click menu). Whether it is shown is remembered with the window layout
+
 ### Thumbnails
-- **Thumbnails** (Ctrl+Shift+T, also on the tab's toolbar) - Shows the search results as thumbnail tiles instead of the table, and back. The tiles are the table's rows (one per image, so a file with several layers has a tile for each), in the same order and with the same selection: selecting, the right-click menu, double-click to view, and dragging files onto a project all work as in the table. Each tile is captioned with the file name, shortened in the middle when it doesn't fit; hover over a tile for the full name and the main details. Each tab remembers whether it shows the table or the thumbnails, and a new tab starts out like the current one. With no tab to copy (the first start, after closing the last tab, or after opening another library) the new tab shows thumbnails
+- **Thumbnails** (Ctrl+Shift+T, also on the toolbar) - Shows the search results as thumbnail tiles instead of the table, and back. The tiles are the table's rows (one per image, so a file with several layers has a tile for each), in the same order and with the same selection: selecting, the right-click menu, double-click to view, and dragging files onto a project all work as in the table. Each tile is captioned with the file name, shortened in the middle when it doesn't fit; hover over a tile for the full name and the main details. Each tab remembers whether it shows the table or the thumbnails, and a new tab starts out like the current one. With no tab to copy (the first start, after closing the last tab, or after opening another library) the new tab shows thumbnails
 - Thumbnails are made in the background as you scroll, only for the tiles in view, so the first visit to a folder fills in gradually; tiles show a placeholder until theirs is ready, and a warning sign for a file that can't be read. Linear images, calibration frames among them, get an automatic stretch; an image that looks already stretched (processed) is shown as it is, as the viewer does. Thumbnails are kept in a `thumbs` folder of the application data folder and reused until the file changes; clear it from the **Thumbnails** tab of **Settings**, which also removes the thumbnails of files that have since changed or moved
 
+### Group Session Frames
+- **Group Session Frames** (also on the toolbar) - Shows one row per group of similar frames instead of one per image: a group is one target (`OBJECT`) on one observing night, with the same image type, folder, filter and exposure. Each row is the group's earliest frame, with **Frames** (how many it stands for) and **Integration** (their total exposure); the status bar and tab title count files and groups. Double-click a row, or use **Show the frames of this group** on its right-click menu, to open its frames in a new tab. Actions on selected rows (export, add to project, compress, plate solve, analyse, mark as bad) work on all the frames of the selected groups; viewing and the header show the row's frame. The search's other filters still apply: a group counts only the frames they let through. Reports always count every image
+
 ### Search Details
-- **Search Details** - Chooses which columns the table shows
+- **Search Details** - Chooses which columns the table shows (also on the right-click menu of the table's header, and as **Columns** on the toolbar). Built-in presets: **Standard** (the default of a new tab: file name, type, filter, exposure, gain, offset, binning, set temp, camera, telescope, object, observation date, path, projects) and **Full** (every column), and a set of columns per task:
+  - **File management** - file name, path, size, modified, type, night, projects, layer
+  - **Quality assessment** - file name, object, filter, exposure, observation date, and the image analysis columns (Bg Median, Bg RMS, Stars, FWHM, Elongation, Diagnosis)
+  - **Astrometry** - file name, object, RA, DEC, solved, telescope, camera
+  - **Acquisition** - file name, type, filter, exposure, gain, offset, binning, set temp, camera, telescope, object, observation date, night: what calibration matching compares
+- **Save as Preset...** keeps the current choice of columns under a name of your own, listed below the built-in ones; **Manage Presets...** removes them
 
 ## Help Menu
 
