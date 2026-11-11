@@ -375,7 +375,9 @@ class SolveGroup:
 
     def describe(self) -> str:
         image = self.candidates[0].image
-        night = self.key[-1]
+        if self.key[-1] is not None:  # a picture, a group of its own (models.GROUP_KEY)
+            return self.candidates[0].name
+        night = self.key[-2]
         parts = [image.object_name or image.image_type or "no object", image.filter,
                  f"{image.exposure:g} s" if image.exposure is not None else None,
                  f"night {night.isoformat()}" if night else None]

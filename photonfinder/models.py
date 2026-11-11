@@ -10,7 +10,7 @@ from typing import Optional
 
 import astropy.units as u
 from astropy.coordinates import SkyCoord
-from peewee import (JOIN, SQL, BlobField, BooleanField, CharField, DateTimeField, DoubleField, FloatField,
+from peewee import (JOIN, SQL, BlobField, BooleanField, Case, CharField, DateTimeField, DoubleField, FloatField,
                     ForeignKeyField, IntegerField, Model, TextField, fn)
 from playhouse.sqlite_ext import RowIDField
 
@@ -557,13 +557,20 @@ def session_night_sql():
 # solving picks one frame of (one per group) and the catalog report counts by. Defined here once
 # so they agree. Type, library root and folder keep calibration frames and copies elsewhere
 # apart; filter and exposure (to 0.01 s) split a night as a stacker would. NULLs group together.
-GROUP_KEY = ('image_type', 'root', 'path', 'object_name', 'filter', 'exposure', 'session_night')
+# A picture (JPEG/PNG) is a group of its own: 'picture' is its file's rowid, NULL for any other
+# image. Pictures share no metadata to group by, and one plate solution fits one picture only.
+GROUP_KEY = ('image_type', 'root', 'path', 'object_name', 'filter', 'exposure', 'session_night', 'picture')
+
+
+def _picture_key_sql():
+    from photonfinder.pictures import PICTURE_TYPE
+    return Case(None, [(Image.image_type == PICTURE_TYPE, File.rowid)], None)
 
 
 def group_key_sql() -> list:
     """The group key over File and Image, in GROUP_KEY order."""
     return [Image.image_type, File.root, File.path, Image.object_name, Image.filter,
-            fn.ROUND(Image.exposure, 2), session_night_sql()]
+            fn.ROUND(Image.exposure, 2), session_night_sql(), _picture_key_sql()]
 
 
 def group_order_sql() -> list:
@@ -580,9 +587,10 @@ def group_of(file: 'File') -> Optional[dict]:
         return None
     # the night as session_night_sql (and local_time.session_night) has it
     night = (image.local_time - timedelta(hours=12)).date().isoformat() if image.local_time else None
+    from photonfinder.pictures import PICTURE_TYPE
     return {'image_type': image.image_type, 'root': file.root_id, 'path': file.path,
             'object_name': image.object_name, 'filter': image.filter, 'exposure': image.exposure,
-            'session_night': night}
+            'session_night': night, 'picture': file.rowid if image.image_type == PICTURE_TYPE else None}
 
 
 def group_condition(group: dict):

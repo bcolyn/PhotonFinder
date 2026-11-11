@@ -21,7 +21,7 @@ from astroquery.astrometry_net.core import AstrometryNetClass
 from astroquery.exceptions import TimeoutError as AstroqueryTimeoutError
 from astroquery.utils import url_helpers
 
-from photonfinder import image_hdus, plate_solution
+from photonfinder import image_hdus, pictures, plate_solution
 from photonfinder.core import get_default_astap_path, get_default_saspro_path
 from photonfinder.image_processing import is_linear
 from photonfinder.filesystem import Importer, repair_header
@@ -74,8 +74,30 @@ class SolverBase(metaclass=ABCMeta):
         'CD2_1', 'CD2_2', 'CUNIT1', 'CUNIT2', 'NAXIS1', 'NAXIS2', 'CTYPE1', 'CTYPE2'
     }
 
+    picture_rows_flipped: bool = False
+    """Whether this solver's solution of a JPEG/PNG picture counts the rows from the bottom (ASTAP)
+    rather than in the decoded array's order, top row first, which is how a picture's solution
+    is stored (see `pictures`). Measured per solver (jpeg-png-support ticket 01)."""
+
     def __init__(self):
         self.tmp_dir = None  # Initialize to None
+
+    def _picture_solution(self, header: Header, picture: Path) -> Header:
+        """A solver's solution of a picture as it is stored: in the decoded array's row order,
+        only the WCS cards, with the picture's size. Pictures are solved blind, with no hint."""
+        width, height = pictures.picture_size(picture)
+        if self.picture_rows_flipped:
+            header = flip_solution_rows(header, height)
+        result = extract_wcs_cards(header)
+        result['NAXIS1'], result['NAXIS2'] = width, height
+        return result
+
+    def _picture_copy(self, picture: Path) -> Path:
+        """The picture copied byte for byte into the temp dir under an ASCII name, for a solver
+        that can't read every path (SASpro, outside cp1252) or names an upload after it."""
+        target = Path(self.tmp_dir) / ("picture" + picture.suffix.lower())
+        shutil.copyfile(picture, target)
+        return target
 
     def __enter__(self):
         self.tmp_dir = tempfile.mkdtemp()
@@ -118,8 +140,10 @@ class SolverBase(metaclass=ABCMeta):
         pointing, date and optics the primary has."""
         temp_image = Path(self.tmp_dir) / (input_image.name + ".fit")
         is_xisf = Importer.is_xisf_by_name(str(input_image))
-        if not (is_xisf or Importer.is_fits_by_name(str(input_image))):
-            raise SolverError("Unknown file type: " + str(input_image) + ". Only FITS and XISF files are supported.")
+        if not (is_xisf or Importer.is_fits_by_name(str(input_image)) or pictures.is_picture_name(str(input_image))):
+            raise SolverError("Unknown file type: " + str(input_image) + ". Only FITS, XISF and pictures are supported.")
+        # A picture is written as decoded, top row first, so a solution of the temp FITS is in
+        # the row order a picture's solution is stored in. (No current solver needs this.)
         try:
             data, header = image_hdus.read_hdu(input_image, hdu)
         except ValueError as e:
@@ -174,6 +198,8 @@ class ASTAPSolver(SolverBase):
     _exe: str
     _log: bool
 
+    picture_rows_flipped = True  # measured: its picture solutions put the bottom row at y 1
+
     @property
     def solver_type(self) -> SolverType:
         return SolverType.ASTAP
@@ -210,11 +236,27 @@ class ASTAPSolver(SolverBase):
 
         return result_header
 
+    def _solve_picture(self, picture: Path, cancelled: typing.Callable[[], bool]) -> Header:
+        """Solve a JPEG or PNG blind, reading the user's file in place: -o names ASTAP's .ini,
+        .wcs and .log in the temp dir, and without -update nothing is written next to the
+        picture (with it, ASTAP would write the picture out as a FITS)."""
+        base = Path(self.tmp_dir) / "picture"
+        wcs, ini, log = base.with_suffix(".wcs"), base.with_suffix(".ini"), base.with_suffix(".log")
+        returncode = self._run_astap(picture, {"-r": "180"}, cancelled, output_base=base)
+        ini_values = self._read_ini(ini)
+        if not wcs.exists() or ini_values.get("PLTSOLVD") != "T":
+            self._raise_failure(ini_values, log, picture, returncode)
+        return self._picture_solution(read_astap_wcs(wcs), picture)
+
     def _run_astap(self, tmp_image_file: Path, hint: typing.Dict[str, str] = None,
-                   cancelled: typing.Callable[[], bool] = _never_cancelled) -> int:
+                   cancelled: typing.Callable[[], bool] = _never_cancelled, output_base: Path = None) -> int:
         """Execute ASTAP with the given parameters and return its exit code. Its output goes
-        to the files it writes next to the image, so stdout and stderr are discarded."""
-        params = [self._exe, "-f", str(tmp_image_file), "-update", "-platesolve"]
+        to the files it writes next to the image, so stdout and stderr are discarded. With
+        *output_base* those files are named after it instead, and the image isn't updated."""
+        if output_base is None:
+            params = [self._exe, "-f", str(tmp_image_file), "-update", "-platesolve"]
+        else:
+            params = [self._exe, "-f", str(tmp_image_file), "-o", str(output_base)]
         options = {"--speed": "slow", "-z": "1"}
         if hint is not None:
             options.update(hint)
@@ -244,6 +286,8 @@ class ASTAPSolver(SolverBase):
             raise FileNotFoundError("ASTAP executable not found")
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
+        if pictures.is_picture_name(image_path.name):
+            return self._solve_picture(image_path, cancelled or _never_cancelled)
         temp_image = self._create_temp_fits(image_path, file_wcs)
         header = fits.getheader(temp_image)
         astap_hint = self.extract_hint(header, image)
@@ -420,6 +464,14 @@ class AstrometryNetSolver(SolverBase):
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one. ")
         self.ast.cancelled = cancelled or _never_cancelled
+        if pictures.is_picture_name(image_path.name):
+            # nova reads JPEG and PNG: the picture itself goes up, blind. A copy under an ASCII
+            # name, as that name goes into the upload.
+            upload = self._picture_copy(image_path)
+            wcs_header = self._submit(image_path, lambda: self.ast.solve_by_upload(
+                upload, crpix_center=True, solve_timeout=self.SOLVE_TIMEOUT_SECONDS,
+            ))
+            return self._picture_solution(wcs_header, image_path)
         temp_image = self._create_temp_fits(image_path, file_wcs)
         if self.force_image_upload:
             wcs_header = self._submit(image_path, lambda: self.ast.solve_by_upload(
@@ -640,20 +692,27 @@ class SolveFieldSolver(SolverBase):
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one.")
 
+        is_picture = pictures.is_picture_name(image_path.name)
         header = None
-        try:
-            with fits.open(image_path, memmap=False) as hdul:
-                header = hdul[0].header
-                repair_header(header)
-        except Exception:
-            pass
+        if is_picture:
+            # Read in place: --dir puts every file solve-field writes in the temp dir. Blind.
+            hint = None
+        else:
+            try:
+                with fits.open(image_path, memmap=False) as hdul:
+                    header = hdul[0].header
+                    repair_header(header)
+            except Exception:
+                pass
 
         if header is not None and ASTAPSolver.is_pre_solved(header):
             return extract_wcs_cards(header)
 
-        temp_image = self._create_temp_fits(image_path, file_wcs)
+        temp_image = image_path if is_picture else self._create_temp_fits(image_path, file_wcs)
         temp_unix = self._to_unix_path(temp_image)
-        tmp_unix = self._to_unix_path(temp_image.parent)
+        tmp_unix = self._to_unix_path(Path(self.tmp_dir))
+        # solve-field names its outputs after the input, in --dir
+        outputs = Path(self.tmp_dir) / temp_image.name
 
         # Scale range
         scale_low = None
@@ -694,7 +753,7 @@ class SolveFieldSolver(SolverBase):
         if hint and hint.ra is not None and hint.dec is not None and hint.mode == 'override':
             hint_ra = hint.ra
             hint_dec = hint.dec
-        else:
+        elif not is_picture:  # a picture solved before has a position: still solved blind
             hint_ra, hint_dec = file_position(header, image)
             if hint_ra is None and hint and hint.ra is not None:
                 hint_ra = hint.ra
@@ -702,7 +761,7 @@ class SolveFieldSolver(SolverBase):
 
         if hint_ra is not None and hint_dec is not None:
             cmd += ["--ra", str(hint_ra), "--dec", str(hint_dec), "--radius", "2.0"]
-        else:
+        elif not is_picture:
             try:
                 with fits.open(temp_image, memmap=False) as hdul:
                     if is_linear(hdul[0].data):
@@ -719,7 +778,7 @@ class SolveFieldSolver(SolverBase):
             output_callback(f"$ {cmd_str}")
         output_lines = self._run_solve_field(cmd, env, output_callback, cancelled or _never_cancelled)
 
-        solved_marker = temp_image.with_suffix(".solved")
+        solved_marker = outputs.with_suffix(".solved")
         if not solved_marker.exists():
             output = "\n".join(output_lines)
             logging.error("solve-field failed for %s:\n%s", image_path.name, output)
@@ -730,13 +789,15 @@ class SolveFieldSolver(SolverBase):
                 )
             raise SolverFailure(f"solve-field could not solve {image_path.name}", output_lines or None)
 
-        wcs_file = temp_image.with_suffix(".wcs")
+        wcs_file = outputs.with_suffix(".wcs")
         if not wcs_file.exists():
             raise SolverFailure(f"solve-field produced no .wcs file for {image_path.name}", None)
 
         with fits.open(wcs_file, memmap=False) as hdul:
             wcs_header = hdul[0].header
 
+        if is_picture:
+            return self._picture_solution(wcs_header, image_path)
         result = extract_wcs_cards(wcs_header)
         original_header = header or {}
         naxis1 = (original_header.get("NAXIS1") if hasattr(original_header, "get") else None)
@@ -860,21 +921,27 @@ class SASproSolver(SolverBase):
             raise FileNotFoundError("Temporary directory not found, use with statement to create one.")
         cancelled = cancelled or _never_cancelled
 
-        temp_image = self._create_temp_fits(image_path, file_wcs)
-        with fits.open(temp_image, memmap=False) as hdul:
-            header = hdul[0].header.copy()
-            data = hdul[0].data
-        height, width = data.shape
-        pixels = temp_image.with_name(temp_image.stem + "_pixels.fits")
-        fits.PrimaryHDU(data).writeto(pixels, overwrite=True)
-        wcs_file = pixels.with_suffix(".wcs")
-
-        ra, dec, scale = self._seed(header, image, hint)
+        is_picture = pictures.is_picture_name(image_path.name)
         seed_args = []
-        if ra is not None:
-            seed_args += ["--ra", str(ra), "--dec", str(dec)]
-        if scale is not None:
-            seed_args += ["--scale", str(scale)]
+        if is_picture:
+            # SASpro reads JPEG and PNG itself, but not from a path outside cp1252: a copy. Blind.
+            pixels = self._picture_copy(image_path)
+            width = height = None
+        else:
+            temp_image = self._create_temp_fits(image_path, file_wcs)
+            with fits.open(temp_image, memmap=False) as hdul:
+                header = hdul[0].header.copy()
+                data = hdul[0].data
+            height, width = data.shape
+            pixels = temp_image.with_name(temp_image.stem + "_pixels.fits")
+            fits.PrimaryHDU(data).writeto(pixels, overwrite=True)
+
+            ra, dec, scale = self._seed(header, image, hint)
+            if ra is not None:
+                seed_args += ["--ra", str(ra), "--dec", str(dec)]
+            if scale is not None:
+                seed_args += ["--scale", str(scale)]
+        wcs_file = pixels.with_suffix(".wcs")
         attempts = [seed_args, []] if seed_args else [[]]
 
         error = None
@@ -892,6 +959,8 @@ class SASproSolver(SolverBase):
                 if output_callback:
                     output_callback(f"SASpro: solved from {result.get('n_stars')} stars, "
                                     f"RMS {result.get('rms_arcsec')}\", {result.get('distortion')}")
+                if is_picture:
+                    return self._picture_solution(fits.getheader(wcs_file), image_path)
                 solution = extract_wcs_cards(fits.getheader(wcs_file))
                 solution["NAXIS1"] = width
                 solution["NAXIS2"] = height
@@ -927,6 +996,55 @@ def get_image_center_coords(header):
     """(ra, dec, healpix, radius) of a solution; see plate_solution.image_centre."""
     assert has_minimal_wcs(header)
     return plate_solution.image_centre(header)
+
+
+def flip_solution_rows(header: Header, naxis2: int) -> Header:
+    """A copy of a plate solution for the same image with its rows in the opposite order: pixel
+    (x, y) of the input is pixel (x, naxis2 + 1 - y) of the result (1-based), on the same sky.
+
+    Works on the cards, so nothing is lost: the linear part, whose matrix gets its second column
+    negated, and SIP distortion (A/B forward, AP/BP inverse). With v the row offset from CRPIX2
+    changing sign, each coefficient of an odd power of v changes sign, and B and BP, which give
+    a row offset, change sign too.
+
+    The matrix is CD, else PC (CDi_j = CDELTi * PCi_j: CDELT scales its rows, so it stays), else
+    CDELT with CROTA2, where CDELT2 scales the second column. With CD, CDELT and CROTA are
+    ignored by readers; CDELT2 is flipped too, so that they still describe the same flip."""
+    result = header.copy()
+    if 'CRPIX2' in result:
+        result['CRPIX2'] = naxis2 + 1 - float(result['CRPIX2'])
+    has_cd = 'CD1_1' in result or 'CD2_2' in result
+    has_pc = not has_cd and ('PC1_1' in result or 'PC2_2' in result)
+    for key in (('CD1_2', 'CD2_2') if has_cd else ('PC1_2', 'PC2_2') if has_pc else ()):
+        if key in result:
+            result[key] = -float(result[key])
+    if not has_pc and 'CDELT2' in result:
+        result['CDELT2'] = -float(result['CDELT2'])
+    for poly, row_offset in (('A', False), ('B', True), ('AP', False), ('BP', True)):
+        prefix = f'{poly}_'
+        for key in [k for k in result.keys() if k.startswith(prefix) and k != f'{poly}_ORDER'
+                    and len(k.split('_')) == 3 and all(p.isdigit() for p in k.split('_')[1:])]:
+            q = int(key.split('_')[2])
+            sign = (-1) ** q * (-1 if row_offset else 1)
+            if sign < 0:
+                result[key] = -float(result[key])
+    return result
+
+
+def read_astap_wcs(path: Path) -> Header:
+    """The solution in an ASTAP .wcs file. Without its -wcs option ASTAP writes it "text style":
+    one card per line, unpadded, with a COMMENT card longer than a card that astropy refuses, so
+    it is read card by card and comments are skipped."""
+    header = Header()
+    for line in path.read_bytes().decode('latin-1').splitlines():
+        if not line.strip() or line.startswith(('COMMENT', 'HISTORY', 'END')):
+            continue
+        try:
+            card = fits.Card.fromstring(line[:80])
+            header[card.keyword] = (card.value, card.comment)
+        except Exception as e:  # pylint: disable=broad-except  # a card we can't use is left out
+            logging.debug("Skipping an unreadable card in %s: %r (%s)", path.name, line, e)
+    return header
 
 
 def extract_wcs_cards(header):

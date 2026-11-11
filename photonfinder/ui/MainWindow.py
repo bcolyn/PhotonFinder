@@ -15,6 +15,7 @@ from photonfinder.core import ApplicationContext, LibraryBusyError, StatusReport
 from photonfinder.filesystem import Importer, ScanCancelled, update_fits_header_cache, check_missing_header_cache, \
     repair_truncated_header_cache
 from photonfinder.models import NO_PROJECT, SearchCriteria, Project, File, ProjectFile, RootAndPath, LibraryRoot
+from photonfinder.pictures import PICTURE_TYPE
 from .AboutDialog import AboutDialog
 from .BackgroundLoader import LocalTimeWorker
 from .ImageViewerWindow import ImageViewerWindow
@@ -827,9 +828,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             current_type = selected_image.image_type
             self.actionFind_matching_darks.setEnabled(current_type == "LIGHT" or current_type == "FLAT")
             self.actionFind_matching_flats.setEnabled(current_type == "LIGHT")
-            is_light = not current_type or "LIGHT" in current_type
-            self._plate_solve_fits_selection = is_light
-            self.actionPlate_solve_files.setEnabled(is_light and self.context.library_write_lock.holder is None)
+            solvable = not current_type or "LIGHT" in current_type or current_type == PICTURE_TYPE
+            self._plate_solve_fits_selection = solvable
+            self.actionPlate_solve_files.setEnabled(solvable and self.context.library_write_lock.holder is None)
 
         for action, entry in self._filter_actions().items():
             action.setChecked(entry in current_panel.advanced_options)  # no effect on the uncheckable ones
