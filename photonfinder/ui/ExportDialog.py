@@ -352,6 +352,9 @@ class ExportWorker(BackgroundLoaderBase):
                 shutil.copystat(source_path, output_file_path)
             else:
                 shutil.copy2(source_path, output_file_path)
+        # Anything else (a JPEG or PNG picture): copied as it is; there is no header to change.
+        else:
+            shutil.copy2(source_path, output_file_path)
 
     def copy_fits_data(self, source_fd, output_file_path: str, file: File, custom_headers: dict = None):
         custom_headers = custom_headers or {}

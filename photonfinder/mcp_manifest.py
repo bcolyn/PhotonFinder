@@ -4222,7 +4222,12 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            "its `hdu`, `extname`, metadata and `header`: an extension's header "
                            'merged with the\n'
                            "primary's. A plate solution is the file's, and applies to every layer "
-                           'of its size.',
+                           'of its size.\n'
+                           '\n'
+                           'A JPEG or PNG picture (image type `PICTURE`) has no header: `header` '
+                           'is null and\n'
+                           '`header_note` says why. Only its size is known, plus a plate solution '
+                           'once solved.',
             'inputSchema': {'properties': {'rowid': {'title': 'Rowid', 'type': 'integer'}},
                             'required': ['rowid'],
                             'title': 'get_file_detailsArguments',

@@ -822,7 +822,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionOpen_File.setEnabled(has_selection)
         self.actionShow_location.setEnabled(has_selection)
         self.actionSelect_path.setEnabled(has_selection)
-        self.actionShow_Details.setEnabled(has_selection)
+        # A picture has no header to show.
+        self.actionShow_Details.setEnabled(has_selection and selected_image.image_type != PICTURE_TYPE)
 
         if selected_image:
             current_type = selected_image.image_type

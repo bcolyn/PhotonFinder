@@ -44,7 +44,7 @@ import anyio
 from peewee import JOIN
 from pydantic import BaseModel, Field
 
-from photonfinder import reports, solve_service, solvers
+from photonfinder import pictures, reports, solve_service, solvers
 from photonfinder.filter_catalogue import mcp_description
 from photonfinder.core import ApplicationContext, LibraryBusyError, mcp_port_file
 from photonfinder.models import (
@@ -356,6 +356,9 @@ def query_file_details(context: ApplicationContext, rowid: int) -> dict:
                 details["header"] = None
         else:
             details["header"] = None
+            if pictures.is_picture_name(file.name):
+                details["header_note"] = ("A JPEG or PNG picture: PhotonFinder reads no header or EXIF from it, "
+                                          "only its size.")
         return details
 
 
@@ -1076,7 +1079,10 @@ def build_mcp(context: ApplicationContext):
         `image` and `header` are the file's first image. `images` lists every image of the file
         (one for most files; one per layer of a multi-layer FITS or multi-image XISF), each with
         its `hdu`, `extname`, metadata and `header`: an extension's header merged with the
-        primary's. A plate solution is the file's, and applies to every layer of its size."""
+        primary's. A plate solution is the file's, and applies to every layer of its size.
+
+        A JPEG or PNG picture (image type `PICTURE`) has no header: `header` is null and
+        `header_note` says why. Only its size is known, plus a plate solution once solved."""
         return await anyio.to_thread.run_sync(query_file_details, context, rowid)
 
     @tool(annotations=read_only("List catalogs"))

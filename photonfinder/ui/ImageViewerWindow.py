@@ -1141,7 +1141,10 @@ class ImageViewerWindow(QMainWindow):
         if self._annotate_action:
             self._annotate_action.setVisible(bool(is_solved))
         if self._metadata_btn:
-            self._metadata_btn.setEnabled(has_file and has_context)
+            from photonfinder.pictures import is_picture_name
+            is_picture = has_file and is_picture_name(file.name)  # no header to show
+            self._metadata_btn.setEnabled(has_file and has_context and not is_picture)
+            self._metadata_btn.setToolTip("A picture has no FITS header" if is_picture else "Show FITS header metadata")
 
     def _on_plate_solve(self):
         if self._current_file is None or self._context is None:

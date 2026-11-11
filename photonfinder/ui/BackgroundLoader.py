@@ -14,7 +14,7 @@ from photonfinder import library_query
 from photonfinder.library_query import count_distinct_files, search_files
 from photonfinder.image_analysis import analyze_file, ImageAnalysisResult, CALIBRATION_TYPES
 from photonfinder.filesystem import reindex_library
-from photonfinder import local_time, solve_service
+from photonfinder import local_time, pictures, solve_service
 from photonfinder.platesolver import SolverBase, SolverHint
 
 logger = logging.getLogger(__name__)
@@ -579,7 +579,25 @@ class ImageAnalysisTask(FileProcessingTask):
             self.ended.emit()
 
     def _analyse(self):
+        if self.files:
+            self.files = self._without_pictures(self.files)
+            if not self.files:  # an empty list would make the base class process its whole search
+                self.finished.emit()
+                return
         super()._process_files()
+
+    def load_files(self) -> List[File]:
+        return self._without_pictures(super().load_files())
+
+    def _without_pictures(self, files: List[File]) -> List[File]:
+        """The files without the JPEG and PNG pictures, which have no FITS or XISF data to
+        analyse. Their number goes to the log in one line."""
+        kept = [file for file in files if not pictures.is_picture_name(file.name)]
+        skipped = len(files) - len(kept)
+        if skipped:
+            self.message.emit(f"Skipped {skipped} picture{'s' if skipped != 1 else ''} (JPEG/PNG): "
+                              f"image analysis needs FITS or XISF data")
+        return kept
 
     def _process_file(self, file: File, index: int):
         super()._process_file(file, index)

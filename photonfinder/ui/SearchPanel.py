@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame
 from photonfinder import filter_catalogue, plate_solution
 from photonfinder.core import ApplicationContext, Change, library_busy_message
 from photonfinder.filesystem import is_compressible, cached_header
+from photonfinder.pictures import is_picture_name
 from photonfinder.local_time import obs_zone, session_night
 from photonfinder.library_query import (
     COLUMN_INDEX, GROUP_COLUMNS, RESULT_COLUMNS, cell, count_text, diagnosis_counts, distinct_files,
@@ -382,6 +383,12 @@ class SearchPanel(QFrame, Ui_SearchPanel):
             return rows
         return self._group_members(rows)
 
+    def _selection_is_only_pictures(self) -> bool:
+        """Whether rows are selected and every one is a JPEG or PNG picture (a picture is a group
+        of its own, so the shown rows tell, grouped or not)."""
+        rows = self.get_selected_rows()
+        return bool(rows) and all(is_picture_name(row.name) for row in rows)
+
     def get_selected_rows(self) -> List[File]:
         """The selected rows as shown: in grouped mode, the groups' representatives."""
         selected_files = []
@@ -745,6 +752,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
         compress_action.setEnabled(
             selected_file is not None and is_compressible(selected_file.name)
         )
+        # A picture has no header, and image analysis needs FITS or XISF data.
+        if selected_file is not None and is_picture_name(selected_file.name):
+            show_header_action.setEnabled(False)
+        if self._selection_is_only_pictures():
+            analyse_action.setEnabled(False)
         # Starting any of these needs the library write lock.
         busy = self.mainWindow.update_writer_actions()
         if busy:
