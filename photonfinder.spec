@@ -80,6 +80,11 @@ excludes = [
     'IPython',
     'rich',
     'pygments',
+    # The app doesn't use QtNetwork (the MCP server is uvicorn). PySide6/__init__.py imports it
+    # only when a PySide6/openssl folder exists, which the wheel doesn't have, but the analysis
+    # follows it anyway; the QtNetwork hook then bundles whatever libssl-3-x64.dll and
+    # libcrypto-3-x64.dll it finds on the search path (on the CI runner, an unrelated OpenSSL).
+    'PySide6.QtNetwork',
 ]
 # Not excludable from the app: photutils -> astropy.nddata -> scipy's array_api_compat
 # does `from numpy import *`, which imports numpy.testing, which imports unittest.
