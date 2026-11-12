@@ -235,11 +235,15 @@ full tool list.
 
 ## 🔧 Building
 
-To create a standalone executable:
+To create a standalone executable in `dist/main`:
 
 ```bash
-uv run --group build pyinstaller --noconfirm photonfinder.spec
+uv run python scripts/build_exe.py
 ```
+
+This builds in a separate environment, `.venv-build`, with the runtime dependencies and the
+`build` group only, so no test or development tool can end up in the bundle, and then checks the
+bundle for anything that isn't a runtime dependency (`scripts/check_bundle.py`).
 
 ## 🤝 Contributing
 

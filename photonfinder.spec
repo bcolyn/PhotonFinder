@@ -48,7 +48,10 @@ datas += collect_data_files('tzdata')
 # uvicorn and the MCP SDK import their loop/protocol/transport implementations
 # dynamically, which PyInstaller cannot detect by static analysis. These are for the
 # application; the stub below deliberately takes none of them.
-hiddenimports = collect_submodules('uvicorn') + collect_submodules('mcp')
+# mcp.cli is the SDK's `mcp` command-line tool, which the app never runs; it needs typer.
+# (Not startswith('mcp.cli'): that would drop mcp.client as well.)
+hiddenimports = collect_submodules('uvicorn') + collect_submodules(
+    'mcp', filter=lambda name: name != 'mcp.cli' and not name.startswith('mcp.cli.'))
 # photutils' Cython extensions import each other (e.g. geometry.core), which static
 # analysis of compiled modules cannot see.
 hiddenimports += collect_submodules('photutils', filter=lambda name: '.tests' not in name)
@@ -63,9 +66,13 @@ excludes = [
     'py',
     'coverage',
     'doctest',
+    # The release is built without the dev group (scripts/build_exe.py), and
+    # scripts/check_bundle.py fails the build if anything else gets in. These excludes are a
+    # second line of defence for a build in the dev environment.
+    # astropy and photutils import matplotlib for plotting only, which the app never does.
     'matplotlib',
-    # Dev dependencies, installed in the build environment, that the analysis follows
-    # through optional imports. astropy imports IPython inside functions that only run
+    # Dev dependencies that the analysis would follow through optional imports.
+    # astropy imports IPython inside functions that only run
     # within an IPython session; it would bring jedi (with ~5500 typeshed stubs), parso
     # and pylint's astroid. httpx tries its CLI module, which needs rich and pygments,
     # and falls back without it; FastMCP would use rich for logging only if the root

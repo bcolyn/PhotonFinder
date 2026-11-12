@@ -41,23 +41,30 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
+test = [
     "pytest~=9.2",
+    # Loads local.env.
     "pytest-dotenv>=0.5.2",
     "pytest-qt>=4.5.0",
     "pytest-mock~=3.17",
     "pytest-cov~=7.1",
+    # Downloads the test dataset (tests/conftest.py, CI's dataset hash step).
     "huggingface-hub>=1.20.1",
-    "ipython~=9.18",
+]
+lint = [
     "pylint~=4.1",
+]
+# uv's default group, so `uv sync` and `uv run` set up everything for everyday work.
+# The release is built without it (scripts/build_exe.py).
+dev = [
+    { include-group = "test" },
+    { include-group = "lint" },
+    # scripts/mcp_client.py interactive mode.
+    "ipython~=9.18",
 ]
 build = [
     "pyinstaller~=6.22.3",
     "pyinstaller-hooks-contrib>=2026.9",
-    # Required during PyInstaller analysis: astropy/photutils submodules import
-    # matplotlib at collection time, causing a startup failure if it's absent.
-    # It is excluded from the bundle via photonfinder.spec; only needed at build time.
-    "matplotlib>=3.11.2",
 ]
 
 [tool.uv]
