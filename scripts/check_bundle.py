@@ -29,14 +29,26 @@ ROOT = Path(__file__).resolve().parent.parent
 APP_MODULES = {'photonfinder'}
 # PyInstaller's bootstrap and runtime hooks; they come with every build.
 PYINSTALLER_RUNTIME = re.compile(r'^(pyimod\d+_\w+|pyiboot\d+_\w+|pyi_rth_\w+|_pyi_rth_utils)$')
-# Files photonfinder.spec adds as datas, and CPython's own runtime files.
+# Files photonfinder.spec adds as datas, and PyInstaller's archive of the standard library.
 EXPECTED_FILES = {
     'LICENSE', 'THIRD-PARTY-NOTICES.txt', 'LGPL-3.0.txt', 'icon.png', 'catalog.db',
     'pyproject.toml', 'build_date.txt',
     'base_library.zip',
 }
-CPYTHON_DLLS = re.compile(r'^(python3\d*|vcruntime140(_1)?|sqlite3|libssl-3-x64|libcrypto-3-x64|libffi-\d+'
-                          r'|api-ms-win-[\w-]+)\.dll$', re.IGNORECASE)
+# The Windows and Visual C++ runtimes, which PyInstaller may copy from the system.
+SYSTEM_DLLS = re.compile(r'^(ucrtbase|vcruntime140(_1)?|msvcp140(_\w+)?|api-ms-win-[\w-]+)\.dll$',
+                         re.IGNORECASE)
+
+
+def interpreter_files() -> set[str]:
+    """Files that ship with the Python that ran the build (python3xx.dll, OpenSSL, sqlite3, ...).
+
+    Read from the interpreter rather than listed: their names differ between Python builds
+    (libssl-3-x64.dll locally, libssl-3.dll on CI's).
+    """
+    base = Path(sys.base_prefix)
+    return {p.name.lower() for folder in (base, base / 'DLLs') if folder.is_dir()
+            for p in folder.iterdir() if p.is_file()}
 
 
 def normalize(name: str) -> str:
@@ -111,6 +123,7 @@ def check(dist_dir: Path) -> list[str]:
     allowed = runtime_distributions()
     module_dists = installed_top_levels()
     stdlib = sys.stdlib_module_names
+    interpreter = interpreter_files()
     problems = []
     for name, where in sorted(bundled_names(dist_dir).items()):
         if name.startswith('dist-info:'):
@@ -119,7 +132,7 @@ def check(dist_dir: Path) -> list[str]:
                 problems.append(f'{dist}: metadata of a distribution that is not a runtime dependency')
             continue
         if (name in APP_MODULES or name in stdlib or PYINSTALLER_RUNTIME.match(name)
-                or name in EXPECTED_FILES or CPYTHON_DLLS.match(name)):
+                or name in EXPECTED_FILES or name.lower() in interpreter or SYSTEM_DLLS.match(name)):
             continue
         dists = module_dists.get(name)
         if not dists:
