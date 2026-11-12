@@ -1499,15 +1499,15 @@ wheels = [
 
 [[package]]
 name = "pyvo"
-version = "1.8.1"
+version = "1.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "astropy" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/33/51077325e08b68d13498ec1a63134f1feef6659ea4ad437649c942cac916/pyvo-1.8.1.tar.gz", hash = "sha256:d3cc60aa3d3416d22c89e465a04dfa9f521085fdd5228cce2cffd2fee3a9e709", size = 2120129, upload-time = "2026-02-12T21:20:41.983Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/af/56a4a6f5fbb276cb94a57cb245987207390e5378998602aa5493ebd5c625/pyvo-1.10.0.tar.gz", hash = "sha256:6b70048d114b8dc827588e571ba84bebb6e7eb6d5b9121a17cb307ad2fe9081e", size = 2174996, upload-time = "2026-11-04T07:02:32.269Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b8/e8/37bad20ef0215b13ace46f1f9a32848511fb7a4bd0c06fff9e63070e14a8/pyvo-1.8.1-py3-none-any.whl", hash = "sha256:d6531288f928e149dc059fc3ef56cf43bda0acff8edb1b6c61f91113e4c111fd", size = 1105237, upload-time = "2026-02-12T21:20:38.201Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/1b/0677a4534f8bf0271c8e671f7fdb95a26dfe4c93336589ef9d6eef9e6dc8/pyvo-1.10.0-py3-none-any.whl", hash = "sha256:1a53d636635b53dc38d846b766593c181d9a4dfcaf6b88ec5e2d05a46d9aac15", size = 1156245, upload-time = "2026-11-04T07:02:30.105Z" },
 ]
 
 [[package]]
