@@ -35,7 +35,7 @@ A versatile desktop application for managing and organizing astronomical image f
 - **Backup & Restore** - Database backup and restoration capabilities
 
 ### Reporting & Analysis
-- **Comprehensive Reports** - Generate metadata reports, file lists, and data usage statistics
+- **Reports** - Export file lists and metadata, summarize integration time per target, and compare your images with a catalog or a Telescopius list
 - **Target Lists** - Compare the database with Telescopius target lists, find which objects have already been imaged.
 - **Usage Analytics** - Track your imaging data and storage usage
 

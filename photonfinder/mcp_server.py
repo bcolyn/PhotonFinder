@@ -384,7 +384,7 @@ def _layer_header(file: File, hdu: int) -> Optional[dict]:
 # to point them there instead of giving up on a catalog PhotonFinder doesn't ship.
 CUSTOM_CATALOG_HINT = (
     "If the user wants a catalog that is not listed, tell them they can add it themselves: "
-    "in PhotonFinder's Catalog Report (Report menu), the Custom button > Import CSV... "
+    "in PhotonFinder's Report > Compare with Catalog window, the Custom button > Import CSV... "
     "imports a CSV file with a header row and the columns id (or name), ra and dec "
     "(optional: magnitude, size, axis_ratio, angle, canonical_id)."
 )
@@ -842,7 +842,7 @@ def build_mcp(context: ApplicationContext):
         "local catalogs -- the built-in ones plus any the user imported -- (no online lookups "
         "such as Simbad or Telescopius are performed). When the user asks about a catalog "
         "`list_catalogs` does not show, don't substitute another one: tell them they can "
-        "import it as a CSV through the Custom button in the Catalog Report. "
+        "import it as a CSV through the Custom button in the Compare with Catalog window. "
         "`report_targets` and `report_catalog_coverage` give the same aggregates "
         "as the application's Report menu -- total integration per target (matched by object "
         "name; no plate solving required), and which catalog objects the library covers "
@@ -943,7 +943,7 @@ def build_mcp(context: ApplicationContext):
         counted -- e.g. `criteria={"object_name": "M 31"}` for one target, or a
         `start_datetime`/`end_datetime` range for one season.
 
-        The same aggregate as the application's Target Report. Each row carries the summed exposure in seconds, the file count, the
+        The same aggregate as the application's Summarize by Target window. Each row carries the summed exposure in seconds, the file count, the
         number of observing nights (`nights`), the most recent observation, and the library
         directories the files sit in. Files with no
         object name are excluded. Grouping is purely by the `object_name` recorded in each
@@ -974,7 +974,7 @@ def build_mcp(context: ApplicationContext):
         considered -- e.g. `criteria={"telescope": "RedCat 51"}` for one rig, or `paths`
         for one library root.
 
-        The same coverage report as the application's Catalog Report: each catalog entry is
+        The same coverage report as the application's Compare with Catalog window: each catalog entry is
         tested against the precise footprint of every matching image, not just its centre.
         `catalog` is one of the names from `list_catalogs`, which includes any custom
         catalog the user imported (e.g. their own target list).
@@ -1093,7 +1093,7 @@ def build_mcp(context: ApplicationContext):
         local data; performs no online lookups.
 
         If the catalog the user asks about is missing, tell them they can import it: in
-        PhotonFinder's Catalog Report, Custom > Import CSV... takes a CSV with a header row
+        PhotonFinder's Compare with Catalog window, Custom > Import CSV... takes a CSV with a header row
         and the columns id (or name), ra and dec (optional: magnitude, size, axis_ratio,
         angle, canonical_id)."""
         return await anyio.to_thread.run_sync(query_list_catalogs, context)

@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>Compare With Telescopius List</string>
+   <string>Compare with Telescopius List</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
    <item>

@@ -136,12 +136,13 @@
     <property name="title">
      <string>Report</string>
     </property>
-    <addaction name="actionList_Files"/>
-    <addaction name="actionMetadata_Report"/>
-    <addaction name="actionTarget_List_Report"/>
-    <addaction name="actionCatalog_Report"/>
-    <addaction name="actionTelescopius_List"/>
+    <addaction name="actionExport_File_List"/>
+    <addaction name="actionExport_Metadata"/>
     <addaction name="separator"/>
+    <addaction name="actionSummarize_by_Target"/>
+    <addaction name="separator"/>
+    <addaction name="actionCompare_with_Catalog"/>
+    <addaction name="actionCompare_with_Telescopius_List"/>
    </widget>
    <widget class="QMenu" name="menuProject">
     <property name="title">
@@ -219,7 +220,7 @@
    <addaction name="actionPlate_solve_files"/>
    <addaction name="separator"/>
    <addaction name="action_Export_Data"/>
-   <addaction name="actionCatalog_Report"/>
+   <addaction name="actionCompare_with_Catalog"/>
    <addaction name="separator"/>
    <addaction name="actionThumbnails"/>
    <addaction name="actionGroupSimilarFrames"/>
@@ -580,9 +581,12 @@
     <string>Compress Files…</string>
    </property>
   </action>
-  <action name="actionList_Files">
+  <action name="actionExport_File_List">
    <property name="text">
-    <string>List Files</string>
+    <string>Export File List…</string>
+   </property>
+   <property name="toolTip">
+    <string>Write the paths of the selected files, or of the current search's files, to a text file</string>
    </property>
   </action>
   <action name="actionHeader_Text">
@@ -590,24 +594,36 @@
     <string>Header Text</string>
    </property>
   </action>
-  <action name="actionMetadata_Report">
+  <action name="actionExport_Metadata">
    <property name="text">
-    <string>Metadata Report</string>
+    <string>Export Metadata…</string>
+   </property>
+   <property name="toolTip">
+    <string>Write chosen PhotonFinder, FITS header and plate-solve fields of the selected files, or of the current search's files, to a CSV or TSV file</string>
    </property>
   </action>
-  <action name="actionTelescopius_List">
+  <action name="actionCompare_with_Telescopius_List">
    <property name="text">
-    <string>Telescopius Target List</string>
+    <string>Compare with Telescopius List…</string>
+   </property>
+   <property name="toolTip">
+    <string>Which targets on one of your Telescopius lists have you already imaged in the current search</string>
    </property>
   </action>
-  <action name="actionTarget_List_Report">
+  <action name="actionSummarize_by_Target">
    <property name="text">
-    <string>Target Report</string>
+    <string>Summarize by Target</string>
+   </property>
+   <property name="toolTip">
+    <string>How much integration time and how many nights you have per target, filter, telescope and camera in the current search</string>
    </property>
   </action>
-  <action name="actionCatalog_Report">
+  <action name="actionCompare_with_Catalog">
    <property name="text">
-    <string>Catalog Report</string>
+    <string>Compare with Catalog</string>
+   </property>
+   <property name="toolTip">
+    <string>Which objects of a catalog the plate-solved images of the current search cover</string>
    </property>
   </action>
   <action name="actionManage_Projects">

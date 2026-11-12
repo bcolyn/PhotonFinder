@@ -39,7 +39,7 @@ PhotonFinder (also known as AstroFileManager) is designed to help astronomers an
 - **Backup & Restore** - Database backup and restoration capabilities
 
 ### Reporting & Analysis
-- **Comprehensive Reports** - Generate metadata reports, file lists, and data usage statistics
+- **Reports** - Export file lists and metadata, summarize integration time per target, and compare your images with a catalog or a Telescopius list
 - **Target Lists** - Create Telescopius-compatible target lists
 - **Usage Analytics** - Track your imaging data and storage usage
 

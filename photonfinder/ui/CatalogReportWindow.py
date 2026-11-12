@@ -322,7 +322,7 @@ class CatalogReportWindow(QMainWindow, Ui_CatalogReportWindow):
             "Tab Separated Values (*.tsv)",
             "All Files (*)",
         ])
-        file_dialog.setWindowTitle("Save Catalog Report")
+        file_dialog.setWindowTitle("Save Catalog Comparison")
         file_dialog.selectFile(catalog)
         if file_dialog.exec() != QFileDialog.DialogCode.Accepted:
             return

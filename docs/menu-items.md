@@ -61,7 +61,7 @@ The Tools menu contains file operations and advanced processing tools.
 - **Diagnose Quality…** - Judges the plain LIGHT frames of the current selection, or of the current search if nothing is selected, against their peers: the same night, target, filter, exposure, gain, binning, camera and telescope. Each metric can be off, or limited to X times the median absolute deviation or X% from the median, and the rejected counts update as you change them. **Analyse missing** analyses the frames in the scope that have no statistics, skipping groups too small to judge. Nothing is stored until you save, and **Save and hide bad frames** also adds the Quality Diagnosis filter. A selection covers the whole peer groups of the selected frames, because a frame can only be judged against its peers. The dialog's scope stays fixed until you ask for the current search or selection. It's also on the grid's right-click menu, and offered when Analyse Images finishes
 
 ### Plate Solving
-- **Plate Solve…** - Plate solves the selected files, or the current search's unsolved light frames, with ASTAP, the Astrometry.net service, solve-field (see [Plate Solving with solve-field on WSL](solve-field-wsl.md)) or Seti Astro Suite Pro's Gaia solver (see [Plate Solving with Seti Astro Suite Pro](saspro-solver.md)), optionally with a second solver as backup. **Only one frame per group of similar frames** (on by default when the grid is grouped) solves just the earliest unsolved frame of each group and skips groups that already have a solved frame; **Retry Failed** then tries a failed group's next frame, up to three. The other frames stay unsolved, and the Catalog Report counts them through the solved one
+- **Plate Solve…** - Plate solves the selected files, or the current search's unsolved light frames, with ASTAP, the Astrometry.net service, solve-field (see [Plate Solving with solve-field on WSL](solve-field-wsl.md)) or Seti Astro Suite Pro's Gaia solver (see [Plate Solving with Seti Astro Suite Pro](saspro-solver.md)), optionally with a second solver as backup. **Only one frame per group of similar frames** (on by default when the grid is grouped) solves just the earliest unsolved frame of each group and skips groups that already have a solved frame; **Retry Failed** then tries a failed group's next frame, up to three. The other frames stay unsolved, and Compare with Catalog counts them through the solved one
 
 ### Calibration Frame Matching
 - **Find matching darks** - Finds dark frames that match the selected light frames (disabled when no file is selected)
@@ -69,25 +69,26 @@ The Tools menu contains file operations and advanced processing tools.
 
 ## Report Menu
 
-The Report menu provides various reporting and analysis tools.
+Each item works on the files of the current tab's search. The two exports use the selected
+files instead when there is a selection.
 
-### File Reports
-- **List Files** - Generates a simple list of files matching current search criteria
-- **Metadata Report** - Creates a detailed report of file metadata
+### Export
+- **Export File List…** - Writes the paths of the files to a .txt or .lst file
+- **Export Metadata…** - Writes the fields you choose (PhotonFinder's own, FITS header values and plate-solve values) for each file to a CSV or TSV file
 
-### Aggregate Reports
-- **Target Report** - Total integration time and number of observing nights per target, grouped by filter, telescope and camera
-- **Catalog Report** - Which catalog objects your plate-solved images cover. Each object is listed with its RA, Dec, magnitude and size, and **Save…** writes the RA and Dec (in degrees) along with each covering file. A solved frame also covers the other frames of its group (the same target on the same night, with the same image type, folder, filter and exposure, as Group Session Frames shows them), so solving one frame per group is enough: the others are listed in grey italics, with a tooltip naming the solved frame. Besides the built-in catalogs you can use your own, see [Custom catalogs](#custom-catalogs)
+### Summarize
+- **Summarize by Target** - Total integration time and number of observing nights per target, grouped by filter, telescope and camera
 
-### External Integration
-- **Telescopius Target List** - Compares one of your Telescopius observing lists with the current search and shows which targets have already been imaged. Requires a Telescopius API key (Settings > Telescopius)
+### Compare
+- **Compare with Catalog** - Which catalog objects your plate-solved images cover. Each object is listed with its RA, Dec, magnitude and size, and **Save…** writes the RA and Dec (in degrees) along with each covering file. A solved frame also covers the other frames of its group (the same target on the same night, with the same image type, folder, filter and exposure, as Group Session Frames shows them), so solving one frame per group is enough: the others are listed in grey italics, with a tooltip naming the solved frame. Besides the built-in catalogs you can use your own, see [Custom catalogs](#custom-catalogs)
+- **Compare with Telescopius List…** - Compares one of your Telescopius observing lists with the current search and shows which targets have already been imaged. Requires a Telescopius API key (Settings > Telescopius)
 
-The Target Report, the Catalog Report and the Metadata Report's field extraction are also
+Summarize by Target, Compare with Catalog and Export Metadata's field extraction are also
 available to AI agents over MCP — see [mcp.md](mcp.md).
 
 #### Custom catalogs
 
-The **Custom** button next to the catalog selector in the Catalog Report lets you bring
+The **Custom** button next to the catalog selector in Compare with Catalog lets you bring
 your own catalog, for example a list of targets you plan to image:
 
 - **Import CSV…** asks for a CSV file and a name for the catalog (the file name by
@@ -96,8 +97,8 @@ your own catalog, for example a list of targets you plan to image:
 - **Remove "*name*"…** deletes the selected custom catalog. It is only available for
   catalogs you imported.
 
-Custom catalogs are stored in the library, so each library has its own. Besides the
-Catalog Report, they appear in image annotations, the object lookup and over MCP.
+Custom catalogs are stored in the library, so each library has its own. Besides
+Compare with Catalog, they appear in image annotations, the object lookup and over MCP.
 
 The CSV file needs a header row. Columns are separated by commas or semicolons, and their
 names are not case sensitive:

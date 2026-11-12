@@ -19,26 +19,27 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                  'imported -- (no online lookups such as Simbad or Telescopius are performed). '
                  "When the user asks about a catalog `list_catalogs` does not show, don't "
                  'substitute another one: tell them they can import it as a CSV through the Custom '
-                 'button in the Catalog Report. `report_targets` and `report_catalog_coverage` '
-                 "give the same aggregates as the application's Report menu -- total integration "
-                 'per target (matched by object name; no plate solving required), and which '
-                 'catalog objects the library covers (through plate solutions, a solved frame '
-                 'covering its group) -- and `get_header_values` reads a few named FITS/model/WCS '
-                 'fields across many files at once instead of one whole header at a time. '
-                 '`report_targets`, `report_catalog_coverage` and `get_header_values` all take the '
-                 'same optional `criteria` object as `search_files`, so scope them to the files '
-                 'you care about (an object, a filter, a date range, a library root...) instead of '
-                 'running them over the whole library. Those three also accept `format="csv"`, '
-                 'which returns the same rows far more compactly. Everything is answered from a '
-                 'local, indexed database, so you can assume most calls are fast: prefer several '
-                 'narrow, targeted calls (discover values first, then filter) over one broad call '
-                 'you have to page through. The exceptions are `report_catalog_coverage`, which '
-                 'can take tens of seconds on a large library, and `plate_solve_files`, which runs '
-                 'an external solver per file. Every one of these is read-only, and PhotonFinder '
-                 'never writes files on your behalf: report content is returned to you to save as '
-                 'you see fit. `plate_solve_files` is the sole exception and the user must opt '
-                 'into it in Settings; it plate-solves up to 10 files at once and writes the '
-                 'resulting WCS/coordinates to the library.',
+                 'button in the Compare with Catalog window. `report_targets` and '
+                 "`report_catalog_coverage` give the same aggregates as the application's Report "
+                 'menu -- total integration per target (matched by object name; no plate solving '
+                 'required), and which catalog objects the library covers (through plate '
+                 'solutions, a solved frame covering its group) -- and `get_header_values` reads a '
+                 'few named FITS/model/WCS fields across many files at once instead of one whole '
+                 'header at a time. `report_targets`, `report_catalog_coverage` and '
+                 '`get_header_values` all take the same optional `criteria` object as '
+                 '`search_files`, so scope them to the files you care about (an object, a filter, '
+                 'a date range, a library root...) instead of running them over the whole library. '
+                 'Those three also accept `format="csv"`, which returns the same rows far more '
+                 'compactly. Everything is answered from a local, indexed database, so you can '
+                 'assume most calls are fast: prefer several narrow, targeted calls (discover '
+                 'values first, then filter) over one broad call you have to page through. The '
+                 'exceptions are `report_catalog_coverage`, which can take tens of seconds on a '
+                 'large library, and `plate_solve_files`, which runs an external solver per file. '
+                 'Every one of these is read-only, and PhotonFinder never writes files on your '
+                 'behalf: report content is returned to you to save as you see fit. '
+                 '`plate_solve_files` is the sole exception and the user must opt into it in '
+                 'Settings; it plate-solves up to 10 files at once and writes the resulting '
+                 'WCS/coordinates to the library.',
  'tools': [{'name': 'search_files',
             'description': 'Search the file library.\n'
                            '\n'
@@ -1053,8 +1054,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            'a\n'
                            '`start_datetime`/`end_datetime` range for one season.\n'
                            '\n'
-                           "The same aggregate as the application's Target Report. Each row "
-                           'carries the summed exposure in seconds, the file count, the\n'
+                           "The same aggregate as the application's Summarize by Target window. "
+                           'Each row carries the summed exposure in seconds, the file count, the\n'
                            'number of observing nights (`nights`), the most recent observation, '
                            'and the library\n'
                            'directories the files sit in. Files with no\n'
@@ -2084,8 +2085,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            'or `paths`\n'
                            'for one library root.\n'
                            '\n'
-                           "The same coverage report as the application's Catalog Report: each "
-                           'catalog entry is\n'
+                           "The same coverage report as the application's Compare with Catalog "
+                           'window: each catalog entry is\n'
                            'tested against the precise footprint of every matching image, not just '
                            'its centre.\n'
                            '`catalog` is one of the names from `list_catalogs`, which includes any '
@@ -4243,8 +4244,8 @@ MANIFEST = {'instructions': 'PhotonFinder manages an astrophotography file libra
                            '\n'
                            'If the catalog the user asks about is missing, tell them they can '
                            'import it: in\n'
-                           "PhotonFinder's Catalog Report, Custom > Import CSV... takes a CSV with "
-                           'a header row\n'
+                           "PhotonFinder's Compare with Catalog window, Custom > Import CSV... "
+                           'takes a CSV with a header row\n'
                            'and the columns id (or name), ra and dec (optional: magnitude, size, '
                            'axis_ratio,\n'
                            'angle, canonical_id).',

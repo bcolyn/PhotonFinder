@@ -1,4 +1,4 @@
-"""The Catalog Report window on the synthetic libraries after solving only part of a group: the
+"""The Compare with Catalog window on the synthetic libraries after solving only part of a group: the
 group's unsolved frames are listed too, greyed and in italics, with a tooltip naming the solved
 frame that covers them."""
 import pytest

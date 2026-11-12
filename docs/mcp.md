@@ -163,7 +163,7 @@ the right root instead of trawling the whole library. Descriptions are optional.
 
 ### Reports
 
-`report_targets` and `report_catalog_coverage` are the Report menu's aggregates, computed
+`report_targets` and `report_catalog_coverage` are the Report menu's Summarize by Target and Compare with Catalog, computed
 by the same code the report windows use, so the application and an agent give the same
 answer to "how much Ha do I have on M31" or "which NGC objects have I covered".
 `report_targets` groups purely by the object name recorded in each file's header, so it
@@ -184,7 +184,7 @@ scrolling table:
 says how many the criteria matched, which distinguishes "you have not imaged this" from
 "none of these are solved yet".
 
-`get_header_values` is the Metadata Report without the CSV file: name the fields you want
+`get_header_values` is Export Metadata without the CSV file: name the fields you want
 and it returns them for every matching file, instead of one whole header per
 `get_file_details` call. Fields are prefixed by source — `File.size` / `Image.exposure` for
 model fields, `WCS:CRVAL1` for the plate-solve solution, anything else (`FOCTEMP`) for a
