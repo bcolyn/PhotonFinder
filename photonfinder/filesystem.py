@@ -825,8 +825,6 @@ class Importer:
 
         rel_path = norm_db_path(rel_path)
 
-        mtime_millis = file.mtime_millis
-
         possible_file_names = possible_compressed_variants(file.name)
         query = (File.select().where(
             (File.root == root) & (File.path == rel_path) & (File.name.in_(possible_file_names, ))))
@@ -840,20 +838,20 @@ class Importer:
             db_file = next((r for r in results if r.name not in names_on_disk), None)
 
         if db_file is None:
-            model = File(name=file.name, path=rel_path, root=root, size=file.size, mtime_millis=mtime_millis)
+            model = File(name=file.name, path=rel_path, root=root, size=file.size, mtime_millis=file.mtime_millis)
             changelist.new_files.append(model)
             return file.name
         else:
             oldname = db_file.name
-            if db_file.name != file.name and db_file.mtime_millis == mtime_millis:
+            if db_file.name != file.name and db_file.mtime_millis == file.mtime_millis:
                 # Compressed or decompressed with mtime preserved: same content, new name.
                 db_file.name = file.name
                 db_file.size = file.size
                 changelist.recompressed_files.append(db_file)
-            elif db_file.mtime_millis != mtime_millis or db_file.size != file.size:
+            elif db_file.mtime_millis != file.mtime_millis or db_file.size != file.size:
                 db_file.name = file.name
                 db_file.size = file.size
-                db_file.mtime_millis = mtime_millis
+                db_file.mtime_millis = file.mtime_millis
                 changelist.changed_ids.append(db_file.rowid)
                 changelist.changed_files.append(db_file)
             return oldname
