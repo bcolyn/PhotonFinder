@@ -41,6 +41,10 @@ datas += copy_metadata('xisf')
 datas += copy_metadata('mcp')
 datas += copy_metadata('photutils')  # read at import time to discover optional deps
 datas += collect_data_files('astroquery')
+# pyvo.samp reads its icon and web profile XML at import time (astroquery imports pyvo, which
+# imports pyvo.samp). Missing, astropy tries to download them from astropy.org instead, and the
+# app fails to start when that fails.
+datas += collect_data_files('pyvo', excludes=['**/tests/**'])
 datas += collect_data_files('photutils')
 datas += collect_data_files('timezonefinder')
 datas += collect_data_files('tzdata')
