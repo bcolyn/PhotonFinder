@@ -12,7 +12,7 @@ import pytest
 from astropy.io.fits import Header
 
 from photonfinder.filesystem import Importer, read_fits_header, ChangeList, read_xisf_header, header_from_xisf_dict, \
-    compress_file, fopen, is_compressed, is_compressible, possible_compressed_variants
+    compress_file, fopen, is_compressed, is_compressible, possible_compressed_variants, mtime_millis
 from photonfinder.models import LibraryRoot, File, Image, FitsHeader, FileWCS, ImageStats
 from photonfinder.filesystem import update_fits_header_cache, check_missing_header_cache, parse_FITS_header
 from photonfinder.fits_handlers import normalize_fits_header, NINAHandler, _normalize_image_type
@@ -29,31 +29,27 @@ class TestImporter:
     importer: Importer
     root: LibraryRoot
 
-    def initial_import(self, context):
-        change_lists = self.setup(context)
+    def initial_import(self, context, filesystem):
+        change_lists = self.setup(context, filesystem)
         for change_list in change_lists:
             change_list.apply_all()
 
-    def setup(self, context) -> Iterable[ChangeList]:
-        self.root = LibraryRoot(name="dummy", path=r'test://')
+    def setup(self, context, filesystem) -> Iterable[ChangeList]:
+        self.root = LibraryRoot(name="dummy", path=filesystem.path)
         self.root.save()
         self.importer = Importer(context)
         return self.importer.import_roots()
 
-    def test_fixture(self, filesystem):
-        for path, dirs, files in filesystem.walk("/", namespaces=['details']):
-            print("[%s] %d subdirs %d files" % (path, len(dirs), len(files)))
-
     def test_initial_import(self, filesystem, database, app_context):
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
         assert File.select().count() == NUM_FILES
         files = list(File.select().order_by(File.name))
         for file in files:
             assert file.path.endswith("/") or not file.path, f"bad path {file.path}"
 
     def test_reimport(self, filesystem, database, app_context):
-        self.initial_import(app_context)
-        change_list = self.importer.import_files_from(filesystem, self.root)
+        self.initial_import(app_context, filesystem)
+        change_list = self.importer.import_files_from(self.root)
         assert len(change_list.changed_files) == 0
         assert len(change_list.new_files) == 0
         assert len(change_list.removed_files) == 0
@@ -62,31 +58,31 @@ class TestImporter:
         assert File.select().count() == NUM_FILES
 
     def test_delete_file(self, filesystem, database, app_context):
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
 
         filesystem.remove("image01.fits")
-        self.importer.import_files_from(filesystem, self.root).apply_all()
+        self.importer.import_files_from(self.root).apply_all()
         assert File.select().count() == NUM_FILES - 1
 
         filesystem.remove("test/2021-12-26/Darks/image06.fits")
-        self.importer.import_files_from(filesystem, self.root).apply_all()
+        self.importer.import_files_from(self.root).apply_all()
         assert File.select().count() == NUM_FILES - 2
 
     def test_delete_dirs(self, filesystem, database, app_context):
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
 
         filesystem.removetree("test/2021-12-25")
-        self.importer.import_files_from(filesystem, self.root).apply_all()
+        self.importer.import_files_from(self.root).apply_all()
         assert File.select().count() == 3
 
     def test_changed_file(self, filesystem, database, app_context):
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
         file = File.select().where(File.name == "image06.fits").get()
         Image.create(file=file)
         assert Image.select().count() == 1
         # if the file has been changed, we need to re-analyse it
         filesystem.touch("test/2021-12-26/Darks/image06.fits")
-        change_list = self.importer.import_files_from(filesystem, self.root)
+        change_list = self.importer.import_files_from(self.root)
         assert len(change_list.changed_files) == 1
         assert len(change_list.new_files) == 0
         change_list.apply_all()
@@ -94,10 +90,10 @@ class TestImporter:
         assert Image.select().count() == 0
 
     def test_compressed_file(self, filesystem, database, app_context):
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
         filesystem.remove("test/2021-12-26/Darks/image06.fits")
-        filesystem.writebytes("test/2021-12-26/Darks/image06.fits.xz", "GZ".encode("ASCII"))
-        change_list = self.importer.import_files_from(filesystem, self.root)
+        filesystem.write("test/2021-12-26/Darks/image06.fits.xz", "GZ".encode("ASCII"))
+        change_list = self.importer.import_files_from(self.root)
         assert len(change_list.changed_files) == 1
         assert len(change_list.new_files) == 0, "New Files"
         assert len(change_list.removed_files) == 0, "Removed files"
@@ -120,16 +116,16 @@ class TestImporter:
                 for model in (Image, FitsHeader, FileWCS, ImageStats)]
 
     def test_compressed_file_with_preserved_mtime_keeps_derived_data(self, filesystem, database, app_context):
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
         file = File.select().where(File.name == "image06.fits").get()
         self._attach_derived_rows(file)
         src = "test/2021-12-26/Darks/image06.fits"
-        mtime = filesystem.getinfo(src, namespaces=["details"]).modified
+        mtime = filesystem.mtime(src)
         filesystem.remove(src)
-        filesystem.writebytes(src + ".xz", b"XZ")
-        filesystem.setinfo(src + ".xz", {"details": {"modified": mtime.timestamp()}})
+        filesystem.write(src + ".xz", b"XZ")
+        filesystem.set_mtime(src + ".xz", mtime)
 
-        change_list = self.importer.import_files_from(filesystem, self.root)
+        change_list = self.importer.import_files_from(self.root)
         assert len(change_list.changed_files) == 0
         assert len(change_list.new_files) == 0
         assert len(change_list.removed_files) == 0
@@ -142,15 +138,15 @@ class TestImporter:
         assert self._derived_row_counts(file) == [1, 1, 1, 1]
 
     def test_recompressed_to_upper_case_extension_keeps_row(self, filesystem, database, app_context):
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
         file = File.select().where(File.name == "image06.fits").get()
         src = "test/2021-12-26/Darks/image06.fits"
-        mtime = filesystem.getinfo(src, namespaces=["details"]).modified
+        mtime = filesystem.mtime(src)
         filesystem.remove(src)
-        filesystem.writebytes(src + ".GZ", b"GZ")
-        filesystem.setinfo(src + ".GZ", {"details": {"modified": mtime.timestamp()}})
+        filesystem.write(src + ".GZ", b"GZ")
+        filesystem.set_mtime(src + ".GZ", mtime)
 
-        change_list = self.importer.import_files_from(filesystem, self.root)
+        change_list = self.importer.import_files_from(self.root)
         assert len(change_list.new_files) == 0
         assert len(change_list.removed_files) == 0
         assert [f.rowid for f in change_list.recompressed_files] == [file.rowid]
@@ -161,17 +157,17 @@ class TestImporter:
     def test_compressed_copy_beside_original_is_a_separate_file(self, filesystem, database, app_context,
                                                                 same_mtime):
         """Ticket 28: x.fits and x.fits.xz both on disk are two files whose names stay put."""
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
         original = File.select().where(File.name == "image06.fits").get()
         self._attach_derived_rows(original)
         src = "test/2021-12-26/Darks/image06.fits"
-        filesystem.writebytes(src + ".xz", b"XZ")
+        filesystem.write(src + ".xz", b"XZ")
         if same_mtime:
-            mtime = filesystem.getinfo(src, namespaces=["details"]).modified
-            filesystem.setinfo(src + ".xz", {"details": {"modified": mtime.timestamp()}})
+            mtime = filesystem.mtime(src)
+            filesystem.set_mtime(src + ".xz", mtime)
 
         for _ in range(3):
-            change_list = self.importer.import_files_from(filesystem, self.root)
+            change_list = self.importer.import_files_from(self.root)
             change_list.apply_all()
 
         names = sorted(f.name for f in File.select().where(File.name.startswith("image06.fits")))
@@ -179,20 +175,20 @@ class TestImporter:
         assert File.get_by_id(original.rowid).name == "image06.fits"
         assert self._derived_row_counts(original) == [1, 1, 1, 1]
 
-        change_list = self.importer.import_files_from(filesystem, self.root)
+        change_list = self.importer.import_files_from(self.root)
         assert (change_list.new_files, change_list.changed_files, change_list.recompressed_files,
                 change_list.removed_files) == ([], [], [], [])
 
     def test_deleting_one_copy_removes_only_its_row(self, filesystem, database, app_context):
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
         original = File.select().where(File.name == "image06.fits").get()
         src = "test/2021-12-26/Darks/image06.fits"
-        filesystem.writebytes(src + ".xz", b"XZ")
-        self.importer.import_files_from(filesystem, self.root).apply_all()
+        filesystem.write(src + ".xz", b"XZ")
+        self.importer.import_files_from(self.root).apply_all()
         archive = File.select().where(File.name == "image06.fits.xz").get()
 
         filesystem.remove(src)
-        change_list = self.importer.import_files_from(filesystem, self.root)
+        change_list = self.importer.import_files_from(self.root)
         assert [f.rowid for f in change_list.removed_files] == [original.rowid]
         change_list.apply_all()
 
@@ -200,12 +196,12 @@ class TestImporter:
         assert File.get_by_id(archive.rowid).name == "image06.fits.xz"
 
     def test_changed_file_drops_derived_data(self, filesystem, database, app_context):
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
         file = File.select().where(File.name == "image06.fits").get()
         self._attach_derived_rows(file)
         filesystem.touch("test/2021-12-26/Darks/image06.fits")
 
-        change_list = self.importer.import_files_from(filesystem, self.root)
+        change_list = self.importer.import_files_from(self.root)
         assert len(change_list.changed_files) == 1
         assert len(change_list.recompressed_files) == 0
         change_list.apply_all()
@@ -213,28 +209,49 @@ class TestImporter:
         assert self._derived_row_counts(file) == [0, 0, 0, 0]
 
     def test_decompressed_file(self, filesystem, database, app_context):
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
         filesystem.remove("test/2021-12-26/Darks/image08.fits.xz")
-        filesystem.writebytes("test/2021-12-26/Darks/image08.fits", "DUMMY BYTES".encode("ASCII"))
-        change_list = self.importer.import_files_from(filesystem, self.root)
+        filesystem.write("test/2021-12-26/Darks/image08.fits", "DUMMY BYTES".encode("ASCII"))
+        change_list = self.importer.import_files_from(self.root)
         assert len(change_list.changed_files) == 1
         assert len(change_list.new_files) == 0
         assert change_list.changed_files[0].rowid
 
     def test_import_selection(self, filesystem, database, app_context):
-        self.initial_import(app_context)
+        self.initial_import(app_context, filesystem)
         filesystem.remove("test/2021-12-26/Darks/image08.fits.xz")
-        filesystem.writebytes("new_file.fits", b"DUMMY BYTES")
-        change_list = self.importer.import_selection(["test://test/2021-12-26/Darks", "test://new_file.fits"])
+        filesystem.write("new_file.fits", b"DUMMY BYTES")
+        change_list = self.importer.import_selection([filesystem.path + "test/2021-12-26/Darks",
+                                                      filesystem.path + "new_file.fits"])
         assert len(change_list.changed_files) == 0
         assert len(change_list.new_files) == 1, "New Files"
         assert len(change_list.removed_files) == 1, "Removed Files"
+
+    @pytest.mark.parametrize("spell", [
+        lambda root, rel: root.replace("/", "\\") + rel.replace("/", "\\"),
+        lambda root, rel: (root + rel).upper(),
+    ], ids=["backslashes", "other_case"])
+    def test_selection_is_matched_to_the_rows_spelt_as_on_disk(self, filesystem, database, app_context, spell):
+        """LibraryRoot.find_for_file matches either separator and any case; the selection must then
+        find the existing rows rather than fail or add new ones under its own spelling."""
+        self.initial_import(app_context, filesystem)
+        filesystem.touch("test/2021-12-26/Darks/image06.fits")
+        filesystem.write("test/2021-12-26/Darks/image09.fits")
+
+        darks = self.importer.import_selection([spell(filesystem.path, "test/2021-12-26/Darks")])
+        single = self.importer.import_selection([spell(filesystem.path, "test/2021-12-26/Darks/image06.fits")])
+
+        assert [(f.path, f.name) for f in darks.new_files] == [("test/2021-12-26/Darks/", "image09.fits")]
+        assert [f.name for f in darks.changed_files] == ["image06.fits"]
+        assert darks.removed_files == []
+        assert [f.name for f in single.changed_files] == ["image06.fits"]
+        assert single.new_files == [] and single.removed_files == []
 
     def test_update_fits_header_cache(self, filesystem, database, app_context, mocker):
         from .sample_headers import header_apt
         mocker.patch('photonfinder.filesystem.read_fits_headers',
                      return_value=single_header_scan(fix_embedded_header(header_apt)))
-        change_lists = self.setup(app_context)
+        change_lists = self.setup(app_context, filesystem)
         for change_list in change_lists:
             change_list.apply_all()
             update_fits_header_cache(change_list, app_context.status_reporter, app_context.settings)
@@ -301,6 +318,13 @@ def test_read_read_xisf_header(global_test_data_dir):
     assert image is not None
     assert image.camera == "ZWO ASI183MC Pro"
     assert image.object_name == 'NGC 3319'
+
+
+def test_mtime_millis_rounds_through_microseconds_as_stored_rows_did():
+    """Stored mtimes went through a datetime (whole microseconds) before becoming milliseconds;
+    st_mtime * 1000 would give ...444 here and turn an unchanged file into a changed one."""
+    assert mtime_millis(1709290800.4449996) == 1709290800445
+    assert mtime_millis(1709290800.0) == 1709290800000
 
 
 def test_type_normalization():

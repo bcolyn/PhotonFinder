@@ -1,9 +1,9 @@
+import os
+import shutil
 import warnings
 from pathlib import Path
 
 import pytest
-from fs.memoryfs import MemoryFS
-from fs.opener import Opener
 from peewee import SqliteDatabase
 
 from photonfinder.core import ApplicationContext, Settings, StatusReporter, decompress, register_udfs
@@ -207,41 +207,55 @@ def database():
         db.close()
 
 
+class LibraryTree:
+    """A library root on disk for importer tests; paths are relative to it and '/'-separated."""
+
+    def __init__(self, root: Path):
+        self.root = root
+        # As LibraryRoot.path is stored: forward slashes and a trailing slash.
+        self.path = root.as_posix() + "/"
+
+    def write(self, rel: str, data: bytes = b"DUMMY CONTENT"):
+        target = self.root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+
+    def remove(self, rel: str):
+        (self.root / rel).unlink()
+
+    def removetree(self, rel: str):
+        shutil.rmtree(self.root / rel)
+
+    def mtime(self, rel: str) -> float:
+        return (self.root / rel).stat().st_mtime
+
+    def set_mtime(self, rel: str, mtime: float):
+        os.utime(self.root / rel, (mtime, mtime))
+
+    def touch(self, rel: str):
+        """Change the modification time. Moved a minute on rather than set to now, which can fall
+        in the millisecond the file was written in."""
+        self.set_mtime(rel, self.mtime(rel) + 60)
+
+
 @pytest.fixture()
-def filesystem():
-    dummy_bytes = bytes("DUMMY CONTENT", "UTF-8")
-    mem_fs = MemoryFS()
-    try:
-        dir_light = "test/2021-12-25/Crab Nebula/Light/"
-        dir_light_bad = dir_light + "/BAD/"
-        dir_flats = "test/2021-12-25/Crab Nebula/Flats/"
-        dir_darks = "test/2021-12-26/Darks/"
+def filesystem(tmp_path) -> LibraryTree:
+    tree = LibraryTree(tmp_path / "library")
+    dir_light = "test/2021-12-25/Crab Nebula/Light/"
+    dir_light_bad = dir_light + "BAD/"
+    dir_flats = "test/2021-12-25/Crab Nebula/Flats/"
+    dir_darks = "test/2021-12-26/Darks/"
 
-        mem_fs.makedirs(dir_light_bad)
-        mem_fs.makedirs(dir_flats)
-        mem_fs.makedirs(dir_darks)
-        mem_fs.appendbytes("image01.fits", dummy_bytes)
-        mem_fs.appendbytes(dir_light + "image02.fits", dummy_bytes)
-        mem_fs.appendbytes(dir_light_bad + "image03.fits", dummy_bytes)
-        mem_fs.appendbytes(dir_light + "image04.fits", dummy_bytes)
-        mem_fs.appendbytes(dir_flats + "image05.fits", dummy_bytes)
-        mem_fs.appendbytes(dir_darks + "image06.fits", dummy_bytes)
-        mem_fs.appendbytes(dir_light + "BAD_image07.fits", dummy_bytes)
-        mem_fs.appendbytes(dir_darks + "image08.fits.xz", dummy_bytes)
-        mem_fs.appendbytes(dir_darks + "statistics.csv", dummy_bytes)
-
-        class FSOpener(Opener):
-            protocols = ['test']
-
-            def open_fs(self, fs_url, parse_result, writeable, create, cwd):
-                return mem_fs
-
-        from fs.opener import registry
-        registry.install(FSOpener())
-
-        yield mem_fs
-    finally:
-        mem_fs.close()
+    tree.write("image01.fits")
+    tree.write(dir_light + "image02.fits")
+    tree.write(dir_light_bad + "image03.fits")
+    tree.write(dir_light + "image04.fits")
+    tree.write(dir_flats + "image05.fits")
+    tree.write(dir_darks + "image06.fits")
+    tree.write(dir_light + "BAD_image07.fits")
+    tree.write(dir_darks + "image08.fits.xz")
+    tree.write(dir_darks + "statistics.csv")
+    return tree
 
 
 _HF_REPO = "bcolyn/PhotonFinder-test-data"

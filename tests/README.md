@@ -66,14 +66,14 @@ No flags or markers are needed.
 |---|---|---|
 | `app_context` | class | In-memory SQLite database with full schema |
 | `database` | function | Bare in-memory database (no app context) |
-| `filesystem` | function | In-memory PyFilesystem2 tree with dummy FITS files |
+| `filesystem` | function | `LibraryTree`: a library root of dummy FITS files under `tmp_path`, with helpers to change it |
 | `global_test_data_dir` | session | Path to `tests/data/`; skips if data absent |
 | `settings` | class | `DynamicSettings` mock (no persistent storage) |
 
 ## Writing new tests
 
 - Use `app_context` for tests that need the full ORM.
-- Use `filesystem` for importer/scanner tests — avoids real disk I/O.
+- Use `filesystem` for importer/scanner tests: a real tree under `tmp_path`, so the importer reads it with the same `os.scandir`/`os.stat` calls as a library.
 - Use `global_test_data_dir` only when a real image file is required; the test
   will be skipped automatically on machines without the data.
 - Use `qtbot` (from pytest-qt) for UI interaction tests.

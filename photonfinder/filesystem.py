@@ -6,14 +6,14 @@ import logging
 import lzma
 import os
 import shutil
+import stat
 import typing
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from logging import log, INFO, DEBUG, ERROR, WARN
 from pathlib import Path
 
-import fs.path
 from astropy.io.fits import Header, Card
-from fs.base import FS
-from fs.info import Info
 from peewee import JOIN
 
 from photonfinder import image_hdus, local_time, pictures, plate_solution
@@ -639,6 +639,48 @@ def compress_file(src_path: str, ext: str, verify: bool, level: int = 9,
     return dest_path, new_size
 
 
+def mtime_millis(st_mtime: float) -> int:
+    """A file's modification time as stored in File.mtime_millis.
+
+    Through a datetime, which rounds to whole microseconds, because that is how the stored values
+    were computed (PyFilesystem2 handed out datetimes). From st_mtime directly, a time such as
+    .4449996 s would come out a millisecond lower, and the next scan would see the file as changed.
+    """
+    return int(datetime.fromtimestamp(st_mtime, timezone.utc).timestamp() * 1000)
+
+
+@dataclass(frozen=True)
+class ScanEntry:
+    """A file or directory found by the importer. Symbolic links are followed; anything that is
+    not a directory counts as a file."""
+    name: str
+    is_dir: bool
+    size: int
+    mtime_millis: int
+
+    @property
+    def is_file(self) -> bool:
+        return not self.is_dir
+
+    @classmethod
+    def from_stat(cls, name: str, st: os.stat_result) -> 'ScanEntry':
+        return cls(name, stat.S_ISDIR(st.st_mode), st.st_size, mtime_millis(st.st_mtime))
+
+
+def scan_dir(path: str) -> list[ScanEntry]:
+    result = []
+    with os.scandir(path) as entries:
+        for entry in entries:
+            st = entry.stat()
+            result.append(ScanEntry(entry.name, entry.is_dir(), st.st_size, mtime_millis(st.st_mtime)))
+    return result
+
+
+def _join_rel(rel_dir: str, name: str) -> str:
+    """A path relative to the library root, '/'-separated, without a leading './'."""
+    return name if rel_dir in ('', '.') else f"{rel_dir}/{name}"
+
+
 class Importer:
     status: StatusReporter
 
@@ -652,7 +694,7 @@ class Importer:
     def cancel(self):
         self.cancelled = True
 
-    def marked_bad(self, f: Info) -> bool:
+    def marked_bad(self, f: ScanEntry) -> bool:
         """" skips over files that are marked bad """
         lc_filename = f.name.lower()
         if f.is_file:
@@ -680,19 +722,19 @@ class Importer:
         return pictures.is_picture_name(filename)
 
     @staticmethod
-    def is_fits(f: Info) -> bool:
+    def is_fits(f: ScanEntry) -> bool:
         return Importer.is_fits_by_name(f.name)
 
     @staticmethod
-    def is_xisf(f: Info) -> bool:
+    def is_xisf(f: ScanEntry) -> bool:
         return Importer.is_xisf_by_name(f.name)
 
     @staticmethod
-    def is_compressed(f: Info) -> bool:
+    def is_compressed(f: ScanEntry) -> bool:
         filename = f.name
         return is_compressed(filename)
 
-    def _file_filter(self, x: Info, root: LibraryRoot):
+    def _file_filter(self, x: ScanEntry, root: LibraryRoot):
         """Whether a file belongs in the library: FITS and XISF always, pictures when the root
         includes them. A file that doesn't, but has a row, is removed by the scan."""
         if self.marked_bad(x):
@@ -700,7 +742,7 @@ class Importer:
         return (Importer.is_fits(x) or Importer.is_xisf(x)
                 or (bool(root.include_pictures) and Importer.is_picture_by_name(x.name)))
 
-    def _dir_filter(self, x: Info):
+    def _dir_filter(self, x: ScanEntry):
         return not self.marked_bad(x)
 
     def import_roots(self, roots: typing.Sequence[LibraryRoot] = None) -> typing.Iterable[ChangeList]:
@@ -714,12 +756,10 @@ class Importer:
         for root in roots:
             self.status.update_status(f"importing library root: {root.name}")
             try:
-                open_fs = fs.open_fs(root.path, writeable=False)
-                ls = open_fs.listdir(".")
-                if len(ls) == 0:
+                if not os.listdir(root.path):
                     self.status.update_status(f"Skipping empty library: {root.name}")
                     continue
-                change_list = self.import_files_from(open_fs, root)
+                change_list = self.import_files_from(root)
                 yield change_list
             except ScanCancelled:
                 raise
@@ -727,7 +767,8 @@ class Importer:
                 self.status.update_status(f"Error importing library: {root.name} - {str(err)}")
         self.status.update_status("done.")
 
-    def import_files_from(self, root_fs: FS, root: LibraryRoot, start_dir='.') -> ChangeList:
+    def import_files_from(self, root: LibraryRoot, start_dir='.') -> ChangeList:
+        """Scan *start_dir* (relative to the root, '/'-separated; '.' is the whole root) and below."""
         dir_queue: typing.List[str] = [start_dir]
         all_dirs = set(map(norm_db_path, dir_queue))
         result = ChangeList()
@@ -735,16 +776,15 @@ class Importer:
             current_dir: str = dir_queue.pop()
             self.status.update_status(f"Scanning directory: {root.name}/{current_dir}", bulk=True)
             filtered_files = set()
-            entries = list(root_fs.scandir(current_dir, namespaces=['details']))
+            entries = scan_dir(os.path.join(root.path, current_dir))
             names_on_disk = {e.name for e in entries if e.is_file}
-            entry: Info
             for entry in entries:
                 if self.cancelled:
                     # Not a partial result: folders not reached yet would count as deleted.
                     raise ScanCancelled()
                 if entry.is_dir:
                     if self._dir_filter(entry):
-                        dir_path = fs.path.join(current_dir, entry.name)
+                        dir_path = _join_rel(current_dir, entry.name)
                         dir_queue.append(dir_path)
                         all_dirs.add(norm_db_path(dir_path))
                     else:
@@ -777,7 +817,7 @@ class Importer:
 
         return result
 
-    def _import_file(self, file: Info, rel_path, root, changelist,
+    def _import_file(self, file: ScanEntry, rel_path, root, changelist,
                      names_on_disk: typing.Collection[str]) -> str:
         """Record *file* in *changelist*. *names_on_disk* are the names of all files in its
         directory, used to tell a recompressed file from a compressed copy beside it."""
@@ -785,7 +825,7 @@ class Importer:
 
         rel_path = norm_db_path(rel_path)
 
-        mtime_millis = int(file.modified.timestamp() * 1000)
+        mtime_millis = file.mtime_millis
 
         possible_file_names = possible_compressed_variants(file.name)
         query = (File.select().where(
@@ -826,21 +866,37 @@ class Importer:
                 logging.warning(f"Skipping {file}: not in a library")
                 self.status.update_status(f"Skipping {file}: not in a library")
                 continue
-            root_fs = fs.open_fs(root.path, writeable=False)
-            rel_path = fs.path.relativefrom(root.path, file)
-
-            file_info = root_fs.getinfo(rel_path, ["details"])
+            rel_path = _relative_as_on_disk(root.path, file)
+            file_info = ScanEntry.from_stat(rel_path.rpartition('/')[2],
+                                            os.stat(os.path.join(root.path, rel_path)))
             if file_info.is_dir:
-                root_changes = self.import_files_from(root_fs, root, rel_path)
+                root_changes = self.import_files_from(root, rel_path)
                 changes.merge(root_changes)
-            elif file_info.is_file:
+            else:
                 if not self._file_filter(file_info, root):
                     self.status.update_status(f"Skipping {file}: not a file this library imports")
                     continue
-                rel_path_parent = str(Path(rel_path).parent)
-                names_on_disk = {e.name for e in root_fs.scandir(rel_path_parent) if e.is_file}
+                rel_path_parent = rel_path.rpartition('/')[0] or '.'
+                names_on_disk = {e.name for e in scan_dir(os.path.join(root.path, rel_path_parent)) if e.is_file}
                 self._import_file(file_info, rel_path_parent, root, changes, names_on_disk)
-            else:
-                logging.error(f"Unknow type {file} of type {file_info.type}")
-                self.status.update_status(f"Unknow type {file} of type {file_info.type}")
         return changes
+
+
+def _relative_as_on_disk(root_dir: str, path: str) -> str:
+    """*path* relative to *root_dir*, '/'-separated and '' for the root itself, with each part
+    spelt as on disk. *path* may use either separator and any case (LibraryRoot.find_for_file
+    matches that way); taking its spelling would record a second row for a file already in the
+    library under its on-disk name."""
+    rel = os.path.relpath(path, root_dir)
+    if rel == '.':
+        return ''
+    resolved: list[str] = []
+    for part in rel.replace('\\', '/').split('/'):
+        try:
+            names = os.listdir(os.path.join(root_dir, *resolved))
+        except OSError:
+            names = []
+        if part not in names:
+            part = next((name for name in names if name.casefold() == part.casefold()), part)
+        resolved.append(part)
+    return '/'.join(resolved)
