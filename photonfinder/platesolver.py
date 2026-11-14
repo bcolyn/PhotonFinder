@@ -3,6 +3,7 @@ import logging
 import queue
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -585,7 +586,14 @@ class SolveFieldSolver(SolverBase):
         env["PATH"] = prepend + os.pathsep + env.get("PATH", "")
         return env
 
+    @staticmethod
+    def _native() -> bool:
+        """Off Windows solve-field is an ordinary local program (Homebrew, apt)."""
+        return sys.platform != 'win32'
+
     def _to_unix_path(self, path: Path) -> str:
+        if self._native():
+            return str(path)
         if self._exe_path:
             return _to_cygwin_path(path, self._cygpath_exe(), self._cygwin_env())
         return _to_wsl_path(path, self._wsl_distro)
@@ -731,7 +739,9 @@ class SolveFieldSolver(SolverBase):
         elif header is not None:
             scale_low, scale_high = self._derive_scale(header)
 
-        if self._exe_path:
+        if self._native():
+            cmd = [self._exe_path or "solve-field"]
+        elif self._exe_path:
             cmd = [self._exe_path]
         else:
             cmd = ["wsl"]
@@ -771,7 +781,7 @@ class SolveFieldSolver(SolverBase):
 
         cmd.append(temp_unix)
 
-        env = self._cygwin_env() if self._exe_path else None
+        env = self._cygwin_env() if self._exe_path and not self._native() else None
         cmd_str = " ".join(cmd)
         logging.info("solve-field command: %s", cmd_str)
         if output_callback:

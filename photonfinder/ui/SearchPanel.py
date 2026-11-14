@@ -941,6 +941,11 @@ class SearchPanel(QFrame, Ui_SearchPanel):
                 subprocess.Popen(["explorer", "/select,", norm])
             except OSError as e:
                 logging.getLogger(__name__).warning("Could not open Explorer for %r: %s", norm, e)
+        elif sys.platform == 'darwin':
+            try:
+                subprocess.Popen(["open", "-R", filename])
+            except OSError as e:
+                logging.getLogger(__name__).warning("Could not reveal %r in Finder: %s", filename, e)
         else:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(filename)))
 

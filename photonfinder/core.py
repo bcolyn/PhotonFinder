@@ -35,6 +35,8 @@ def user_app_data_dir() -> Path:
     """
     if sys.platform == 'win32':
         return Path.home() / "AppData" / "Local" / "photonfinder"
+    if sys.platform == 'darwin':
+        return Path.home() / "Library" / "Application Support" / "photonfinder"
     return Path.home() / ".local" / "share" / "photonfinder"
 
 
@@ -48,16 +50,28 @@ def mcp_port_file() -> Path:
 
 
 def get_default_astap_path():
-    if Path("C:/Program Files/astap/astap.exe").exists():
-        return "C:/Program Files/astap/astap.exe"
-    else:  # else, assume it's on the PATH
-        return "astap"
+    candidates = ["C:/Program Files/astap/astap.exe"]
+    if sys.platform == 'darwin':
+        # The macOS installer puts the command-line-capable binary inside the app bundle.
+        candidates += ["/Applications/ASTAP.app/Contents/MacOS/astap",
+                       str(Path.home() / "Applications/ASTAP.app/Contents/MacOS/astap")]
+    for candidate in candidates:
+        if Path(candidate).exists():
+            return candidate
+    return "astap"  # assume it's on the PATH
 
 
 def get_default_saspro_path():
     """Where the Seti Astro Suite Pro installer puts it, or "" when it isn't there."""
     path = Path("C:/Program Files/SetiAstroSuitePro/SetiAstroSuitePro.exe")
-    return str(path.as_posix()) if path.exists() else ""
+    if path.exists():
+        return str(path.as_posix())
+    if sys.platform == 'darwin':
+        for app in sorted(Path("/Applications").glob("SetiAstroSuite*.app")):
+            exes = sorted((app / "Contents" / "MacOS").glob("SetiAstroSuite*"))
+            if exes:
+                return str(exes[0])
+    return ""
 
 
 def fatal_error(title: str, message: str, details: str = "") -> None:

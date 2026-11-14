@@ -111,6 +111,8 @@ def user_app_data_dir() -> Path:
     """
     if sys.platform == 'win32':
         return Path.home() / "AppData" / "Local" / "photonfinder"
+    if sys.platform == 'darwin':
+        return Path.home() / "Library" / "Application Support" / "photonfinder"
     return Path.home() / ".local" / "share" / "photonfinder"
 
 
@@ -240,8 +242,9 @@ def launch() -> tuple[bool, str | None]:
                 return True, None
             log("falling back to a direct start; PhotonFinder will close with this session")
         # explorer.exe returns immediately (and often non-zero); it is fire-and-forget.
+        # Off Windows, a new session keeps the GUI alive when the client ends this stub.
         subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL)
+                         stderr=subprocess.DEVNULL, start_new_session=sys.platform != 'win32')
         return True, None
     except OSError as e:
         log(f"could not start PhotonFinder: {e}")

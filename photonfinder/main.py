@@ -84,13 +84,13 @@ def main():
     available_styles = QStyleFactory.keys()
     logging.info(f"Available styles: {available_styles}")
 
-    # Try to use windows11 style if available, otherwise fall back to windowsvista
-    if "windows11" in available_styles:
-        app.setStyle(QStyleFactory.create("windows11"))
-        logging.info("Using windows11 style")
-    else:
-        app.setStyle(QStyleFactory.create("windowsvista"))
-        logging.info("Using windowsvista style")
+    # On Windows prefer windows11, else windowsvista. Elsewhere (macOS, Linux) keep Qt's
+    # native default: those styles do not exist there.
+    for style_name in ("windows11", "windowsvista"):
+        if style_name in available_styles:
+            app.setStyle(QStyleFactory.create(style_name))
+            logging.info(f"Using {style_name} style")
+            break
 
     logging.info(f"Current style: {app.style().objectName()}")
 
