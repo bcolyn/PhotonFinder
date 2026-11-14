@@ -17,6 +17,8 @@ from photonfinder import mcp_stub
 # stub's real derivation rather than the test's stand-in.
 _STUB_PORT_FILE = mcp_stub.mcp_port_file
 
+windows_only = pytest.mark.skipif(sys.platform != "win32", reason="the WMI/PowerShell launch exists only on Windows")
+
 
 @pytest.fixture(autouse=True)
 def isolated_port_file(tmp_path, monkeypatch):
@@ -443,6 +445,7 @@ def test_logging_survives_an_unwritable_file(tmp_path, monkeypatch):
         mcp_stub._log_file = None
 
 
+@windows_only
 def test_dev_launch_goes_through_wmi(monkeypatch):
     """A child of ours joins the client's job object and dies when the session ends.
 
@@ -467,6 +470,7 @@ def test_dev_launch_goes_through_wmi(monkeypatch):
     assert "photonfinder.main" in script
 
 
+@windows_only
 def test_dev_launch_reports_a_wmi_failure(monkeypatch):
     class _Result:
         returncode = 8  # Win32_Process.Create failure code
@@ -475,6 +479,7 @@ def test_dev_launch_reports_a_wmi_failure(monkeypatch):
     assert mcp_stub.start_outside_job(["pythonw.exe"]) is False
 
 
+@windows_only
 def test_dev_launch_survives_powershell_being_unavailable(monkeypatch):
     def boom(command, **kwargs):
         raise OSError("no powershell here")

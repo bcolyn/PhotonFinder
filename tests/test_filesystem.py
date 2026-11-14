@@ -227,6 +227,8 @@ class TestImporter:
         assert len(change_list.new_files) == 1, "New Files"
         assert len(change_list.removed_files) == 1, "Removed Files"
 
+    @pytest.mark.skipif(sys.platform != "win32",
+                        reason="backslash separators and case-insensitive paths are Windows-only")
     @pytest.mark.parametrize("spell", [
         lambda root, rel: root.replace("/", "\\") + rel.replace("/", "\\"),
         lambda root, rel: (root + rel).upper(),
