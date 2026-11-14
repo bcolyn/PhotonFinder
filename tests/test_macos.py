@@ -60,7 +60,9 @@ def test_solve_field_runs_directly_with_paths_as_they_are(on_macos, monkeypatch,
     assert cmd[0] == "solve-field"
     assert "wsl" not in cmd
     assert env is None
-    assert Path(cmd[-1]).is_absolute() and "\\" not in cmd[-1]
+    # Passed in its native spelling, not converted to a WSL/Cygwin path. Only sys.platform is
+    # patched, so on a Windows host the native spelling still has backslashes.
+    assert Path(cmd[-1]).is_absolute() and cmd[-1] == str(Path(cmd[-1]))
 
 
 def test_a_configured_solve_field_is_used_without_cygwin(on_macos, monkeypatch, tmp_path):
