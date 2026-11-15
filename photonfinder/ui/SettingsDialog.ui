@@ -317,7 +317,7 @@
        <item>
         <widget class="QLabel" name="saspro_hint_label">
          <property name="text">
-          <string>SASpro (Gaia) uses Seti Astro Suite Pro's own solver. Build its quad index in SASpro first.</string>
+          <string>SASpro (Gaia) uses Seti Astro Suite Pro's own solver, from version 1.23.0 on. Build its quad index in SASpro first.</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>

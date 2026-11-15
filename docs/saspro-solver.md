@@ -12,7 +12,9 @@ images rather than raw linear frames.
 
 ## 1. Install SASpro
 
-Download and install the latest version from [setiastro.com](https://www.setiastro.com). The
+Download and install the latest version from [setiastro.com](https://www.setiastro.com).
+PhotonFinder needs **SASpro 1.23.0 or later**: earlier versions have no command-line solver, and
+just open the SASpro window instead of solving. The
 installer puts it in `C:\Program Files\SetiAstroSuitePro`, which is where PhotonFinder looks by
 default.
 
@@ -62,6 +64,8 @@ full solution.
 
 - **"SASpro could not be started"**: the path in Settings is wrong, or SASpro isn't installed.
   Check **SASpro Path**, or leave it empty for the standard folder.
+- **"SASpro 1.x has no command-line solver"**: your SASpro is older than 1.23.0. Update it.
+  PhotonFinder reads the version from the SASpro install and doesn't start an older one.
 - **Every image fails with "blind solve found no match"**: the quad index is probably missing the
   layers for your field size. Check which layers are built in SASpro, then build the missing ones.
 - **"match quality too low"** on the first attempt, followed by a blind solve: the header's

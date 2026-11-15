@@ -15,7 +15,7 @@ from astropy.wcs import WCS
 
 from photonfinder.core import get_default_saspro_path
 from photonfinder.platesolver import (
-    SASproSolver, SolverCancelled, SolverError, SolverFailure, SolverHint, _parse_saspro_result,
+    SASproSolver, SolverCancelled, SolverError, SolverFailure, SolverHint, _parse_saspro_result, saspro_version,
 )
 
 STAND_IN = textwrap.dedent('''
@@ -222,6 +222,54 @@ def test_a_missing_executable_is_a_configuration_error(tmp_path):
 
     with pytest.raises(SolverError, match="Settings > Plate Solving"):
         _solve(solver, _frame(tmp_path))
+
+
+def _install(folder: Path, *versions: str, layout: str = "windows") -> Path:
+    """A SASpro install as its PyInstaller build lays it out, with a dist-info per version."""
+    if layout == "mac":
+        program = folder / "SetiAstroSuitePro.app" / "Contents" / "MacOS" / "SetiAstroSuitePro"
+        metadata = program.parent.parent / "Frameworks"
+    else:
+        program = folder / "SetiAstroSuitePro" / "setiastrosuitepro.exe"
+        metadata = program.parent / "_internal"
+    program.parent.mkdir(parents=True, exist_ok=True)
+    program.write_bytes(b"")
+    for version in versions:
+        (metadata / f"setiastrosuitepro-{version}.dist-info").mkdir(parents=True)
+    return program
+
+
+@pytest.mark.parametrize("layout", ["windows", "mac"])
+def test_the_version_is_read_from_the_bundled_metadata(tmp_path, layout):
+    assert saspro_version(str(_install(tmp_path, "1.23.2.post1", layout=layout))) == (1, 23, 2)
+
+
+def test_a_leftover_older_metadata_folder_does_not_hide_the_upgrade(tmp_path):
+    assert saspro_version(str(_install(tmp_path, "1.20.2", "1.24.3"))) == (1, 24, 3)
+
+
+def test_without_metadata_the_version_is_unknown(tmp_path):
+    assert saspro_version(str(_install(tmp_path))) is None
+    assert saspro_version(str(tmp_path / "missing.exe")) is None
+    assert saspro_version("") is None
+
+
+def test_a_saspro_without_the_command_line_solver_is_never_started(tmp_path):
+    solver = StandInSASpro(tmp_path, [SOLVED])
+    solver._exe = str(_install(tmp_path, "1.20.2"))
+
+    with pytest.raises(SolverError, match=r"SASpro 1\.20\.2 .* needs SASpro 1\.23\.0 or later"):
+        _solve(solver, _frame(tmp_path))
+    assert not solver.runs
+
+
+@pytest.mark.parametrize("version", ["1.23.0", None])
+def test_a_new_enough_or_unknown_version_is_run(tmp_path, version):
+    solver = StandInSASpro(tmp_path, [SOLVED])
+    solver._exe = str(_install(tmp_path, *[v for v in [version] if v]))
+
+    _solve(solver, _frame(tmp_path))
+    assert len(solver.runs) == 1
 
 
 def test_the_result_is_found_after_the_loader_lines():

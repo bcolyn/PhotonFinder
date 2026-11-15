@@ -1,6 +1,7 @@
 import json
 import logging
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -820,6 +821,47 @@ class SolveFieldSolver(SolverBase):
 
 
 SASPRO_TIMEOUT_SECONDS = 600  # a blind solve takes 6-9 s; SASpro's own limit is 10 minutes
+SASPRO_MIN_VERSION = (1, 23, 0)
+"""The first SASpro with the command-line ``solve``. An older one ignores the argument and
+opens its whole window, which then sits there until the timeout."""
+
+
+def _version_tuple(text: str) -> tuple[int, ...] | None:
+    """(1, 23, 2) from '1.23.2' or '1.23.2.post1'; None when it doesn't start with a number."""
+    parts = []
+    for part in text.split("."):
+        digits = re.match(r"\d+", part)
+        if not digits:
+            break
+        parts.append(int(digits.group()))
+        if digits.group() != part:
+            break
+    return tuple(parts) or None
+
+
+def saspro_version(exe: str) -> tuple[int, ...] | None:
+    """The version of the SASpro at *exe*, or None when it can't be told without running it.
+
+    Running it to ask is no option: a SASpro too old to know ``--version`` opens its window.
+    Its builds are PyInstaller bundles, which carry the package's metadata as a
+    ``setiastrosuitepro-<version>.dist-info`` folder: next to the program on Windows and Linux
+    (in ``_internal``), and in the app bundle's Frameworks or Resources folder on macOS."""
+    if not exe:
+        return None
+    found = shutil.which(exe) or exe
+    program = Path(found)
+    if not program.is_file():
+        return None
+    folders = [program.parent / "_internal", program.parent,
+               program.parent.parent / "Frameworks", program.parent.parent / "Resources"]
+    versions = []
+    for folder in folders:
+        for info in folder.glob("setiastrosuitepro-*.dist-info"):
+            version = _version_tuple(info.name[len("setiastrosuitepro-"):-len(".dist-info")])
+            if version:
+                versions.append(version)
+    # An upgrade over an old install can leave the old folder behind: the newest is the program.
+    return max(versions, default=None)
 
 
 def _header_pixel_scale(header) -> float | None:
@@ -874,6 +916,20 @@ class SASproSolver(SolverBase):
         super().__init__()
         self._exe = exe or get_default_saspro_path()
         self._timeout = timeout
+        self._version_checked = False
+
+    def _check_version(self):
+        """Refuse a SASpro known to be too old, before it opens its window; one whose version
+        can't be told is tried."""
+        if self._version_checked:
+            return
+        version = saspro_version(self._exe)
+        if version is not None and version < SASPRO_MIN_VERSION:
+            minimum = ".".join(map(str, SASPRO_MIN_VERSION))
+            raise SolverError(f"SASpro {'.'.join(map(str, version))} has no command-line solver: "
+                              f"PhotonFinder needs SASpro {minimum} or later. Update SASpro, "
+                              "or choose another solver.")
+        self._version_checked = True
 
     @property
     def solver_type(self) -> SolverType:
@@ -930,6 +986,7 @@ class SASproSolver(SolverBase):
         if not self.tmp_dir:
             raise FileNotFoundError("Temporary directory not found, use with statement to create one.")
         cancelled = cancelled or _never_cancelled
+        self._check_version()
 
         is_picture = pictures.is_picture_name(image_path.name)
         seed_args = []
