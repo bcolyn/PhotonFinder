@@ -1,6 +1,8 @@
 import os
-import platform
+import plistlib
+import sys
 import zoneinfo
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCompleter, QDialog, QFileDialog, QMessageBox
@@ -50,6 +52,62 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.astap_browse_button.clicked.connect(self.browse_astap_executable)
         self.solve_field_browse_button.clicked.connect(self.browse_solve_field_executable)
         self.saspro_browse_button.clicked.connect(self.browse_saspro_executable)
+        self._adapt_plate_solving_tab()
+
+    def _adapt_plate_solving_tab(self):
+        """The .ui holds the Windows wording (ANSVR, Cygwin, WSL, Program Files). Elsewhere
+        solve-field is an ordinary local program, so the WSL distro setting does not apply."""
+        if sys.platform == 'win32':
+            return
+        self.wsl_distro_label.hide()
+        self.wsl_distro_edit.hide()
+        installer = "Homebrew (brew install astrometry-net)" if sys.platform == 'darwin' \
+            else "your package manager (e.g. apt install astrometry.net)"
+        self.wsl_hint_label.setText(
+            f"solve-field is astrometry.net's local solver; install it with {installer}, "
+            "together with index files for your field of view.")
+        self.solve_field_path_edit.setToolTip(
+            "Path to the solve-field executable. Leave empty to use solve-field from the PATH.")
+        self.solve_field_path_edit.setPlaceholderText("Leave empty to use solve-field from the PATH")
+        self.saspro_path_edit.setToolTip(
+            "Path to the Seti Astro Suite Pro executable or app. "
+            "Leave empty to use the standard install location.")
+        if sys.platform == 'darwin':
+            self.saspro_path_edit.setPlaceholderText("Leave empty for the app in /Applications")
+        else:
+            self.saspro_path_edit.setPlaceholderText("Path to the Seti Astro Suite Pro executable")
+
+    @staticmethod
+    def _file_filter(windows_name: str) -> str:
+        """Windows filters on the .exe name; elsewhere executables have no extension to match."""
+        if sys.platform == 'win32':
+            return f"{windows_name};;All Files (*.*)"
+        return "All Files (*)"
+
+    @staticmethod
+    def _app_bundle_executable(path: str) -> str:
+        """The program inside a macOS .app bundle, which a file dialog returns whole; any other
+        path unchanged. The bundle's Info.plist names its executable."""
+        bundle = Path(path)
+        if bundle.suffix.lower() != ".app" or not bundle.is_dir():
+            return path
+        macos = bundle / "Contents" / "MacOS"
+        try:
+            with open(bundle / "Contents" / "Info.plist", "rb") as f:
+                name = plistlib.load(f).get("CFBundleExecutable")
+            if name and (macos / name).is_file():
+                return str(macos / name)
+        except (OSError, plistlib.InvalidFileException):
+            pass
+        programs = sorted(p for p in macos.glob("*") if p.is_file()) if macos.is_dir() else []
+        return str(programs[0]) if len(programs) == 1 else path
+
+    def _browse_executable(self, edit, title: str, windows_name: str, default: str = ""):
+        current_path = edit.text() or default
+        start_dir = os.path.dirname(current_path) if current_path else os.path.expanduser("~")
+        file_path, _ = QFileDialog.getOpenFileName(self, title, start_dir, self._file_filter(windows_name))
+        if file_path:
+            edit.setText(SettingsDialog._app_bundle_executable(file_path))
 
     def _thumbnail_cache(self) -> ThumbnailCache:
         return self.thumbnails.cache if self.thumbnails is not None else ThumbnailCache(self.context.thumbnail_dir)
@@ -74,40 +132,14 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         self.clear_thumbnails_button.setEnabled(False)
 
     def browse_astap_executable(self):
-        if platform.system() == "Windows":
-            file_filter = "astap.exe;;All Files (*.*)"
-        else:
-            file_filter = "astap;;All Files (*)"
-
-        current_path = self.astap_path_edit.text()
-        start_dir = os.path.dirname(current_path) if current_path else os.path.expanduser("~")
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select ASTAP Executable", start_dir, file_filter
-        )
-        if file_path:
-            self.astap_path_edit.setText(file_path)
+        self._browse_executable(self.astap_path_edit, "Select ASTAP Executable", "astap.exe")
 
     def browse_solve_field_executable(self):
-        file_filter = "solve-field.exe;;All Files (*.*)"
-        current_path = self.solve_field_path_edit.text()
-        start_dir = os.path.dirname(current_path) if current_path else os.path.expanduser("~")
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select solve-field Executable", start_dir, file_filter
-        )
-        if file_path:
-            self.solve_field_path_edit.setText(file_path)
+        self._browse_executable(self.solve_field_path_edit, "Select solve-field Executable", "solve-field.exe")
 
     def browse_saspro_executable(self):
-        current_path = self.saspro_path_edit.text() or get_default_saspro_path()
-        start_dir = os.path.dirname(current_path) if current_path else os.path.expanduser("~")
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select SetiAstroSuitePro.exe", start_dir, "SetiAstroSuitePro.exe;;All Files (*.*)"
-        )
-        if file_path:
-            self.saspro_path_edit.setText(file_path)
+        self._browse_executable(self.saspro_path_edit, "Select Seti Astro Suite Pro Executable",
+                                "SetiAstroSuitePro.exe", default=get_default_saspro_path())
 
     def accept(self):
         zone = self.obs_timezone_edit.text().strip()
