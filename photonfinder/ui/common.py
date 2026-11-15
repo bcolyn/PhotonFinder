@@ -120,7 +120,9 @@ class ColumnVisibilityController:
             self._build_presets_section(menu)
             menu.addSeparator()
 
-        for col in range(self.model.columnCount()):
+        # List the columns in their displayed order: the user may have dragged them around.
+        for visual in range(self.header.count()):
+            col = self.header.logicalIndex(visual)
             header = self.model.headerData(col, Qt.Horizontal)
             if header in _MODE_COLUMNS:
                 continue
